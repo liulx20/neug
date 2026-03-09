@@ -21,13 +21,13 @@ namespace neug {
 
 namespace execution {
 
-std::pair<std::shared_ptr<IContextColumn>, std::vector<size_t>>
+std::pair<std::shared_ptr<IContextColumn>, select_vector_t>
 iterative_expand_vertex_on_graph_view(const GenericView& view,
                                       const SLVertexColumn& input, int lower,
                                       int upper) {
   int input_label = input.label();
   MSVertexColumnBuilder builder(input_label);
-  std::vector<size_t> offsets;
+  select_vector_t offsets;
   if (upper == lower) {
     return std::make_pair(builder.finish(), std::move(offsets));
   }
@@ -85,14 +85,14 @@ iterative_expand_vertex_on_graph_view(const GenericView& view,
   return std::make_pair(builder.finish(), std::move(offsets));
 }
 
-std::pair<std::shared_ptr<IContextColumn>, std::vector<size_t>>
+std::pair<std::shared_ptr<IContextColumn>, select_vector_t>
 iterative_expand_vertex_on_dual_graph_view(const GenericView& iview,
                                            const GenericView& oview,
                                            const SLVertexColumn& input,
                                            int lower, int upper) {
   int input_label = input.label();
   MSVertexColumnBuilder builder(input_label);
-  std::vector<size_t> offsets;
+  select_vector_t offsets;
   if (upper == lower) {
     return std::make_pair(builder.finish(), std::move(offsets));
   }
@@ -158,7 +158,7 @@ iterative_expand_vertex_on_dual_graph_view(const GenericView& iview,
   return std::make_pair(builder.finish(), std::move(offsets));
 }
 
-std::pair<std::shared_ptr<IContextColumn>, std::vector<size_t>>
+std::pair<std::shared_ptr<IContextColumn>, select_vector_t>
 path_expand_vertex_without_predicate_impl(
     const StorageReadInterface& graph, const SLVertexColumn& input,
     const std::vector<LabelTriplet>& labels, Direction dir, int lower,
@@ -189,7 +189,7 @@ path_expand_vertex_without_predicate_impl(
   }
   LOG(FATAL) << "not implemented...";
   std::shared_ptr<IContextColumn> ret(nullptr);
-  return std::make_pair(ret, std::vector<size_t>());
+  return std::make_pair(ret, select_vector_t());
 }
 
 }  // namespace execution

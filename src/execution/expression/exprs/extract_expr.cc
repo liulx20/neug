@@ -14,6 +14,7 @@
  */
 
 #include "neug/execution/expression/exprs/extract_expr.h"
+#include "neug/execution/common/columns/value_columns.h"
 #include "neug/generated/proto/plan/expr.pb.h"
 
 namespace neug {
@@ -47,7 +48,110 @@ class BindedExtractExpr : public VertexExprBase,
     return eval_impl(extract_type_, val);
   }
 
+  std::shared_ptr<IContextColumn> eval_chunk(
+      const Context& ctx, const select_vector_t* sel) const override {
+    auto val_col = expr_->Cast<RecordExprBase>().eval_chunk(ctx, sel);
+    if (val_col->elem_type().id() == DataTypeId::kTimestampMs) {
+      return eval_timestamp_ms(
+          extract_type_,
+          std::dynamic_pointer_cast<ValueColumn<timestamp_ms_t>>(val_col));
+    } else if (val_col->elem_type().id() == DataTypeId::kDate) {
+      return eval_date(extract_type_,
+                       std::dynamic_pointer_cast<ValueColumn<date_t>>(val_col));
+    } else if (val_col->elem_type().id() == DataTypeId::kInterval) {
+      return eval_interval(
+          extract_type_,
+          std::dynamic_pointer_cast<ValueColumn<interval_t>>(val_col));
+    } else {
+      LOG(FATAL) << "not support: " << val_col->elem_type().id();
+      return nullptr;
+    }
+  }
+
  private:
+  static std::shared_ptr<IContextColumn> eval_timestamp_ms(
+      const ::common::Extract& extract_type,
+      const std::shared_ptr<ValueColumn<timestamp_ms_t>>& val_col) {
+    ValueColumnBuilder<int64_t> builder(val_col->size());
+    for (size_t i = 0; i < val_col->size(); ++i) {
+      if (val_col->is_optional() && !val_col->has_value(i)) {
+        builder.push_back_null();
+      } else {
+        auto ms = val_col->get_value(i).milli_second;
+        builder.push_back_opt(extract_time_from_milli_second(ms, extract_type));
+      }
+    }
+    return builder.finish();
+  }
+
+  static std::shared_ptr<IContextColumn> eval_date(
+      const ::common::Extract& extract_type,
+      const std::shared_ptr<ValueColumn<date_t>>& val_col) {
+    ValueColumnBuilder<int64_t> builder(val_col->size());
+    for (size_t i = 0; i < val_col->size(); ++i) {
+      if (val_col->is_optional() && !val_col->has_value(i)) {
+        builder.push_back_null();
+      } else {
+        auto date = val_col->get_value(i);
+        switch (extract_type.interval()) {
+        case ::common::Extract::YEAR:
+          builder.push_back_opt(date.year());
+          break;
+        case ::common::Extract::MONTH:
+          builder.push_back_opt(date.month());
+          break;
+        case ::common::Extract::DAY:
+          builder.push_back_opt(date.day());
+          break;
+        default:
+          LOG(FATAL) << "not support: " << extract_type.DebugString();
+          builder.push_back_null();
+        }
+      }
+    }
+    return builder.finish();
+  }
+
+  static std::shared_ptr<IContextColumn> eval_interval(
+      const ::common::Extract& extract_type,
+      const std::shared_ptr<ValueColumn<interval_t>>& val_col) {
+    ValueColumnBuilder<int64_t> builder(val_col->size());
+    for (size_t i = 0; i < val_col->size(); ++i) {
+      if (val_col->is_optional() && !val_col->has_value(i)) {
+        builder.push_back_null();
+      } else {
+        auto interval = val_col->get_value(i);
+        switch (extract_type.interval()) {
+        case ::common::Extract::YEAR:
+          builder.push_back_opt(interval.year());
+          break;
+        case ::common::Extract::MONTH:
+          builder.push_back_opt(interval.month());
+          break;
+        case ::common::Extract::DAY:
+          builder.push_back_opt(interval.day());
+          break;
+        case ::common::Extract::HOUR:
+          builder.push_back_opt(interval.hour());
+          break;
+        case ::common::Extract::MINUTE:
+          builder.push_back_opt(interval.minute());
+          break;
+        case ::common::Extract::SECOND:
+          builder.push_back_opt(interval.second());
+          break;
+        case ::common::Extract::MILLISECOND:
+          builder.push_back_opt(interval.millisecond());
+          break;
+        default:
+          LOG(FATAL) << "not support: " << extract_type.DebugString();
+          builder.push_back_null();
+        }
+      }
+    }
+    return builder.finish();
+  }
+
   static Value eval_impl(const ::common::Extract& extract_type,
                          const Value& val) {
     if (val.IsNull()) {

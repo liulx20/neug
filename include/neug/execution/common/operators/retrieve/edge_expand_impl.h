@@ -129,20 +129,19 @@ get_label_dirs_list(const std::set<label_t>& input_labels, const Schema& schema,
 }
 
 template <typename GPRED_T, bool is_optional = false>
-std::pair<std::shared_ptr<IContextColumn>, std::vector<size_t>>
-expand_vertex_impl(const StorageReadInterface& graph,
-                   const SLVertexColumn& input,
-                   const std::vector<LabelTriplet>& labels, Direction dir,
-                   const GPRED_T& gpred) {
+std::pair<std::shared_ptr<IContextColumn>, select_vector_t> expand_vertex_impl(
+    const StorageReadInterface& graph, const SLVertexColumn& input,
+    const std::vector<LabelTriplet>& labels, Direction dir,
+    const GPRED_T& gpred) {
   label_t input_label = input.label();
   std::vector<std::tuple<label_t, label_t, Direction>> label_dirs =
       get_label_dirs(input_label, graph.schema(), labels, dir);
   if (label_dirs.empty()) {
     MLVertexColumnBuilder builder;
-    return std::make_pair(builder.finish(), std::vector<size_t>());
+    return std::make_pair(builder.finish(), select_vector_t());
   }
   MSVertexColumnBuilder builder(std::get<0>(label_dirs[0]));
-  std::vector<size_t> offsets;
+  select_vector_t offsets;
   auto& vertices = input.vertices();
   std::vector<bool> matched;
   if constexpr (is_optional) {
@@ -217,11 +216,10 @@ expand_vertex_impl(const StorageReadInterface& graph,
 }
 
 template <typename GPRED_T, bool is_optional = false>
-std::pair<std::shared_ptr<IContextColumn>, std::vector<size_t>>
-expand_vertex_impl(const StorageReadInterface& graph,
-                   const MLVertexColumn& input,
-                   const std::vector<LabelTriplet>& labels, Direction dir,
-                   const GPRED_T& gpred) {
+std::pair<std::shared_ptr<IContextColumn>, select_vector_t> expand_vertex_impl(
+    const StorageReadInterface& graph, const MLVertexColumn& input,
+    const std::vector<LabelTriplet>& labels, Direction dir,
+    const GPRED_T& gpred) {
   const std::set<label_t>& input_labels = input.get_labels_set();
   int label_num = graph.schema().vertex_label_frontier();
   std::vector<std::vector<std::tuple<label_t, label_t, Direction>>> label_dirs =
@@ -242,7 +240,7 @@ expand_vertex_impl(const StorageReadInterface& graph,
   }
   if (nbr_labels.size() == 0) {
     MLVertexColumnBuilder builder;
-    return std::make_pair(builder.finish(), std::vector<size_t>());
+    return std::make_pair(builder.finish(), select_vector_t());
   }
   if (input_labels.size() == 1) {
     std::vector<bool> matched;
@@ -251,7 +249,7 @@ expand_vertex_impl(const StorageReadInterface& graph,
     }
     label_t input_label = *input_labels.begin();
     MSVertexColumnBuilder builder(std::get<0>(label_dirs[input_label][0]));
-    std::vector<size_t> offsets;
+    select_vector_t offsets;
     const auto& label_dirs_input = label_dirs[input_label];
     for (auto& label_dir : label_dirs_input) {
       label_t nbr_label = std::get<0>(label_dir);
@@ -320,7 +318,7 @@ expand_vertex_impl(const StorageReadInterface& graph,
   } else if (nbr_labels.size() == 1) {
     label_t nbr_label = *nbr_labels.begin();
     MSVertexColumnBuilder builder(nbr_label);
-    std::vector<size_t> offsets;
+    select_vector_t offsets;
     if (single_view_per_label) {
       std::vector<GenericView> single_views(label_num);
       std::vector<label_t> single_edge_labels(
@@ -468,7 +466,7 @@ expand_vertex_impl(const StorageReadInterface& graph,
     return std::make_pair(builder.finish(), std::move(offsets));
   } else {
     MLVertexColumnBuilderOpt builder(nbr_labels);
-    std::vector<size_t> offsets;
+    select_vector_t offsets;
     if (single_view_per_label) {
       std::vector<GenericView> single_views(label_num);
       std::vector<label_t> single_nbr_labels(
@@ -625,11 +623,10 @@ expand_vertex_impl(const StorageReadInterface& graph,
 }
 
 template <typename GPRED_T, bool is_optional = false>
-std::pair<std::shared_ptr<IContextColumn>, std::vector<size_t>>
-expand_vertex_impl(const StorageReadInterface& graph,
-                   const MSVertexColumn& input,
-                   const std::vector<LabelTriplet>& labels, Direction dir,
-                   const GPRED_T& gpred) {
+std::pair<std::shared_ptr<IContextColumn>, select_vector_t> expand_vertex_impl(
+    const StorageReadInterface& graph, const MSVertexColumn& input,
+    const std::vector<LabelTriplet>& labels, Direction dir,
+    const GPRED_T& gpred) {
   const std::set<label_t>& input_labels = input.get_labels_set();
   int label_num = graph.schema().vertex_label_frontier();
   std::vector<std::vector<std::tuple<label_t, label_t, Direction>>> label_dirs =
@@ -646,7 +643,7 @@ expand_vertex_impl(const StorageReadInterface& graph,
   }
   if (nbr_labels.empty()) {
     MLVertexColumnBuilder builder;
-    return std::make_pair(builder.finish(), std::vector<size_t>());
+    return std::make_pair(builder.finish(), select_vector_t());
   }
   std::vector<std::vector<GenericView>> views(label_num);
   for (auto v_label : input_labels) {
@@ -665,7 +662,7 @@ expand_vertex_impl(const StorageReadInterface& graph,
     }
   }
   MSVertexColumnBuilder builder(*nbr_labels.begin());
-  std::vector<size_t> offsets;
+  select_vector_t offsets;
 
   size_t input_seg_num = input.seg_num();
   size_t seg_start_idx = 0;
@@ -739,7 +736,7 @@ expand_vertex_impl(const StorageReadInterface& graph,
 #undef expand_sv_p_ml
 
 template <typename PRED_T>
-std::pair<std::shared_ptr<IContextColumn>, std::vector<size_t>>
+std::pair<std::shared_ptr<IContextColumn>, select_vector_t>
 expand_vertex_optional_impl(const StorageReadInterface& graph,
                             const IVertexColumn& input,
                             const std::vector<LabelTriplet>& labels,
@@ -758,20 +755,20 @@ expand_vertex_optional_impl(const StorageReadInterface& graph,
 }
 
 template <typename PRED_T, bool is_optional = false>
-std::pair<std::shared_ptr<IContextColumn>, std::vector<size_t>>
-expand_edge_impl(const StorageReadInterface& graph, const SLVertexColumn& input,
-                 const std::vector<LabelTriplet>& labels, Direction dir,
-                 const PRED_T& pred) {
+std::pair<std::shared_ptr<IContextColumn>, select_vector_t> expand_edge_impl(
+    const StorageReadInterface& graph, const SLVertexColumn& input,
+    const std::vector<LabelTriplet>& labels, Direction dir,
+    const PRED_T& pred) {
   label_t input_label = input.label();
   auto& vertices = input.vertices();
   std::vector<std::tuple<label_t, label_t, Direction>> label_dirs =
       get_label_dirs(input_label, graph.schema(), labels, dir);
   if (label_dirs.empty()) {
     MSEdgeColumnBuilder builder;
-    return std::make_pair(builder.finish(), std::vector<size_t>());
+    return std::make_pair(builder.finish(), select_vector_t());
   }
   MSEdgeColumnBuilder builder;
-  std::vector<size_t> offsets;
+  select_vector_t offsets;
   std::vector<bool> matched;
   if constexpr (is_optional) {
     matched.resize(vertices.size(), false);
@@ -881,15 +878,15 @@ expand_edge_impl(const StorageReadInterface& graph, const SLVertexColumn& input,
 }
 
 template <typename PRED_T, bool is_optional = false>
-std::pair<std::shared_ptr<IContextColumn>, std::vector<size_t>>
-expand_edge_impl(const StorageReadInterface& graph, const MSVertexColumn& input,
-                 const std::vector<LabelTriplet>& labels, Direction dir,
-                 const PRED_T& pred) {
+std::pair<std::shared_ptr<IContextColumn>, select_vector_t> expand_edge_impl(
+    const StorageReadInterface& graph, const MSVertexColumn& input,
+    const std::vector<LabelTriplet>& labels, Direction dir,
+    const PRED_T& pred) {
   auto input_labels = input.get_labels_set();
   std::vector<std::vector<std::tuple<label_t, label_t, Direction>>> label_dirs =
       get_label_dirs_list(input_labels, graph.schema(), labels, dir);
   MSEdgeColumnBuilder builder;
-  std::vector<size_t> offsets;
+  select_vector_t offsets;
   std::vector<bool> matched;
   if constexpr (is_optional) {
     matched.resize(input.seg_num(), false);
@@ -1006,10 +1003,10 @@ expand_edge_impl(const StorageReadInterface& graph, const MSVertexColumn& input,
 }
 
 template <typename PRED_T, bool is_optional = false>
-std::pair<std::shared_ptr<IContextColumn>, std::vector<size_t>>
-expand_edge_impl(const StorageReadInterface& graph, const MLVertexColumn& input,
-                 const std::vector<LabelTriplet>& labels, Direction dir,
-                 const PRED_T& pred) {
+std::pair<std::shared_ptr<IContextColumn>, select_vector_t> expand_edge_impl(
+    const StorageReadInterface& graph, const MLVertexColumn& input,
+    const std::vector<LabelTriplet>& labels, Direction dir,
+    const PRED_T& pred) {
   auto input_labels = input.get_labels_set();
   label_t label_num = graph.schema().vertex_label_frontier();
   std::vector<std::vector<std::tuple<label_t, label_t, Direction>>> label_dirs =
@@ -1042,7 +1039,7 @@ expand_edge_impl(const StorageReadInterface& graph, const MLVertexColumn& input,
                        all_triplets.end());
   }
   BDMLEdgeColumnBuilder builder(all_triplets);
-  std::vector<size_t> offsets;
+  select_vector_t offsets;
   std::vector<std::vector<int>> triplet_idx_map(label_num);
   for (label_t v_label = 0; v_label < label_num; ++v_label) {
     for (auto& t : label_dirs[v_label]) {

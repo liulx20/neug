@@ -137,6 +137,7 @@ static std::unique_ptr<ExprBase> build_expr(
       auto op = opr.scalar_func();
       const std::string& signature = op.unique_name();
       neug::execution::neug_func_exec_t fn = nullptr;
+      neug::execution::neug_func_exec_batch_t batch_fn = nullptr;
 
       auto gCatalog = catalog::GCatalogHolder::getGCatalog();
       auto func = gCatalog->getFunctionWithSignature(
@@ -148,6 +149,7 @@ static std::unique_ptr<ExprBase> build_expr(
 
       auto* scalarFunc = dynamic_cast<function::NeugScalarFunction*>(func);
       fn = scalarFunc->neugExecFunc;
+      batch_fn = scalarFunc->neugExecBatchFunc;
       if (!fn) {
         THROW_RUNTIME_ERROR(
             "ScalarFunction neugExecFunc is null for signature: " + signature);
@@ -163,7 +165,7 @@ static std::unique_ptr<ExprBase> build_expr(
         children.emplace_back(
             parse_expression(op.parameters(i), ctx_meta, var_type));
       }
-      return std::make_unique<ScalarFunctionExpr>(fn, ret_type,
+      return std::make_unique<ScalarFunctionExpr>(fn, batch_fn, ret_type,
                                                   std::move(children));
     }
 

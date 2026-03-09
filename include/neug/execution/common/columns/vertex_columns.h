@@ -31,8 +31,8 @@ class IVertexColumn : public IContextColumn {
   IVertexColumn() : type_(DataType(DataTypeId::kVertex)) {}
   virtual ~IVertexColumn() = default;
 
-  __attribute__((always_inline)) ContextColumnType column_type()
-      const override {
+  __attribute__((always_inline)) ContextColumnType
+  column_type() const override {
     return ContextColumnType::kVertex;
   }
 
@@ -89,19 +89,19 @@ class SLVertexColumn : public IVertexColumn {
            std::to_string(size()) + "]";
   }
 
-  __attribute__((always_inline)) VertexColumnType vertex_column_type()
-      const override {
+  __attribute__((always_inline)) VertexColumnType
+  vertex_column_type() const override {
     return VertexColumnType::kSingle;
   }
 
   std::shared_ptr<IContextColumn> shuffle(
-      const std::vector<size_t>& offsets) const override;
+      const select_vector_t& offsets) const override;
 
   std::shared_ptr<IContextColumn> optional_shuffle(
-      const std::vector<size_t>& offset) const override;
+      const select_vector_t& offset) const override;
 
-  __attribute__((always_inline)) VertexRecord get_vertex(
-      size_t idx) const override {
+  __attribute__((always_inline)) VertexRecord
+  get_vertex(size_t idx) const override {
     return {label_, vertices_[idx]};
   }
 
@@ -116,16 +116,23 @@ class SLVertexColumn : public IVertexColumn {
   std::shared_ptr<IContextColumn> union_col(
       std::shared_ptr<IContextColumn> other) const override;
 
-  void generate_dedup_offset(std::vector<size_t>& offsets) const override;
+  void generate_dedup_offset(select_vector_t& offsets) const override;
 
-  std::pair<std::shared_ptr<IContextColumn>, std::vector<std::vector<size_t>>>
+  std::pair<std::shared_ptr<IContextColumn>, std::vector<select_vector_t>>
   generate_aggregate_offset() const override;
 
   template <typename FUNC_T>
-  void foreach_vertex(const FUNC_T& func) const {
-    size_t num = vertices_.size();
-    for (size_t k = 0; k < num; ++k) {
-      func(k, label_, vertices_[k]);
+  void foreach_vertex(const FUNC_T& func,
+                      const select_vector_t* sel = nullptr) const {
+    size_t num = sel == nullptr ? vertices_.size() : sel->size();
+    if (sel == nullptr) {
+      for (size_t k = 0; k < num; ++k) {
+        func(k, label_, vertices_[k]);
+      }
+    } else {
+      for (size_t k = 0; k < num; ++k) {
+        func((*sel)[k], label_, vertices_[(*sel)[k]]);
+      }
     }
   }
 
@@ -175,19 +182,19 @@ class MSVertexColumn : public IVertexColumn {
            std::to_string(size()) + "]";
   }
 
-  __attribute__((always_inline)) VertexColumnType vertex_column_type()
-      const override {
+  __attribute__((always_inline)) VertexColumnType
+  vertex_column_type() const override {
     return VertexColumnType::kMultiSegment;
   }
 
   std::shared_ptr<IContextColumn> shuffle(
-      const std::vector<size_t>& offsets) const override;
+      const select_vector_t& offsets) const override;
 
   std::shared_ptr<IContextColumn> optional_shuffle(
-      const std::vector<size_t>& offsets) const override;
+      const select_vector_t& offsets) const override;
 
-  __attribute__((always_inline)) VertexRecord get_vertex(
-      size_t idx) const override {
+  __attribute__((always_inline)) VertexRecord
+  get_vertex(size_t idx) const override {
     for (auto& pair : vertices_) {
       if (idx < pair.second.size()) {
         return {pair.first, pair.second[idx]};
@@ -209,12 +216,27 @@ class MSVertexColumn : public IVertexColumn {
   }
 
   template <typename FUNC_T>
-  void foreach_vertex(const FUNC_T& func) const {
+  void foreach_vertex(const FUNC_T& func,
+                      const select_vector_t* sel = nullptr) const {
     size_t index = 0;
-    for (auto& pair : vertices_) {
-      label_t label = pair.first;
-      for (auto v : pair.second) {
-        func(index++, label, v);
+    if (sel != nullptr) {
+      for (size_t k = 0; k < sel->size(); ++k) {
+        size_t idx = (*sel)[k];
+        for (auto& pair : vertices_) {
+          if (idx < pair.second.size()) {
+            func((*sel)[k], pair.first, pair.second[idx]);
+            break;
+          }
+          idx -= pair.second.size();
+        }
+      }
+      return;
+    } else {
+      for (auto& pair : vertices_) {
+        label_t label = pair.first;
+        for (auto v : pair.second) {
+          func(index++, label, v);
+        }
       }
     }
   }
@@ -320,18 +342,18 @@ class MLVertexColumn : public IVertexColumn {
            std::to_string(size()) + "]";
   }
 
-  __attribute__((always_inline)) VertexColumnType vertex_column_type()
-      const override {
+  __attribute__((always_inline)) VertexColumnType
+  vertex_column_type() const override {
     return VertexColumnType::kMultiple;
   }
 
   std::shared_ptr<IContextColumn> shuffle(
-      const std::vector<size_t>& offsets) const override;
+      const select_vector_t& offsets) const override;
   std::shared_ptr<IContextColumn> optional_shuffle(
-      const std::vector<size_t>& offsets) const override;
+      const select_vector_t& offsets) const override;
 
-  __attribute__((always_inline)) VertexRecord get_vertex(
-      size_t idx) const override {
+  __attribute__((always_inline)) VertexRecord
+  get_vertex(size_t idx) const override {
     return vertices_[idx];
   }
 
@@ -344,16 +366,26 @@ class MLVertexColumn : public IVertexColumn {
   }
 
   template <typename FUNC_T>
-  void foreach_vertex(const FUNC_T& func) const {
-    size_t index = 0;
-    for (auto& pair : vertices_) {
-      func(index++, pair.label_, pair.vid_);
+  void foreach_vertex(const FUNC_T& func,
+                      const select_vector_t* sel = nullptr) const {
+    if (sel != nullptr) {
+      for (size_t k = 0; k < sel->size(); ++k) {
+        size_t idx = (*sel)[k];
+        auto& pair = vertices_[idx];
+        func(idx, pair.label_, pair.vid_);
+      }
+      return;
+    } else {
+      size_t index = 0;
+      for (auto& pair : vertices_) {
+        func(index++, pair.label_, pair.vid_);
+      }
     }
   }
 
   std::set<label_t> get_labels_set() const override { return labels_; }
 
-  void generate_dedup_offset(std::vector<size_t>& offsets) const override;
+  void generate_dedup_offset(select_vector_t& offsets) const override;
 
  private:
   friend class MLVertexColumnBuilder;
@@ -448,16 +480,17 @@ class MLVertexColumnBuilderOpt : public IVertexColumnBuilder {
 };
 
 template <typename FUNC_T>
-void foreach_vertex(const IVertexColumn& col, const FUNC_T& func) {
+void foreach_vertex(const IVertexColumn& col, const FUNC_T& func,
+                    const select_vector_t* sel = nullptr) {
   if (col.vertex_column_type() == VertexColumnType::kSingle) {
     const SLVertexColumn& ref = dynamic_cast<const SLVertexColumn&>(col);
-    ref.foreach_vertex(func);
+    ref.foreach_vertex(func, sel);
   } else if (col.vertex_column_type() == VertexColumnType::kMultiple) {
     const MLVertexColumn& ref = dynamic_cast<const MLVertexColumn&>(col);
-    ref.foreach_vertex(func);
+    ref.foreach_vertex(func, sel);
   } else {
     const MSVertexColumn& ref = dynamic_cast<const MSVertexColumn&>(col);
-    ref.foreach_vertex(func);
+    ref.foreach_vertex(func, sel);
   }
 }
 

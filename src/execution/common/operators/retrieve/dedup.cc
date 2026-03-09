@@ -28,9 +28,9 @@ namespace neug {
 namespace execution {
 
 neug::result<Context> Dedup::dedup(Context&& ctx,
-                                   const std::vector<size_t>& cols) {
+                                   const std::vector<int>& cols) {
   size_t row_num = ctx.row_num();
-  std::vector<size_t> offsets;
+  select_vector_t offsets;
   if (cols.size() == 0) {
     return ctx;
   } else if (cols.size() == 1) {

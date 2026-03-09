@@ -21,14 +21,17 @@ namespace neug {
 namespace function {
 struct NeugScalarFunction : public ScalarFunction {
   execution::neug_func_exec_t neugExecFunc = nullptr;
+  execution::neug_func_exec_batch_t neugExecBatchFunc = nullptr;
 
-  NeugScalarFunction(std::string name,
-                     std::vector<common::LogicalTypeID> parameterTypeIDs,
-                     common::LogicalTypeID returnTypeID,
-                     execution::neug_func_exec_t neugExecFunc)
+  NeugScalarFunction(
+      std::string name, std::vector<common::LogicalTypeID> parameterTypeIDs,
+      common::LogicalTypeID returnTypeID,
+      execution::neug_func_exec_t neugExecFunc,
+      execution::neug_func_exec_batch_t /*neugExecBatchFunc*/ = nullptr)
       : ScalarFunction{std::move(name), std::move(parameterTypeIDs),
                        returnTypeID},
-        neugExecFunc{std::move(neugExecFunc)} {}
+        neugExecFunc{std::move(neugExecFunc)},
+        neugExecBatchFunc{std::move(neugExecBatchFunc)} {}
 
   std::unique_ptr<ScalarFunction> copy() const override {
     return std::make_unique<NeugScalarFunction>(*this);

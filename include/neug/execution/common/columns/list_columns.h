@@ -21,8 +21,8 @@ namespace execution {
 
 class ListColumnBase : public IContextColumn {
  public:
-  virtual std::pair<std::shared_ptr<IContextColumn>, std::vector<size_t>>
-  unfold() const = 0;
+  virtual std::pair<std::shared_ptr<IContextColumn>, select_vector_t> unfold()
+      const = 0;
 };
 
 struct list_item {
@@ -52,7 +52,7 @@ class ListColumn : public ListColumnBase {
   }
 
   std::shared_ptr<IContextColumn> shuffle(
-      const std::vector<size_t>& offsets) const override;
+      const select_vector_t& offsets) const override;
 
   const DataType& elem_type() const override { return type_; }
   Value get_elem(size_t idx) const override {
@@ -64,14 +64,13 @@ class ListColumn : public ListColumnBase {
     return Value::LIST(elem_type_, std::move(list_values));
   }
 
-  void generate_dedup_offset(std::vector<size_t>& offsets) const override {
+  void generate_dedup_offset(select_vector_t& offsets) const override {
     LOG(FATAL) << "not implemented for " << this->column_info();
     // ColumnsUtils::generate_dedup_offset(data_, data_.size(), offsets);
   }
 
-  std::pair<std::shared_ptr<IContextColumn>, std::vector<size_t>> unfold()
+  std::pair<std::shared_ptr<IContextColumn>, select_vector_t> unfold()
       const override;
-
   std::shared_ptr<IContextColumn> data_column() const { return datas_; }
 
   const std::vector<list_item>& items() const { return items_; }
@@ -99,9 +98,9 @@ class ListColumn : public ListColumnBase {
 
  private:
   template <typename T>
-  std::pair<std::shared_ptr<IContextColumn>, std::vector<size_t>> unfold_impl()
+  std::pair<std::shared_ptr<IContextColumn>, select_vector_t> unfold_impl()
       const {
-    std::vector<size_t> offsets;
+    select_vector_t offsets;
     auto builder = std::make_shared<ValueColumnBuilder<T>>();
     size_t i = 0;
     for (const auto& list : items_) {

@@ -32,9 +32,10 @@ void get_labels(
         labels) {
   std::vector<std::pair<LabelTriplet, std::vector<DataTypeId>>> labels_i;
   for (const auto& label_triplet : eep.labels) {
-    auto props = graph.schema().get_edge_properties_id(
-        label_triplet.src_label, label_triplet.dst_label,
-        label_triplet.edge_label);
+    std::vector<DataTypeId> props;
+    props = graph.schema().get_edge_properties_id(label_triplet.src_label,
+                                                  label_triplet.dst_label,
+                                                  label_triplet.edge_label);
     if (props.empty()) {
       labels_i.emplace_back(label_triplet, std::vector{DataTypeId::kEmpty});
     } else {
@@ -62,7 +63,7 @@ static neug::result<neug::execution::Context> Binary_Intersect_SL_Impl(
   auto label = (eep0.dir == Direction::kOut ? eep0.labels[0].dst_label
                                             : eep0.labels[0].src_label);
   MSVertexColumnBuilder builder(label);
-  std::vector<size_t> offsets;
+  select_vector_t offsets;
 
   for (size_t i = 0; i < row_num; ++i) {
     phmap::flat_hash_set<vid_t> vertex_set;
@@ -154,7 +155,7 @@ static neug::result<neug::execution::Context> Binary_Intersect_ML_Impl(
 
   // TODO(luoxiaojian): use MLVertexColumnBuilderOpt
   MLVertexColumnBuilder builder;
-  std::vector<size_t> offsets;
+  select_vector_t offsets;
 
   for (size_t i = 0; i < row_num; ++i) {
     phmap::flat_hash_map<VertexRecord, uint32_t> vertex_set;
@@ -301,7 +302,7 @@ neug::result<neug::execution::Context> Intersect::Multiple_Intersect(
     }
   }
 
-  std::vector<size_t> offsets;
+  select_vector_t offsets;
 
   for (size_t i = 0; i < row_num; ++i) {
     phmap::flat_hash_map<VertexRecord, size_t> vertex_set;
@@ -439,7 +440,7 @@ neug::result<neug::execution::Context> Intersect::Binary_Intersect_With_Edge(
 
   // TODO(luoxiaojian): use MLVertexColumnBuilderOpt
   MLVertexColumnBuilder builder;
-  std::vector<size_t> offsets;
+  select_vector_t offsets;
 
   std::vector<std::vector<std::pair<LabelTriplet, std::vector<DataTypeId>>>>
       labels;
@@ -466,7 +467,7 @@ neug::result<neug::execution::Context> Intersect::Binary_Intersect_With_Edge(
         std::tuple<LabelTriplet, vid_t, vid_t, const void*, Direction>;
 
     std::vector<value_t> aux_values;
-    phmap::flat_hash_map<VertexRecord, std::vector<size_t>> vertex_set;
+    phmap::flat_hash_map<VertexRecord, select_vector_t> vertex_set;
 
     auto v0 = vertex_col0->get_vertex(i);
     if (eep0.dir == Direction::kOut || eep0.dir == Direction::kBoth) {

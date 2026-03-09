@@ -42,10 +42,10 @@ class ValueColumn : public IContextColumn {
   }
 
   std::shared_ptr<IContextColumn> shuffle(
-      const std::vector<size_t>& offsets) const override;
+      const select_vector_t& offsets) const override;
 
   std::shared_ptr<IContextColumn> optional_shuffle(
-      const std::vector<size_t>& offsets) const override;
+      const select_vector_t& offsets) const override;
 
   inline const DataType& elem_type() const override { return type_; }
   inline Value get_elem(size_t idx) const override {
@@ -60,7 +60,7 @@ class ValueColumn : public IContextColumn {
   const std::vector<T>& data() const { return data_; }
   const std::vector<bool>& validity_bitmap() const { return valid_; }
 
-  void generate_dedup_offset(std::vector<size_t>& offsets) const override {
+  void generate_dedup_offset(select_vector_t& offsets) const override {
     if (!is_optional_) {
       return ColumnsUtils::generate_dedup_offset(data_, data_.size(), offsets);
     }
@@ -85,7 +85,7 @@ class ValueColumn : public IContextColumn {
       std::shared_ptr<IContextColumn> other) const override;
 
   bool order_by_limit(bool asc, size_t limit,
-                      std::vector<size_t>& offsets) const override;
+                      select_vector_t& offsets) const override;
 
   bool has_value(size_t idx) const override {
     if (!is_optional_) {
@@ -157,7 +157,7 @@ class ValueColumnBuilder : public IContextColumnBuilder {
 
 template <typename T>
 std::shared_ptr<IContextColumn> ValueColumn<T>::shuffle(
-    const std::vector<size_t>& offsets) const {
+    const select_vector_t& offsets) const {
   ValueColumnBuilder<T> builder;
   builder.reserve(offsets.size());
   if (!is_optional_) {
@@ -178,7 +178,7 @@ std::shared_ptr<IContextColumn> ValueColumn<T>::shuffle(
 
 template <typename T>
 std::shared_ptr<IContextColumn> ValueColumn<T>::optional_shuffle(
-    const std::vector<size_t>& offsets) const {
+    const select_vector_t& offsets) const {
   ValueColumnBuilder<T> builder(true);
   builder.reserve(offsets.size());
   if (!is_optional_) {
@@ -237,7 +237,7 @@ std::shared_ptr<IContextColumn> ValueColumn<T>::union_col(
 
 template <typename T>
 bool ValueColumn<T>::order_by_limit(bool asc, size_t limit,
-                                    std::vector<size_t>& offsets) const {
+                                    select_vector_t& offsets) const {
   if (is_optional_) {
     return false;
   }

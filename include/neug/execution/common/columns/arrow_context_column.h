@@ -91,9 +91,9 @@ class ArrowArrayContextColumn : public IContextColumn {
   bool has_value(size_t idx) const override { return idx >= 0 && idx < size_; }
 
   std::shared_ptr<IContextColumn> shuffle(
-      const std::vector<size_t>& offsets) const override;
+      const select_vector_t& offsets) const override;
 
-  void generate_dedup_offset(std::vector<size_t>& offsets) const override;
+  void generate_dedup_offset(select_vector_t& offsets) const override;
 
   std::shared_ptr<IContextColumn> cast_to_value_column() const;
 

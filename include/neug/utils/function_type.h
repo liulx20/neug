@@ -23,8 +23,12 @@
 namespace neug {
 namespace execution {
 class Value;
+class IContextColumn;
 
 using neug_func_exec_t = Value (*)(const std::vector<Value>&);
+
+using neug_func_exec_batch_t = std::shared_ptr<IContextColumn> (*)(
+    const std::vector<std::shared_ptr<IContextColumn>>&);
 
 }  // namespace execution
 }  // namespace neug

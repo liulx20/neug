@@ -26,6 +26,8 @@
 
 namespace neug {
 
+using select_vector_t = std::vector<size_t>;
+
 namespace execution {
 
 enum class ContextColumnType {
@@ -35,6 +37,7 @@ enum class ContextColumnType {
   kPath,
   kArrowArray,
   kArrowStream,
+  kConst,
   kNone,
 };
 
@@ -56,13 +59,13 @@ class IContextColumn {
   virtual const DataType& elem_type() const = 0;
 
   virtual std::shared_ptr<IContextColumn> shuffle(
-      const std::vector<size_t>& offsets) const {
+      const select_vector_t& offsets) const {
     LOG(FATAL) << "not implemented for " << this->column_info();
     return nullptr;
   }
 
   virtual std::shared_ptr<IContextColumn> optional_shuffle(
-      const std::vector<size_t>& offsets) const {
+      const select_vector_t& offsets) const {
     LOG(FATAL) << "not implemented for " << this->column_info();
     return nullptr;
   }
@@ -82,20 +85,20 @@ class IContextColumn {
 
   virtual bool is_optional() const { return false; }
 
-  virtual void generate_dedup_offset(std::vector<size_t>& offsets) const {
+  virtual void generate_dedup_offset(select_vector_t& offsets) const {
     LOG(FATAL) << "not implemented for " << this->column_info();
   }
 
   virtual std::pair<std::shared_ptr<IContextColumn>,
-                    std::vector<std::vector<size_t>>>
+                    std::vector<select_vector_t>>
   generate_aggregate_offset() const {
     LOG(INFO) << "not implemented for " << this->column_info();
     std::shared_ptr<IContextColumn> col(nullptr);
-    return std::make_pair(col, std::vector<std::vector<size_t>>());
+    return std::make_pair(col, std::vector<select_vector_t>());
   }
 
   virtual bool order_by_limit(bool asc, size_t limit,
-                              std::vector<size_t>& offsets) const {
+                              select_vector_t& offsets) const {
     LOG(INFO) << "order by limit not implemented for " << this->column_info();
     return false;
   }

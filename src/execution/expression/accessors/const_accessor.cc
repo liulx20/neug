@@ -14,9 +14,14 @@
  */
 
 #include "neug/execution/expression/accessors/const_accessor.h"
-
+#include "neug/execution/common/columns/const_column.h"
 namespace neug {
 namespace execution {
+
+std::shared_ptr<IContextColumn> ConstExpr::eval_chunk(
+    const Context& ctx, const select_vector_t*) const {
+  return std::make_shared<ConstColumn>(inner_);
+}
 std::unique_ptr<BindedExprBase> ConstExpr::bind(
     const IStorageInterface* storage, const ParamsMap& params) const {
   return std::make_unique<ConstExpr>(inner_);

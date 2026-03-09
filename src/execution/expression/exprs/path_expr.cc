@@ -14,7 +14,11 @@
  */
 
 #include "neug/execution/expression/exprs/path_expr.h"
+#include "neug/execution/common/columns/edge_columns.h"
 #include "neug/execution/common/columns/i_context_column.h"
+#include "neug/execution/common/columns/list_columns.h"
+#include "neug/execution/common/columns/path_columns.h"
+#include "neug/execution/common/columns/vertex_columns.h"
 #include "neug/execution/common/context.h"
 
 namespace neug {
@@ -38,6 +42,30 @@ class BindedPathNodesExpr : public RecordExprBase {
     }
     return Value::LIST(DataType::List(DataType::VERTEX),
                        std::move(node_values));
+  }
+
+  std::shared_ptr<IContextColumn> eval_chunk(
+      const Context& ctx, const select_vector_t* sel) const override {
+    ListColumnBuilder builder(DataType::VERTEX);
+    auto path_col = std::dynamic_pointer_cast<PathColumn>(
+        path_expr_->Cast<RecordExprBase>().eval_chunk(ctx, sel));
+    size_t row_num = (sel == nullptr) ? ctx.row_num() : sel->size();
+    for (size_t i = 0; i < row_num; ++i) {
+      auto path = path_col->get_path(i);
+      if (path.is_null()) {
+        builder.push_back_null();
+        continue;
+      } else {
+        std::vector<VertexRecord> nodes = path.nodes();
+        std::vector<Value> node_values;
+        for (const auto& node : nodes) {
+          node_values.push_back(Value::VERTEX(node));
+        }
+        builder.push_back_elem(Value::LIST(DataType::List(DataType::VERTEX),
+                                           std::move(node_values)));
+      }
+    }
+    return builder.finish();
   }
 
  private:
@@ -68,6 +96,30 @@ class BindedPathRelationsExpr : public RecordExprBase {
       edge_values.push_back(Value::EDGE(edge));
     }
     return Value::LIST(DataType::List(DataType::EDGE), std::move(edge_values));
+  }
+
+  std::shared_ptr<IContextColumn> eval_chunk(
+      const Context& ctx, const select_vector_t* sel) const override {
+    ListColumnBuilder builder(DataType::List(DataType::EDGE));
+    auto path_col = std::dynamic_pointer_cast<PathColumn>(
+        path_expr_->Cast<RecordExprBase>().eval_chunk(ctx, sel));
+    size_t row_num = (sel == nullptr) ? ctx.row_num() : sel->size();
+    for (size_t i = 0; i < row_num; ++i) {
+      const auto& path = path_col->get_path(i);
+      if (path.is_null()) {
+        builder.push_back_null();
+        continue;
+      } else {
+        std::vector<edge_t> edges = path.relationships();
+        std::vector<Value> edge_values;
+        for (const auto& edge : edges) {
+          edge_values.push_back(Value::EDGE(edge));
+        }
+        builder.push_back_elem(Value::LIST(DataType::List(DataType::EDGE),
+                                           std::move(edge_values)));
+      }
+    }
+    return builder.finish();
   }
 
  private:
@@ -111,6 +163,39 @@ class BindedPathVerticesPropsExpr : public RecordExprBase {
       }
     }
     return Value::LIST(elem_type_, std::move(prop_values));
+  }
+
+  std::shared_ptr<IContextColumn> eval_chunk(
+      const Context& ctx, const select_vector_t* sel) const override {
+    ListColumnBuilder builder(elem_type_);
+    auto path_col = std::dynamic_pointer_cast<PathColumn>(ctx.get(tag_));
+    size_t row_num = (sel == nullptr) ? ctx.row_num() : sel->size();
+    for (size_t i = 0; i < row_num; ++i) {
+      size_t idx = (sel == nullptr) ? i : (*sel)[i];
+      const auto& path = path_col->get_path(idx);
+      if (path.is_null()) {
+        builder.push_back_null();
+        continue;
+      } else {
+        std::vector<vertex_t> vertices = path.nodes();
+        std::vector<Value> prop_values;
+        for (const auto& vertex : vertices) {
+          const auto& prop_names = graph_.schema().get_vertex_property_names(
+              static_cast<label_t>(vertex.label()));
+          auto it = std::find(prop_names.begin(), prop_names.end(), prop_);
+          if (it == prop_names.end()) {
+            prop_values.push_back(Value(type_));  // null value
+          } else {
+            int prop_id = std::distance(prop_names.begin(), it);
+            Property prop =
+                graph_.GetVertexProperty(vertex.label(), vertex.vid(), prop_id);
+            prop_values.emplace_back(property_to_value(prop));
+          }
+        }
+        builder.push_back_elem(Value::LIST(elem_type_, std::move(prop_values)));
+      }
+    }
+    return builder.finish();
   }
 
  private:
@@ -157,6 +242,43 @@ class BindedPathEdgesPropsExpr : public RecordExprBase {
     return Value::LIST(elem_type_, std::move(prop_values));
   }
 
+  std::shared_ptr<IContextColumn> eval_chunk(
+      const Context& ctx, const select_vector_t* sel) const override {
+    ListColumnBuilder builder(elem_type_);
+    auto path_col = std::dynamic_pointer_cast<PathColumn>(ctx.get(tag_));
+    size_t row_num = (sel == nullptr) ? ctx.row_num() : sel->size();
+    for (size_t i = 0; i < row_num; ++i) {
+      size_t idx = (sel == nullptr) ? i : (*sel)[i];
+      const auto& path = path_col->get_path(idx);
+      if (path.is_null()) {
+        builder.push_back_null();
+        continue;
+      } else {
+        std::vector<edge_t> edges = path.relationships();
+        std::vector<Value> prop_values;
+        for (const auto& edge : edges) {
+          const auto& prop_names = graph_.schema().get_edge_property_names(
+              edge.label.src_label, edge.label.dst_label,
+              edge.label.edge_label);
+          auto it = std::find(prop_names.begin(), prop_names.end(), prop_);
+          if (it == prop_names.end()) {
+            prop_values.push_back(Value(type_));  // null value
+          } else {
+            int prop_id = std::distance(prop_names.begin(), it);
+            const auto& accessor = graph_.GetEdgeDataAccessor(
+                edge.label.src_label, edge.label.dst_label,
+                edge.label.edge_label, prop_id);
+
+            prop_values.emplace_back(
+                property_to_value(accessor.get_data_from_ptr(edge.prop)));
+          }
+        }
+        builder.push_back_elem(Value::LIST(elem_type_, std::move(prop_values)));
+      }
+    }
+    return builder.finish();
+  }
+
  private:
   const StorageReadInterface& graph_;
   int tag_;
@@ -190,6 +312,24 @@ class BindedStartEndNodeExpr : public RecordExprBase {
     Value edge_val = edge_expr_->Cast<RecordExprBase>().eval_record(ctx, idx);
     const auto& edge = edge_val.GetValue<edge_t>();
     return Value::VERTEX(is_start_ ? edge.start_node() : edge.end_node());
+  }
+
+  std::shared_ptr<IContextColumn> eval_chunk(
+      const Context& ctx, const select_vector_t* sel) const override {
+    auto edge_col = std::dynamic_pointer_cast<IEdgeColumn>(
+        edge_expr_->Cast<RecordExprBase>().eval_chunk(ctx, sel));
+    size_t row_num = (sel == nullptr) ? ctx.row_num() : sel->size();
+    MLVertexColumnBuilder builder;
+    builder.reserve(row_num);
+    for (size_t i = 0; i < row_num; ++i) {
+      if (!edge_col->has_value(i)) {
+        builder.push_back_null();
+      } else {
+        edge_t edge = edge_col->get_edge(i);
+        builder.push_back_opt(is_start_ ? edge.start_node() : edge.end_node());
+      }
+    }
+    return builder.finish();
   }
 
  private:
