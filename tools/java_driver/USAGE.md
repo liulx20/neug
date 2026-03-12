@@ -79,8 +79,9 @@ public class ConfigExample {
         }
     }
 }
-```
-
+        Config config = Config.builder()
+            .withConnectionTimeoutMillis(3000)
+            .build();
 ### Parameterized Query
 
 ```java
