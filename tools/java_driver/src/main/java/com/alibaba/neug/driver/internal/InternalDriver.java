@@ -11,14 +11,14 @@
  * express or implied. See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.alibaba.neug.driver.internal;
+package com.alibaba.neug.driver.internal;
 
-import org.alibaba.neug.driver.Driver;
-import org.alibaba.neug.driver.ResultSet;
-import org.alibaba.neug.driver.Session;
-import org.alibaba.neug.driver.utils.AccessMode;
-import org.alibaba.neug.driver.utils.Client;
-import org.alibaba.neug.driver.utils.Config;
+import com.alibaba.neug.driver.Driver;
+import com.alibaba.neug.driver.ResultSet;
+import com.alibaba.neug.driver.Session;
+import com.alibaba.neug.driver.utils.AccessMode;
+import com.alibaba.neug.driver.utils.Client;
+import com.alibaba.neug.driver.utils.Config;
 
 /**
  * Internal implementation of the {@link Driver} interface.

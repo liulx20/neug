@@ -11,7 +11,7 @@
  * express or implied. See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.alibaba.neug.driver.utils;
+package com.alibaba.neug.driver.utils;
 
 /**
  * Enumeration of access modes for database operations.

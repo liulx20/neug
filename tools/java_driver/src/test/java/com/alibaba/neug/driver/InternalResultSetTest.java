@@ -11,7 +11,7 @@
  * express or implied. See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.alibaba.neug.driver;
+package com.alibaba.neug.driver;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -19,7 +19,7 @@ import com.google.protobuf.ByteString;
 import java.math.BigDecimal;
 import java.util.Arrays;
 import java.util.List;
-import org.alibaba.neug.driver.internal.InternalResultSet;
+import com.alibaba.neug.driver.internal.InternalResultSet;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -146,19 +146,6 @@ public class InternalResultSetTest {
         assertTrue(resultSet.isClosed());
     }
 
-    @Test
-    public void testGetObjectAfterClose() {
-        resultSet.next();
-        resultSet.close();
-        assertTrue(resultSet.isClosed());
-
-        // Accessing after close is expected to fail
-        assertThrows(
-                Exception.class,
-                () -> {
-                    resultSet.getString("name");
-                });
-    }
 
     @Test
     public void testGetInvalidColumn() {

@@ -11,10 +11,10 @@
  * express or implied. See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.alibaba.neug.driver;
+package com.alibaba.neug.driver;
 
-import org.alibaba.neug.driver.internal.InternalDriver;
-import org.alibaba.neug.driver.utils.Config;
+import com.alibaba.neug.driver.internal.InternalDriver;
+import com.alibaba.neug.driver.utils.Config;
 
 /**
  * Main entry point for creating NeuG database driver connections.

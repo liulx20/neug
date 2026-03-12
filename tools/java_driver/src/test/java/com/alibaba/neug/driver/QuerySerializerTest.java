@@ -11,7 +11,7 @@
  * express or implied. See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.alibaba.neug.driver;
+package com.alibaba.neug.driver;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -19,8 +19,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.HashMap;
 import java.util.Map;
-import org.alibaba.neug.driver.utils.AccessMode;
-import org.alibaba.neug.driver.utils.QuerySerializer;
+import com.alibaba.neug.driver.utils.AccessMode;
+import com.alibaba.neug.driver.utils.QuerySerializer;
 import org.junit.jupiter.api.Test;
 
 /** Test class for {@link QuerySerializer}. */

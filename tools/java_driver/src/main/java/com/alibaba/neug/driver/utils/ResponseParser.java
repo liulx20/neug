@@ -11,11 +11,11 @@
  * express or implied. See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.alibaba.neug.driver.utils;
+package com.alibaba.neug.driver.utils;
 
-import org.alibaba.neug.driver.ResultSet;
-import org.alibaba.neug.driver.Results;
-import org.alibaba.neug.driver.internal.InternalResultSet;
+import com.alibaba.neug.driver.ResultSet;
+import com.alibaba.neug.driver.Results;
+import com.alibaba.neug.driver.internal.InternalResultSet;
 
 /**
  * Utility class for parsing database server responses.

@@ -11,11 +11,11 @@
  * express or implied. See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.alibaba.neug.driver;
+package com.alibaba.neug.driver;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-import org.alibaba.neug.driver.utils.AccessMode;
+import com.alibaba.neug.driver.utils.AccessMode;
 import org.junit.jupiter.api.Test;
 
 /** Test class for {@link AccessMode}. */

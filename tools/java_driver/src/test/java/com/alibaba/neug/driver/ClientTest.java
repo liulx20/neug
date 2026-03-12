@@ -11,13 +11,13 @@
  * express or implied. See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.alibaba.neug.driver;
+package com.alibaba.neug.driver;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 import java.io.IOException;
-import org.alibaba.neug.driver.utils.Client;
-import org.alibaba.neug.driver.utils.Config;
+import com.alibaba.neug.driver.utils.Client;
+import com.alibaba.neug.driver.utils.Config;
 import org.junit.jupiter.api.Test;
 
 /** Test class for {@link Client}. */

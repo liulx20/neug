@@ -11,7 +11,7 @@
  * express or implied. See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.alibaba.neug.driver.internal;
+package com.alibaba.neug.driver.internal;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -23,9 +23,9 @@ import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import org.alibaba.neug.driver.ResultSet;
-import org.alibaba.neug.driver.Results;
-import org.alibaba.neug.driver.utils.JsonUtil;
+import com.alibaba.neug.driver.ResultSet;
+import com.alibaba.neug.driver.Results;
+import com.alibaba.neug.driver.utils.JsonUtil;
 
 /**
  * Internal implementation of the {@link ResultSet} interface.
@@ -641,44 +641,44 @@ public class InternalResultSet implements ResultSet {
     }
 
     @Override
-    void afterLast() {
+    public void afterLast() {
         currentIndex = response.getArraysCount();
     }
 
     @Override
-    void beforeFirst() {
+    public void beforeFirst() {
         currentIndex = -1;
     }
 
     @Override
-    boolean first() {
+    public boolean first() {
         currentIndex = 0;
         return currentIndex < response.getArraysCount();
     }
 
     @Override
-    boolean last() {
+    public boolean last() {
         currentIndex = response.getArraysCount() - 1;
         return currentIndex >= 0;
     }
 
     @Override
-    boolean isFirst() {
+    public boolean isFirst() {
         return currentIndex == 0 && response.getArraysCount() != 0;
     }
 
     @Override
-    boolean isLast() {
+    public boolean isLast() {
         return currentIndex == response.getArraysCount() - 1 && response.getArraysCount() != 0;
     }
 
     @Override
-    boolean isBeforeFirst() {
+    public boolean isBeforeFirst() {
         return currentIndex == -1 && response.getArraysCount() != 0;
     }
 
     @Override
-    boolean isAfterLast() {
+    public boolean isAfterLast() {
         return currentIndex == response.getArraysCount() && response.getArraysCount() != 0;
     }
 
