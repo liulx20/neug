@@ -152,8 +152,12 @@ public class InternalResultSetTest {
         resultSet.close();
         assertTrue(resultSet.isClosed());
 
-        // Accessing after close should throw or return null
-        // This depends on implementation
+        // Accessing after close is expected to fail
+        assertThrows(
+                Exception.class,
+                () -> {
+                    resultSet.getString("name");
+                });
     }
 
     @Test
