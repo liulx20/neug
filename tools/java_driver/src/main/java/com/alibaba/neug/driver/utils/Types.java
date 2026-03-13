@@ -88,7 +88,7 @@ public enum Types {
     STRUCT("STRUCT", java.sql.Types.STRUCT),
 
     /** Interval type - represents a time interval. */
-    INTERVAL("INTERVAL", java.sql.Types.OTHER),
+    INTERVAL("INTERVAL", java.sql.Types.VARCHAR),
 
     /** Other/unknown type. */
     OTHER("OTHER", java.sql.Types.OTHER);
