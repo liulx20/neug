@@ -13,12 +13,11 @@
  */
 package com.alibaba.neug.driver;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
-import com.alibaba.neug.driver.utils.Types;
+import com.alibaba.neug.driver.utils.*;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -35,10 +34,15 @@ public class JavaDriverE2ETest {
 
     private static final String E2E_URI_ENV = "NEUG_JAVA_DRIVER_E2E_URI";
 
-    @Test
-    public void testDriverCanQueryLiveServer() {
+    private static String requireE2EUri() {
         String uri = System.getenv(E2E_URI_ENV);
         assumeTrue(uri != null && !uri.isBlank(), E2E_URI_ENV + " is not set");
+        return uri;
+    }
+
+    @Test
+    public void testDriverCanQueryLiveServer() {
+        String uri = requireE2EUri();
 
         try (Driver driver = GraphDatabase.driver(uri)) {
             assertFalse(driver.isClosed());
@@ -56,4 +60,26 @@ public class JavaDriverE2ETest {
             }
         }
     }
+
+    @Test
+    public void testDriverCanRunParameterizedQuery() {
+        String uri = requireE2EUri();
+
+        try (Driver driver = GraphDatabase.driver(uri);
+                Session session = driver.session();
+                ResultSet resultSet =
+                        session.run(
+                                "MATCH (n) WHERE n.name = $name RETURN n.age",
+                                Map.of("name", "marko"), AccessMode.READ)) {
+            assertTrue(resultSet.next());
+            assertEquals(29, resultSet.getInt(0));
+            assertEquals(29, resultSet.getObject(0));
+            assertFalse(resultSet.wasNull());
+            assertEquals(Types.INT32, resultSet.getMetaData().getColumnType(0));
+            assertEquals("_0_n.age", resultSet.getMetaData().getColumnName(0));
+            assertFalse(resultSet.next());
+        }
+    }
+
+    
 }
