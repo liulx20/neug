@@ -41,7 +41,7 @@ public class Client {
      * @param config the configuration for connection pooling and timeouts
      */
     public Client(String uri, Config config) {
-        this.uri = uri + "/cypher";
+        this.uri = (uri != null && uri.endsWith("/")) ? uri + "cypher" : uri + "/cypher";
         this.closed = false;
 
         httpClient =
