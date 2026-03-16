@@ -142,6 +142,11 @@ jobs:
         java-version: '17'
         cache: 'maven'
 
+    - name: Install Maven
+      run: |
+        sudo apt update
+        sudo apt install -y maven
+
     - name: Set ENABLE_GCOV for main branch
       if: steps.scope.outputs.extension_only != 'true' && (github.ref == 'refs/heads/main' && github.repository == 'alibaba/neug' && github.event_name == 'push')
       run: |

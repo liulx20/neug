@@ -44,7 +44,7 @@ jobs:
     - name: Build Documentation
       run: |
         sudo apt update
-        sudo apt install -y doxygen graphviz
+        sudo apt install -y doxygen graphviz maven
         cd ${GITHUB_WORKSPACE}/tools/java_driver
         mvn -DskipTests javadoc:javadoc
         cd ${GITHUB_WORKSPACE}/tools/python_bind

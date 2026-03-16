@@ -91,6 +91,11 @@ jobs:
         java-version: '17'
         cache: 'maven'
 
+    - name: Install Maven
+      run: |
+        sudo apt update
+        sudo apt install -y maven
+
     - name: Get PR Changes
       uses: dorny/paths-filter@v3
       id: changes
