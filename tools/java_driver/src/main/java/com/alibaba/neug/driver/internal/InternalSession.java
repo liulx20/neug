@@ -58,7 +58,6 @@ public class InternalSession implements Session {
     }
 
     @Override
-    @Override
     public ResultSet run(String query, Map<String, Object> parameters, AccessMode mode) {
         if (closed) {
             throw new IllegalStateException("Session is already closed");
