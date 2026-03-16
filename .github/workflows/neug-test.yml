@@ -358,6 +358,8 @@ jobs:
       run: |
         cd ${GITHUB_WORKSPACE}/tools/java_driver/
         mvn test
+        cd ${GITHUB_WORKSPACE}/tools/python_bind/
+        python3 -m pytest -sv tests/test_java_driver.py
 
     # ========================================
     # Phase 4: E2E Tests
