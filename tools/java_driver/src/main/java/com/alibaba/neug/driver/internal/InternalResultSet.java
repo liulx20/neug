@@ -72,6 +72,7 @@ public class InternalResultSet implements ResultSet {
             currentIndex++;
             return true;
         }
+        currentIndex = response.getRowCount(); // move to after-last position
         return false;
     }
 
