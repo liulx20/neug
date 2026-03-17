@@ -75,12 +75,12 @@ public class InternalResultSet implements ResultSet {
         return false;
     }
 
-    @Override
     public boolean previous() {
         if (currentIndex - 1 >= 0) {
             currentIndex--;
             return true;
         }
+        currentIndex = -1; // move to before-first position
         return false;
     }
 
