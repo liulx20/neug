@@ -72,15 +72,16 @@ public class InternalResultSet implements ResultSet {
             currentIndex++;
             return true;
         }
+        currentIndex = response.getRowCount(); // move to after-last position
         return false;
     }
 
-    @Override
     public boolean previous() {
         if (currentIndex - 1 >= 0) {
             currentIndex--;
             return true;
         }
+        currentIndex = -1; // move to before-first position
         return false;
     }
 
