@@ -154,6 +154,17 @@ public class InternalResultSet implements ResultSet {
                     }
                     return array.getBoolArray().getValues(rowIndex);
                 }
+            case FLOAT_ARRAY:
+                {
+                    if (!nullAlreadyHandled) {
+                        ByteString nullBitmap = array.getFloatArray().getValidity();
+                        was_null =
+                                !nullBitmap.isEmpty()
+                                        && (nullBitmap.byteAt(rowIndex / 8) & (1 << (rowIndex % 8)))
+                                                == 0;
+                    }
+                    return array.getFloatArray().getValues(rowIndex);
+                }
             case DOUBLE_ARRAY:
                 {
                     if (!nullAlreadyHandled) {
