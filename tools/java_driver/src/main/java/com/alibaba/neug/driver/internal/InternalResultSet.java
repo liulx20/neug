@@ -511,9 +511,6 @@ public class InternalResultSet implements ResultSet {
         checkIndex(columnIndex);
         Results.Array arr = response.getArrays(columnIndex);
         Number value = getNumericValue(arr);
-        if (value == null) {
-            return null;
-        }
         if (value instanceof BigInteger) {
             return new BigDecimal((BigInteger) value);
         } else if (value instanceof Integer || value instanceof Long) {
