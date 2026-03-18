@@ -189,8 +189,7 @@ void ArrowReader::batch_read(std::shared_ptr<arrow::dataset::Scanner> scanner,
   int64_t row_num = 0;
   if (!row_num_result.ok()) {
     LOG(WARNING) << "Failed to count rows via scanner: "
-                 << row_num_result.status().message()
-                 << ". Proceeding without row count.";
+                 << row_num_result.status().message();
     THROW_IO_EXCEPTION("Failed to count rows via scanner: " +
                        row_num_result.status().message());
   } else {
