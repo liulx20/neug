@@ -67,11 +67,6 @@ message BoolArray {
   bytes validity = 2;
 }
 
-message BytesArray {
-  repeated bytes values = 1;
-  bytes validity = 2;
-}
-
 message ListArray {
   repeated uint32 offsets = 1 [packed = true];  
   Array elements = 2;                  
@@ -126,7 +121,6 @@ message Array {
     DoubleArray double_array = 6;
     StringArray string_array = 7;
     BoolArray bool_array = 8;
-    BytesArray bytes_array = 9;
 
     TimestampArray timestamp_array = 10;
     DateArray date_array = 11;
