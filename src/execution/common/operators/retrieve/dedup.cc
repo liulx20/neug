@@ -33,8 +33,8 @@ neug::result<Context> Dedup::dedup(Context&& ctx,
   std::vector<size_t> offsets;
   if (cols.size() == 0) {
     return ctx;
-  } else if (cols.size() == 1) {
-    ctx.get(cols[0])->generate_dedup_offset(offsets);
+  }
+  if (cols.size() == 1 && ctx.get(cols[0])->generate_dedup_offset(offsets)) {
   } else {
     phmap::flat_hash_set<std::string> set;
     for (size_t r_i = 0; r_i < row_num; ++r_i) {

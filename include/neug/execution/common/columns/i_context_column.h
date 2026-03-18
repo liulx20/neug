@@ -82,8 +82,9 @@ class IContextColumn {
 
   virtual bool is_optional() const { return false; }
 
-  virtual void generate_dedup_offset(std::vector<size_t>& offsets) const {
-    LOG(FATAL) << "not implemented for " << this->column_info();
+  virtual bool generate_dedup_offset(std::vector<size_t>& offsets) const {
+    LOG(ERROR) << "not implemented for " << this->column_info();
+    return false;
   }
 
   virtual std::pair<std::shared_ptr<IContextColumn>,

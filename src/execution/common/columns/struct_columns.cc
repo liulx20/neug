@@ -71,8 +71,9 @@ Value StructColumn::get_elem(size_t idx) const {
   return Value::STRUCT(type_, std::move(struct_values));
 }
 
-void StructColumn::generate_dedup_offset(std::vector<size_t>& offsets) const {
-  LOG(FATAL) << "not implemented for " << this->column_info();
+bool StructColumn::generate_dedup_offset(std::vector<size_t>& offsets) const {
+  LOG(ERROR) << "not implemented for " << this->column_info();
+  return false;
 }
 
 StructColumnBuilder::StructColumnBuilder(DataType type) : type_(type) {

@@ -64,9 +64,9 @@ class ListColumn : public ListColumnBase {
     return Value::LIST(elem_type_, std::move(list_values));
   }
 
-  void generate_dedup_offset(std::vector<size_t>& offsets) const override {
-    LOG(FATAL) << "not implemented for " << this->column_info();
-    // ColumnsUtils::generate_dedup_offset(data_, data_.size(), offsets);
+  bool generate_dedup_offset(std::vector<size_t>& offsets) const override {
+    LOG(ERROR) << "not implemented for " << this->column_info();
+    return false;
   }
 
   std::pair<std::shared_ptr<IContextColumn>, std::vector<size_t>> unfold()
