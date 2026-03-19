@@ -25,6 +25,17 @@
 #include "neug/generated/proto/response/response.pb.h"
 
 namespace neug {
+class RowView {
+ public:
+  RowView(const neug::QueryResponse* response, size_t row_index)
+      : response_(response), row_index_(row_index) {}
+
+  std::string ToString() const;
+
+ private:
+  const neug::QueryResponse* response_ = nullptr;
+  size_t row_index_ = 0;
+};
 
 /**
  * @brief Lightweight wrapper around protobuf `QueryResponse`.
@@ -41,17 +52,6 @@ namespace neug {
  * arrays through `RowView`, rather than materialized typed cell values.
  */
 
-class RowView {
- public:
-  RowView(const neug::QueryResponse* response, size_t row_index)
-      : response_(response), row_index_(row_index) {}
-
-  std::string ToString() const;
-
- private:
-  const neug::QueryResponse* response_ = nullptr;
-  size_t row_index_ = 0;
-};
 class QueryResult {
  public:
   class const_iterator {

@@ -9,8 +9,9 @@ Lightweight wrapper around protobuf `QueryResponse`.
 - obtaining row count (``length()``),
 - accessing response schema (``result_schema()``),
 - serializing/deserializing (``Serialize()`` / ``From()``),
-- debugging output (``ToString()``).
-It does not provide row-iterator semantics such as `hasNext()/next()`.
+- debugging output (``ToString()``),
+- read-only row traversal via C++ range-for (``begin()`/end()`).
+Note: traversal currently provides row index + column access to raw protobuf arrays through ``RowView``, rather than materialized typed cell values.
 
 ### Public Methods
 
@@ -33,4 +34,12 @@ Get underlying protobuf response.
 #### `Serialize() const`
 
 Serialize entire result set to string.
+
+#### `begin() const`
+
+Begin iterator for range-for traversal by row index.
+
+#### `end() const`
+
+End iterator for range-for traversal by row index.
 
