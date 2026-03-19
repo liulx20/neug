@@ -94,7 +94,7 @@ You can use either the C++ binary or the Python API to start the server.
 From the repository root:
 
 ```bash
-cmake -S . -B build
+cmake -S . -B build -DBUILD_EXECUTABLES=ON -DBUILD_HTTP_SERVER=ON
 cmake --build build --target rt_server -j
 ```
 
