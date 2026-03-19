@@ -79,7 +79,7 @@ class SDSLEdgeColumn : public IEdgeColumn {
   inline Direction dir() const override { return dir_; }
 
   bool generate_dedup_offset(std::vector<size_t>& offsets) const override {
-    ColumnsUtils::generate_dedup_offset(edges_, size(), offsets);
+    ColumnsUtils::generate_dedup_offset(edges_, offsets);
     return true;
   }
 
@@ -354,7 +354,7 @@ class BDSLEdgeColumn : public IEdgeColumn {
   inline size_t size() const override { return edges_.size(); }
 
   bool generate_dedup_offset(std::vector<size_t>& offsets) const override {
-    ColumnsUtils::generate_dedup_offset(edges_, size(), offsets);
+    ColumnsUtils::generate_dedup_offset(edges_, offsets);
     return true;
   }
 
@@ -462,7 +462,7 @@ class SDMLEdgeColumn : public IEdgeColumn {
   inline size_t size() const override { return edges_.size(); }
 
   bool generate_dedup_offset(std::vector<size_t>& offsets) const override {
-    ColumnsUtils::generate_dedup_offset(edges_, size(), offsets);
+    ColumnsUtils::generate_dedup_offset(edges_, offsets);
     return true;
   }
 
@@ -584,7 +584,7 @@ class BDMLEdgeColumn : public IEdgeColumn {
   inline size_t size() const override { return edges_.size(); }
 
   bool generate_dedup_offset(std::vector<size_t>& offsets) const override {
-    ColumnsUtils::generate_dedup_offset(edges_, size(), offsets);
+    ColumnsUtils::generate_dedup_offset(edges_, offsets);
     return true;
   }
 

@@ -62,7 +62,7 @@ class ValueColumn : public IContextColumn {
 
   bool generate_dedup_offset(std::vector<size_t>& offsets) const override {
     if (!is_optional_) {
-      ColumnsUtils::generate_dedup_offset(data_, data_.size(), offsets);
+      ColumnsUtils::generate_dedup_offset(data_, offsets);
       return true;
     }
     std::set<T> st;

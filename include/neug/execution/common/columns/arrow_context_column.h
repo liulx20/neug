@@ -150,6 +150,11 @@ class ArrowStreamContextColumn : public IContextColumn {
     return suppliers_;
   }
 
+  Value get_elem(size_t idx) const override {
+    LOG(FATAL) << "get_elem not implemented for arrow stream column";
+    return Value(DataType::SQLNULL);
+  }
+
  private:
   std::shared_ptr<arrow::RecordBatch> first_batch_;
   std::vector<std::shared_ptr<IRecordBatchSupplier>> suppliers_;

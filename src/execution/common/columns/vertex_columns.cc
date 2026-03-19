@@ -229,10 +229,16 @@ std::shared_ptr<IContextColumn> MSVertexColumnBuilder::finish() {
 bool MSVertexColumn::generate_dedup_offset(std::vector<size_t>& offsets) const {
   offsets.clear();
   std::set<VertexRecord> vset;
+  bool null_seen = false;
   size_t len = size();
   for (size_t i = 0; i != len; ++i) {
     auto cur = get_vertex(i);
-    if (vset.find(cur) == vset.end()) {
+    if (cur.vid_ == std::numeric_limits<vid_t>::max()) {
+      if (!null_seen) {
+        null_seen = true;
+        offsets.push_back(i);
+      }
+    } else if (vset.find(cur) == vset.end()) {
       offsets.push_back(i);
       vset.insert(cur);
     }
