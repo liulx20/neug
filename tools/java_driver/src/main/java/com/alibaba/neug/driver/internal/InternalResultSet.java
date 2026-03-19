@@ -99,6 +99,7 @@ public class InternalResultSet implements ResultSet {
     @Override
     public Object getObject(int columnIndex) {
         // Return the appropriate type based on the array type
+        checkRowIndex();
         checkIndex(columnIndex);
         Results.Array array = response.getArrays(columnIndex);
         try {
@@ -340,6 +341,7 @@ public class InternalResultSet implements ResultSet {
 
     @Override
     public int getInt(int columnIndex) {
+        checkRowIndex();
         checkIndex(columnIndex);
         Results.Array arr = response.getArrays(columnIndex);
         if (arr.hasInt32Array()) {
@@ -363,6 +365,7 @@ public class InternalResultSet implements ResultSet {
 
     @Override
     public long getLong(int columnIndex) {
+        checkRowIndex();
         checkIndex(columnIndex);
         Results.Array arr = response.getArrays(columnIndex);
         if (arr.hasInt64Array()) {
@@ -386,6 +389,7 @@ public class InternalResultSet implements ResultSet {
 
     @Override
     public String getString(int columnIndex) {
+        checkRowIndex();
         checkIndex(columnIndex);
         Results.Array arr = response.getArrays(columnIndex);
         if (!arr.hasStringArray()) {
@@ -408,6 +412,7 @@ public class InternalResultSet implements ResultSet {
 
     @Override
     public Date getDate(int columnIndex) {
+        checkRowIndex();
         checkIndex(columnIndex);
         Results.Array arr = response.getArrays(columnIndex);
         if (!arr.hasDateArray()) {
@@ -430,6 +435,7 @@ public class InternalResultSet implements ResultSet {
 
     @Override
     public Timestamp getTimestamp(int columnIndex) {
+        checkRowIndex();
         checkIndex(columnIndex);
         Results.Array arr = response.getArrays(columnIndex);
         if (!arr.hasTimestampArray()) {
@@ -452,6 +458,7 @@ public class InternalResultSet implements ResultSet {
 
     @Override
     public boolean getBoolean(int columnIndex) {
+        checkRowIndex();
         checkIndex(columnIndex);
         Results.Array arr = response.getArrays(columnIndex);
         if (!arr.hasBoolArray()) {
@@ -474,6 +481,7 @@ public class InternalResultSet implements ResultSet {
 
     @Override
     public double getDouble(int columnIndex) {
+        checkRowIndex();
         checkIndex(columnIndex);
         Results.Array arr = response.getArrays(columnIndex);
         if (arr.hasFloatArray()) {
@@ -497,6 +505,7 @@ public class InternalResultSet implements ResultSet {
 
     @Override
     public float getFloat(int columnIndex) {
+        checkRowIndex();
         checkIndex(columnIndex);
         Results.Array arr = response.getArrays(columnIndex);
         if (arr.hasFloatArray()) {
@@ -520,6 +529,7 @@ public class InternalResultSet implements ResultSet {
 
     @Override
     public BigDecimal getBigDecimal(int columnIndex) {
+        checkRowIndex();
         checkIndex(columnIndex);
         Results.Array arr = response.getArrays(columnIndex);
         Number value = getNumericValue(arr);
@@ -573,6 +583,12 @@ public class InternalResultSet implements ResultSet {
     private void checkIndex(int columnIndex) {
         if (columnIndex < 0 || columnIndex >= response.getArraysCount()) {
             throw new IndexOutOfBoundsException("Invalid column index: " + columnIndex);
+        }
+    }
+
+    private void checkRowIndex() {
+        if (currentIndex < 0 || currentIndex >= response.getRowCount()) {
+            throw new IndexOutOfBoundsException("Cursor is not positioned on a valid row");
         }
     }
 
