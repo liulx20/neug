@@ -112,7 +112,7 @@ public class InternalResultSet implements ResultSet {
     private void update_was_null(ByteString nullBitmap) {
         was_null =
                 !nullBitmap.isEmpty()
-                        && (nullBitmap.byteAt(rowIndex / 8) & (1 << (rowIndex % 8))) == 0;
+                        && (nullBitmap.byteAt(currentIndex / 8) & (1 << (currentIndex % 8))) == 0;
     }
 
     private Object getObject(Results.Array array, int rowIndex, boolean nullAlreadyHandled)
