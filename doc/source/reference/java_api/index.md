@@ -46,7 +46,7 @@ mvn clean install -DskipTests
 <dependency>
 	<groupId>com.alibaba.neug</groupId>
 	<artifactId>neug-java-driver</artifactId>
-	<version>1.0.0-SNAPSHOT</version>
+	<version>${neug.version}</version>
 </dependency>
 ```
 
@@ -87,31 +87,7 @@ public class Example {
 Before using the Java SDK, start a NeuG HTTP server that exposes the query endpoint.
 You can use either the C++ binary or the Python API to start the server.
 
-### Option A: Start with the C++ binary
-
-#### 1. Build the server binary
-
-From the repository root:
-
-```bash
-cmake -S . -B build -DBUILD_EXECUTABLES=ON -DBUILD_HTTP_SERVER=ON
-cmake --build build --target rt_server -j
-```
-
-#### 2. Start the server
-
-```bash
-./build/bin/rt_server --data-path /path/to/graph --http-port 10000 --host 0.0.0.0 --shard-num 16
-```
-
-Common options:
-
-- `--data-path`: path to the NeuG data directory
-- `--http-port`: HTTP port for Java clients, default is `10000`
-- `--host`: bind address, default is `127.0.0.1`
-- `--shard-num`: shard number of actor system, default is `9`
-
-### Option B: Start with Python
+### Option A: Start with Python
 
 If you have the `neug` Python package installed, you can start the server directly from Python:
 
@@ -139,6 +115,31 @@ try:
 except KeyboardInterrupt:
     db.stop_serving()
 ```
+
+
+### Option B: Start with the C++ binary
+
+#### 1. Build the server binary
+
+From the repository root:
+
+```bash
+cmake -S . -B build -DBUILD_EXECUTABLES=ON -DBUILD_HTTP_SERVER=ON
+cmake --build build --target rt_server -j
+```
+
+#### 2. Start the server
+
+```bash
+./build/bin/rt_server --data-path /path/to/graph --http-port 10000 --host 0.0.0.0 --shard-num 16
+```
+
+Common options:
+
+- `--data-path`: path to the NeuG data directory
+- `--http-port`: HTTP port for Java clients, default is `10000`
+- `--host`: bind address, default is `127.0.0.1`
+- `--shard-num`: shard number of actor system, default is `9`
 
 > **Note:** Make sure all local connections are closed before calling `db.serve()`.
 > Once the server is running, no new local connections are allowed until `db.stop_serving()` is called.
