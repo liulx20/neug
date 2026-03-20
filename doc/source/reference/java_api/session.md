@@ -25,12 +25,13 @@ try (Session session = driver.session();
 ```java
 import java.util.Map;
 
-try (Session session = driver.session();
-        ResultSet rs = session.run(
-                "MATCH (n) WHERE n.name = $name RETURN n.age AS age",
-                Map.of("name", "marko"))) {
-    while (rs.next()) {
-        System.out.println(rs.getLong("age"));
+try (Session session = driver.session()) {
+    try (ResultSet rs = session.run(
+            "MATCH (n) WHERE n.name = $name RETURN n.age AS age",
+            Map.of("name", "marko"))) {
+        while (rs.next()) {
+            System.out.println(rs.getLong("age"));
+        }
     }
 }
 ```

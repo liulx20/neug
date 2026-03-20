@@ -71,10 +71,11 @@ public class Example {
 		try (Driver driver = GraphDatabase.driver("http://localhost:10000")) {
 			driver.verifyConnectivity();
 
-			try (Session session = driver.session();
-					ResultSet rs = session.run("RETURN 1 AS value")) {
-				while (rs.next()) {
-					System.out.println(rs.getInt("value"));
+			try (Session session = driver.session()) {
+				try (ResultSet rs = session.run("RETURN 1 AS value")) {
+					while (rs.next()) {
+						System.out.println(rs.getInt("value"));
+					}
 				}
 			}
 		}
