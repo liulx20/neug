@@ -35,7 +35,7 @@ static Context default_semi_join(Context&& ctx, Context&& ctx2,
                                  const JoinParams& params) {
   size_t right_size = ctx2.row_num();
   phmap::flat_hash_set<std::string> right_set;
-  std::vector<size_t> offset;
+  select_vector_t offset;
 
   for (size_t r_i = 0; r_i < right_size; ++r_i) {
     std::vector<char> bytes;
@@ -85,7 +85,7 @@ static Context dual_vertex_column_semi_join(Context&& ctx, Context&& ctx2,
                                             const JoinParams& params) {
   size_t right_size = ctx2.row_num();
   phmap::flat_hash_set<vertex_pair> right_set;
-  std::vector<size_t> offset;
+  select_vector_t offset;
   auto casted_right_col = std::dynamic_pointer_cast<IVertexColumn>(
       ctx2.get(params.right_columns[0]));
   auto casted_right_col2 = std::dynamic_pointer_cast<IVertexColumn>(
@@ -120,7 +120,7 @@ static Context dual_vertex_column_semi_join(Context&& ctx, Context&& ctx2,
 
 static Context single_vertex_column_inner_join(Context&& ctx, Context&& ctx2,
                                                const JoinParams& params) {
-  std::vector<size_t> left_offset, right_offset;
+  select_vector_t left_offset, right_offset;
   auto casted_left_col =
       std::dynamic_pointer_cast<IVertexColumn>(ctx.get(params.left_columns[0]));
   auto casted_right_col = std::dynamic_pointer_cast<IVertexColumn>(
@@ -131,7 +131,7 @@ static Context single_vertex_column_inner_join(Context&& ctx, Context&& ctx2,
 
   if (left_size < right_size) {
     phmap::flat_hash_set<VertexRecord> left_set;
-    phmap::flat_hash_map<VertexRecord, std::vector<size_t>> right_map;
+    phmap::flat_hash_map<VertexRecord, select_vector_t> right_map;
     for (size_t r_i = 0; r_i < left_size; ++r_i) {
       left_set.emplace(casted_left_col->get_vertex(r_i));
     }
@@ -152,7 +152,7 @@ static Context single_vertex_column_inner_join(Context&& ctx, Context&& ctx2,
     }
   } else {
     phmap::flat_hash_set<VertexRecord> right_set;
-    phmap::flat_hash_map<VertexRecord, std::vector<size_t>> left_map;
+    phmap::flat_hash_map<VertexRecord, select_vector_t> left_map;
     if (right_size != 0) {
       for (size_t r_i = 0; r_i < right_size; ++r_i) {
         right_set.emplace(casted_right_col->get_vertex(r_i));
@@ -190,7 +190,7 @@ static Context single_vertex_column_inner_join(Context&& ctx, Context&& ctx2,
 
 static Context dual_vertex_column_inner_join(Context&& ctx, Context&& ctx2,
                                              const JoinParams& params) {
-  std::vector<size_t> left_offset, right_offset;
+  select_vector_t left_offset, right_offset;
   auto casted_left_col =
       std::dynamic_pointer_cast<IVertexColumn>(ctx.get(params.left_columns[0]));
   auto casted_left_col2 =
@@ -205,7 +205,7 @@ static Context dual_vertex_column_inner_join(Context&& ctx, Context&& ctx2,
 
   if (left_size < right_size) {
     phmap::flat_hash_set<vertex_pair> left_set;
-    phmap::flat_hash_map<vertex_pair, std::vector<size_t>> right_map;
+    phmap::flat_hash_map<vertex_pair, select_vector_t> right_map;
     for (size_t r_i = 0; r_i < left_size; ++r_i) {
       left_set.emplace(casted_left_col->get_vertex(r_i),
                        casted_left_col2->get_vertex(r_i));
@@ -232,7 +232,7 @@ static Context dual_vertex_column_inner_join(Context&& ctx, Context&& ctx2,
     }
   } else {
     phmap::flat_hash_set<vertex_pair> right_set;
-    phmap::flat_hash_map<vertex_pair, std::vector<size_t>> left_map;
+    phmap::flat_hash_map<vertex_pair, select_vector_t> left_map;
     for (size_t r_i = 0; r_i < right_size; ++r_i) {
       auto cur1 = casted_right_col->get_vertex(r_i);
       auto cur2 = casted_right_col2->get_vertex(r_i);
@@ -277,9 +277,9 @@ static Context dual_vertex_column_inner_join(Context&& ctx, Context&& ctx2,
 
 static Context default_inner_join(Context&& ctx, Context&& ctx2,
                                   const JoinParams& params) {
-  std::vector<size_t> left_offset, right_offset;
+  select_vector_t left_offset, right_offset;
   size_t right_size = ctx2.row_num();
-  std::map<std::string, std::vector<size_t>> right_set;
+  std::map<std::string, select_vector_t> right_set;
 
   for (size_t r_i = 0; r_i < right_size; ++r_i) {
     std::vector<char> bytes;
@@ -350,7 +350,7 @@ static Context default_times_join(Context&& ctx, Context&& ctx2,
    * Each row in the resulting context will contain the data from both
    * contexts, with the left context's data appearing first.
    */
-  std::vector<size_t> left_offset, right_offset;
+  select_vector_t left_offset, right_offset;
   size_t left_size = ctx.row_num();
   size_t right_size = ctx2.row_num();
   for (size_t r_i = 0; r_i < left_size; ++r_i) {
@@ -377,20 +377,20 @@ static Context default_times_join(Context&& ctx, Context&& ctx2,
 static Context single_vertex_column_left_outer_join(Context&& ctx,
                                                     Context&& ctx2,
                                                     const JoinParams& params) {
-  std::vector<size_t> left_offset, right_offset;
+  select_vector_t left_offset, right_offset;
   auto casted_left_col =
       std::dynamic_pointer_cast<IVertexColumn>(ctx.get(params.left_columns[0]));
   auto casted_right_col = std::dynamic_pointer_cast<IVertexColumn>(
       ctx2.get(params.right_columns[0]));
 
-  std::vector<size_t> left_offsets;
-  std::vector<size_t> right_offsets;
+  select_vector_t left_offsets;
+  select_vector_t right_offsets;
 
   size_t left_size = casted_left_col->size();
   size_t right_size = casted_right_col->size();
   if (left_size < right_size) {
     phmap::flat_hash_set<VertexRecord> left_set;
-    phmap::flat_hash_map<VertexRecord, std::vector<size_t>> right_map;
+    phmap::flat_hash_map<VertexRecord, select_vector_t> right_map;
     for (size_t r_i = 0; r_i < left_size; ++r_i) {
       left_set.emplace(casted_left_col->get_vertex(r_i));
     }
@@ -462,14 +462,14 @@ static Context dual_vertex_column_left_outer_join(Context&& ctx, Context&& ctx2,
   auto casted_right_col0 = std::dynamic_pointer_cast<IVertexColumn>(right_col0);
   auto casted_right_col1 = std::dynamic_pointer_cast<IVertexColumn>(right_col1);
 
-  std::vector<size_t> left_offsets;
-  std::vector<size_t> right_offsets;
+  select_vector_t left_offsets;
+  select_vector_t right_offsets;
   size_t left_size = casted_left_col0->size();
   size_t right_size = casted_right_col0->size();
 
   if (left_size < right_size) {
     phmap::flat_hash_set<vertex_pair> left_set;
-    phmap::flat_hash_map<vertex_pair, std::vector<size_t>> right_map;
+    phmap::flat_hash_map<vertex_pair, select_vector_t> right_map;
     for (size_t r_i = 0; r_i < left_size; ++r_i) {
       vertex_pair cur(casted_left_col0->get_vertex(r_i),
                       casted_left_col1->get_vertex(r_i));
@@ -551,8 +551,8 @@ static Context default_left_outer_join(Context&& ctx, Context&& ctx2,
     }
   }
 
-  std::vector<size_t> offsets;
-  std::vector<size_t> right_offsets;
+  select_vector_t offsets;
+  select_vector_t right_offsets;
   size_t left_size = ctx.row_num();
   for (size_t r_i = 0; r_i < left_size; r_i++) {
     std::vector<char> bytes;
@@ -655,7 +655,7 @@ neug::result<Context> Join::pk_join(IStorageInterface& graph, Context&& ctx,
   size_t row_num = ctx.row_num();
   auto column = ctx.get(tag);
   MSVertexColumnBuilder builder(labels[0]);
-  std::vector<size_t> offsets;
+  select_vector_t offsets;
   for (label_t label : labels) {
     builder.start_label(label);
     for (size_t i = 0; i < row_num; ++i) {

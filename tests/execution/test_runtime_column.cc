@@ -1029,7 +1029,7 @@ TEST_F(EdgeColumnTest, ForeachEdgeFilterSDSL) {
         EdgeRecord e = EdgeRecord{label, src, dst, prop, dir};
         collected.push_back(e);
       },
-      filter);
+      nullptr, filter);
 
   ASSERT_EQ(collected.size(), 1);
   EXPECT_EQ(collected[0], sdsl_col->get_edge(0));
@@ -1055,7 +1055,7 @@ TEST_F(EdgeColumnTest, ForeachEdgeFilterBDSL) {
         EdgeRecord e = EdgeRecord{label, src, dst, prop, dir};
         collected.push_back(e);
       },
-      filter);
+      nullptr, filter);
 
   // Should only have out-edge
   ASSERT_EQ(collected.size(), 1);
@@ -1084,7 +1084,7 @@ TEST_F(EdgeColumnTest, ForeachEdgeFilterSDML) {
         EdgeRecord e = EdgeRecord{label, src, dst, prop, dir};
         collected.push_back(e);
       },
-      filter);
+      nullptr, filter);
 
   ASSERT_EQ(collected.size(), 1);
   EXPECT_EQ(collected[0], sdml_col->get_edge(0));
@@ -1112,7 +1112,7 @@ TEST_F(EdgeColumnTest, ForeachEdgeFilterBDML) {
         EdgeRecord e = EdgeRecord{label, src, dst, prop, dir};
         collected.push_back(e);
       },
-      filter);
+      nullptr, filter);
 
   // Should only have out-edge
   ASSERT_EQ(collected.size(), 1);

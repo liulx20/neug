@@ -22,9 +22,13 @@ class BindedScalarFunctionExpr : public VertexExprBase,
                                  public RecordExprBase {
  public:
   BindedScalarFunctionExpr(
-      neug_func_exec_t fn, const DataType& ret_type,
+      neug_func_exec_t fn, neug_func_exec_batch_t batch_fn,
+      const DataType& ret_type,
       std::vector<std::unique_ptr<BindedExprBase>>&& children)
-      : func_(fn), ret_type_(ret_type), children_(std::move(children)) {}
+      : func_(fn),
+        batch_func_(batch_fn),
+        ret_type_(ret_type),
+        children_(std::move(children)) {}
   const DataType& type() const override { return ret_type_; }
 
   Value eval_record(const Context& ctx, size_t idx) const override {
@@ -56,8 +60,19 @@ class BindedScalarFunctionExpr : public VertexExprBase,
     return func_(params);
   }
 
+  std::shared_ptr<IContextColumn> eval_chunk(
+      const Context& ctx, const select_vector_t* sel) const override {
+    std::vector<std::shared_ptr<IContextColumn>> param_cols;
+    param_cols.reserve(children_.size());
+    for (auto& ch : children_) {
+      param_cols.emplace_back(ch->Cast<RecordExprBase>().eval_chunk(ctx, sel));
+    }
+    return batch_func_(param_cols);
+  }
+
  private:
   neug_func_exec_t func_;
+  neug_func_exec_batch_t batch_func_;
   DataType ret_type_;
   std::vector<std::unique_ptr<BindedExprBase>> children_;
 };
@@ -68,8 +83,8 @@ std::unique_ptr<BindedExprBase> ScalarFunctionExpr::bind(
   for (const auto& child : children_) {
     bound_children.push_back(child->bind(storage, params));
   }
-  return std::make_unique<BindedScalarFunctionExpr>(func_, ret_type_,
-                                                    std::move(bound_children));
+  return std::make_unique<BindedScalarFunctionExpr>(
+      func_, batch_func_, ret_type_, std::move(bound_children));
 }
 }  // namespace execution
 }  // namespace neug

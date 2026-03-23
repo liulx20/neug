@@ -14,6 +14,7 @@
  */
 
 #include "neug/execution/expression/exprs/logical_expr.h"
+#include "neug/execution/common/columns/value_columns.h"
 
 #include <regex>
 
@@ -287,6 +288,21 @@ class BindedWithInExpr : public VertexExprBase,
     const auto& rhs_val =
         rhs_->Cast<EdgeExprBase>().eval_edge(label, src, dst, data_ptr);
     return eval_impl(lhs_val, rhs_val);
+  }
+
+  std::shared_ptr<IContextColumn> eval_chunk(
+      const Context& ctx, const select_vector_t* sel) const override {
+    auto lhs_col = lhs_->Cast<RecordExprBase>().eval_chunk(ctx, sel);
+    auto rhs_col = rhs_->Cast<RecordExprBase>().eval_chunk(ctx, sel);
+    size_t row_num = (sel == nullptr) ? ctx.row_num() : sel->size();
+    ValueColumnBuilder<bool> builder(row_num);
+    for (size_t i = 0; i < row_num; ++i) {
+      size_t idx = (sel == nullptr) ? i : (*sel)[i];
+      const auto& lhs_val = lhs_col->get_elem(idx);
+      const auto& rhs_val = rhs_col->get_elem(idx);
+      builder.push_back_elem(eval_impl(lhs_val, rhs_val));
+    }
+    return builder.finish();
   }
 
  private:

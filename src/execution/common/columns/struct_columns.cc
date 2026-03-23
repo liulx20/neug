@@ -18,6 +18,14 @@
 
 namespace neug {
 namespace execution {
+
+StructColumn::StructColumn(
+    const DataType& type,
+    std::vector<std::shared_ptr<IContextColumn>>&& children)
+    : type_(type), children_(std::move(children)) {
+  is_optional_ = false;
+}
+
 std::shared_ptr<IContextColumn> StructColumn::shuffle(
     const std::vector<size_t>& offsets) const {
   std::vector<std::shared_ptr<IContextColumn>> shuffled_children;

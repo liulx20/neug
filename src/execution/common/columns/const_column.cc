@@ -12,23 +12,22 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#pragma once
 
-#include <vector>
-
-#include "neug/utils/result.h"
+#include "neug/execution/common/columns/const_column.h"
 
 namespace neug {
-
 namespace execution {
-class Context;
 
-class Dedup {
- public:
-  static neug::result<Context> dedup(Context&& ctx,
-                                     const std::vector<int>& cols);
-};
+std::shared_ptr<IContextColumn> ConstColumn::shuffle(
+    const std::vector<size_t>& offsets) const {
+  return std::make_shared<ConstColumn>(val_);
+}
+
+std::shared_ptr<IContextColumn> ConstColumn::optional_shuffle(
+    const std::vector<size_t>& offsets) const {
+  LOG(FATAL) << "ConstColumn does not support optional shuffle";
+  return nullptr;
+}
 
 }  // namespace execution
-
 }  // namespace neug

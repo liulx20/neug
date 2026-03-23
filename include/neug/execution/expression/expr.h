@@ -16,6 +16,7 @@
 #pragma once
 #include <memory>
 #include "neug/common/types.h"
+#include "neug/execution/common/columns/i_context_column.h"
 #include "neug/execution/common/context.h"
 #include "neug/execution/common/params_map.h"
 #include "neug/execution/common/types/value.h"
@@ -107,6 +108,10 @@ class RecordExprBase : public virtual BindedExprBase {
   RecordExprBase() { record_ptr_ = this; }
   virtual ~RecordExprBase() = default;
   virtual Value eval_record(const Context& ctx, size_t idx) const = 0;
+  virtual std::shared_ptr<IContextColumn> eval_chunk(
+      const Context& ctx, const select_vector_t* sel = nullptr) const {
+    return nullptr;
+  }
 };
 
 std::unique_ptr<ExprBase> parse_expression(const ::common::Expression& expr,

@@ -53,10 +53,16 @@ class PathColumn : public IContextColumn {
   }
 
   template <typename FUNC>
-  void foreach_path(FUNC func) const {
-    for (size_t i = 0; i < data_.size(); ++i) {
-      const auto& path = data_[i];
-      func(i, path);
+  void foreach_path(FUNC func, const select_vector_t* sel = nullptr) const {
+    if (sel == nullptr) {
+      for (size_t i = 0; i < data_.size(); ++i) {
+        const auto& path = data_[i];
+        func(i, path);
+      }
+    } else {
+      for (size_t k = 0; k < sel->size(); ++k) {
+        func((*sel)[k], data_[(*sel)[k]]);
+      }
     }
   }
 

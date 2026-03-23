@@ -25,7 +25,7 @@ bool vertex_property_topN_impl(bool asc, size_t limit,
                                const std::shared_ptr<IVertexColumn>& col,
                                const StorageReadInterface& graph,
                                const std::string& prop_name,
-                               std::vector<size_t>& offsets) {
+                               select_vector_t& offsets) {
   std::vector<std::shared_ptr<StorageReadInterface::vertex_column_t<T>>>
       property_columns;
   label_t label_num = graph.schema().vertex_label_frontier();
@@ -71,7 +71,7 @@ bool vertex_property_topN(bool asc, size_t limit,
                           const std::shared_ptr<IVertexColumn>& col,
                           const StorageReadInterface& graph,
                           const std::string& prop_name,
-                          std::vector<size_t>& offsets) {
+                          select_vector_t& offsets) {
   std::vector<DataTypeId> prop_types;
   const auto& labels = col->get_labels_set();
   for (auto l : labels) {
@@ -96,6 +96,7 @@ bool vertex_property_topN(bool asc, size_t limit,
   }
   for (size_t k = 1; k < prop_types.size(); ++k) {
     if (prop_types[k] != prop_types[0]) {
+      LOG(INFO) << "multiple types...";
       return false;
     }
   }
@@ -110,7 +111,7 @@ bool vertex_property_topN(bool asc, size_t limit,
     return vertex_property_topN_impl<std::string_view>(asc, limit, col, graph,
                                                        prop_name, offsets);
   default:
-    LOG(ERROR) << "prop type not support..." << static_cast<int>(prop_types[0]);
+    LOG(INFO) << "prop type not support..." << static_cast<int>(prop_types[0]);
     return false;
   }
 }

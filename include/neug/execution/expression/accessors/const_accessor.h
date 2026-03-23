@@ -40,6 +40,9 @@ class ConstExpr : public ExprBase,
 
   std::string name() const override { return "ConstExpr"; }
 
+  std::shared_ptr<IContextColumn> eval_chunk(
+      const Context& ctx, const select_vector_t* sel = nullptr) const override;
+
  private:
   Value inner_;
 };

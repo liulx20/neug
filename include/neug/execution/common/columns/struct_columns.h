@@ -23,6 +23,8 @@ class StructColumnBuilder;
 class StructColumn : public IContextColumn {
  public:
   StructColumn() = default;
+  StructColumn(const DataType& type,
+               std::vector<std::shared_ptr<IContextColumn>>&& children);
   ~StructColumn() = default;
 
   size_t size() const override {
@@ -41,10 +43,10 @@ class StructColumn : public IContextColumn {
   }
 
   std::shared_ptr<IContextColumn> shuffle(
-      const std::vector<size_t>& offsets) const override;
+      const select_vector_t& offsets) const override;
 
   std::shared_ptr<IContextColumn> optional_shuffle(
-      const std::vector<size_t>& offsets) const override;
+      const select_vector_t& offsets) const override;
 
   const DataType& elem_type() const override { return type_; }
   Value get_elem(size_t idx) const override;

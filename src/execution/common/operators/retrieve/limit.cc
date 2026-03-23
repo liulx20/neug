@@ -15,6 +15,7 @@
 
 #include "neug/execution/common/operators/retrieve/limit.h"
 
+#include "neug/execution/common/columns/i_context_column.h"
 #include "neug/execution/common/context.h"
 
 namespace neug {
@@ -29,7 +30,7 @@ neug::result<Context> Limit::limit(Context&& ctx, size_t lower, size_t upper) {
     upper = ctx.row_num();
   }
 
-  std::vector<size_t> offsets(upper - lower);
+  select_vector_t offsets(upper - lower);
   for (size_t i = lower; i < upper; ++i) {
     offsets[i - lower] = i;
   }

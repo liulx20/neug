@@ -75,9 +75,9 @@ neug::result<Context> BatchDeleteVertexOpr::Eval(
       THROW_RUNTIME_ERROR(
           "Unsupported vertex column type for batch delete vertex operation.");
     }
-    std::vector<size_t> offsets;
-    ctx.reshuffle(offsets);  // reshuffle the context with empty offsets, to
-                             // remove all data.
+
+    ctx.reshuffle({});  // reshuffle the context with empty offsets, to
+                        // remove all data.
   }
 
   return neug::result<Context>(std::move(ctx));

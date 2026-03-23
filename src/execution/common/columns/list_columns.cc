@@ -21,8 +21,8 @@
 namespace neug {
 namespace execution {
 
-std::pair<std::shared_ptr<IContextColumn>, std::vector<size_t>>
-ListColumn::unfold() const {
+std::pair<std::shared_ptr<IContextColumn>, select_vector_t> ListColumn::unfold()
+    const {
   switch (elem_type_.id()) {
 #define TYPE_DISPATCHER(enum_val, type) \
   case DataTypeId::enum_val:            \

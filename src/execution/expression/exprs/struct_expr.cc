@@ -14,6 +14,7 @@
  */
 
 #include "neug/execution/expression/exprs/struct_expr.h"
+#include "neug/execution/common/columns/struct_columns.h"
 
 namespace neug {
 namespace execution {
@@ -49,6 +50,15 @@ class BindedTupleExpr : public VertexExprBase,
           expr->Cast<EdgeExprBase>().eval_edge(label, src, dst, data_ptr));
     }
     return Value::STRUCT(type_, std::move(values));
+  }
+
+  std::shared_ptr<IContextColumn> eval_chunk(
+      const Context& ctx, const select_vector_t* sel) const override {
+    std::vector<std::shared_ptr<IContextColumn>> columns;
+    for (const auto& expr : exprs_) {
+      columns.push_back(expr->Cast<RecordExprBase>().eval_chunk(ctx, sel));
+    }
+    return std::make_shared<StructColumn>(type_, std::move(columns));
   }
 
  private:

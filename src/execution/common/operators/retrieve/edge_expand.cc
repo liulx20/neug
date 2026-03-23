@@ -28,7 +28,7 @@ namespace execution {
 Context EdgeExpand::remove_null_from_ctx(Context&& ctx, int tag_id) {
   std::shared_ptr<IVertexColumn> vertex_col =
       std::dynamic_pointer_cast<IVertexColumn>(ctx.get(tag_id));
-  std::vector<size_t> selected_offsets;
+  select_vector_t selected_offsets;
   size_t num = vertex_col->size();
   for (size_t k = 0; k < num; ++k) {
     if (vertex_col->has_value(k)) {
@@ -62,7 +62,7 @@ neug::result<Context> EdgeExpand::expand_degree(
     }
   }
   ValueColumnBuilder<int64_t> builder;
-  std::vector<size_t> shuffle_offset;
+  select_vector_t shuffle_offset;
   if (mps.empty()) {
     ctx.set_with_reshuffle(params.alias, builder.finish(), shuffle_offset);
     return ctx;
@@ -194,14 +194,12 @@ neug::result<Context> EdgeExpand::expand_edge_with_special_edge_predicate(
   } else if (config.param_type == DataTypeId::kTimestampMs) {
     return expand_edge_with_special_edge_predicate_impl0<DateTime>(
         graph, std::move(ctx), params, config, target_val);
-  } else if (config.param_type == DataTypeId::kVarchar) {
-    return expand_edge_with_special_edge_predicate_impl0<std::string_view>(
-        graph, std::move(ctx), params, config, target_val);
   } else {
     LOG(ERROR) << "not support edge property type "
-               << DataType(config.param_type).ToString();
-    RETURN_UNSUPPORTED_ERROR("not support edge property type " +
-                             DataType(config.param_type).ToString());
+               << static_cast<int>(config.param_type);
+    RETURN_UNSUPPORTED_ERROR(
+        "not support edge property type " +
+        std::to_string(static_cast<int>(config.param_type)));
   }
 }
 
@@ -209,10 +207,10 @@ template <typename T>
 void expand_vertex_ep_cmp_impl(const StorageReadInterface& graph,
                                const SLVertexColumn& input_column,
                                MSVertexColumnBuilder& builder,
-                               std::vector<size_t>& offsets,
-                               label_t input_label, label_t nbr_label,
-                               label_t edge_label, Direction dir,
-                               const Value& cmp_value, SPPredicateType tp) {
+                               select_vector_t& offsets, label_t input_label,
+                               label_t nbr_label, label_t edge_label,
+                               Direction dir, const Value& cmp_value,
+                               SPPredicateType tp) {
   T cmp_val = [&cmp_value]() -> T {
     if constexpr (std::is_same_v<T, std::string_view>) {
       return StringValue::Get(cmp_value);
@@ -355,7 +353,7 @@ neug::result<Context> EdgeExpand::expand_vertex_ep_cmp(
       ed_types.push_back(pt);
     }
     MSVertexColumnBuilder builder(std::get<0>(label_dirs[0]));
-    std::vector<size_t> offsets;
+    select_vector_t offsets;
     size_t ld_idx = 0;
     for (auto& label_dir : label_dirs) {
       label_t nbr_label = std::get<0>(label_dir);

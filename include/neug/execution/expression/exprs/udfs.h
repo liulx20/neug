@@ -21,9 +21,13 @@ namespace neug {
 namespace execution {
 class ScalarFunctionExpr : public ExprBase {
  public:
-  ScalarFunctionExpr(neug_func_exec_t fn, const DataType& ret_type,
+  ScalarFunctionExpr(neug_func_exec_t fn, neug_func_exec_batch_t batch_fn,
+                     const DataType& ret_type,
                      std::vector<std::unique_ptr<ExprBase>>&& children)
-      : func_(fn), ret_type_(ret_type), children_(std::move(children)) {}
+      : func_(fn),
+        batch_func_(batch_fn),
+        ret_type_(ret_type),
+        children_(std::move(children)) {}
   ~ScalarFunctionExpr() override = default;
   const DataType& type() const override { return ret_type_; }
 
@@ -32,6 +36,7 @@ class ScalarFunctionExpr : public ExprBase {
 
  private:
   neug_func_exec_t func_;
+  neug_func_exec_batch_t batch_func_;
   DataType ret_type_;
   std::vector<std::unique_ptr<ExprBase>> children_;
 };

@@ -46,7 +46,7 @@ class ListColumn : public IContextColumn {
   }
 
   std::shared_ptr<IContextColumn> shuffle(
-      const std::vector<size_t>& offsets) const override;
+      const select_vector_t& offsets) const override;
 
   const DataType& elem_type() const override { return type_; }
   Value get_elem(size_t idx) const override {
@@ -58,8 +58,7 @@ class ListColumn : public IContextColumn {
     return Value::LIST(elem_type_, std::move(list_values));
   }
 
-  std::pair<std::shared_ptr<IContextColumn>, std::vector<size_t>> unfold()
-      const;
+  std::pair<std::shared_ptr<IContextColumn>, select_vector_t> unfold() const;
 
   std::shared_ptr<IContextColumn> data_column() const { return datas_; }
 
@@ -90,9 +89,9 @@ class ListColumn : public IContextColumn {
 
  private:
   template <typename T>
-  std::pair<std::shared_ptr<IContextColumn>, std::vector<size_t>> unfold_impl()
+  std::pair<std::shared_ptr<IContextColumn>, select_vector_t> unfold_impl()
       const {
-    std::vector<size_t> offsets;
+    select_vector_t offsets;
     auto builder = std::make_shared<ValueColumnBuilder<T>>();
     size_t i = 0;
     for (const auto& list : items_) {
