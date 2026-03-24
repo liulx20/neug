@@ -22,10 +22,11 @@ class ConstColumnBuilder;
 
 class ConstColumn : public IContextColumn {
  public:
-  explicit ConstColumn(const Value& val) : val_(val) {}
+  explicit ConstColumn(const Value& val, size_t row_num)
+      : val_(val), row_num(row_num) {}
   ~ConstColumn() = default;
 
-  size_t size() const override { return 1; }
+  size_t size() const override { return row_num; }
 
   std::string column_info() const override {
     return "ConstColumn(" + val_.to_string() + ")";
@@ -54,6 +55,9 @@ class ConstColumn : public IContextColumn {
 
   bool has_value(size_t idx) const override { return !val_.IsNull(); }
 
+  std::shared_ptr<IContextColumn> union_col(
+      std::shared_ptr<IContextColumn> other) const override;
+
   template <typename T>
   T get_value() const {
     if constexpr (std::is_same_v<T, std::string_view>) {
@@ -69,6 +73,7 @@ class ConstColumn : public IContextColumn {
 
  private:
   Value val_;
+  size_t row_num;
 };
 
 }  // namespace execution

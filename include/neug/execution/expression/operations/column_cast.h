@@ -38,6 +38,9 @@ struct ColumnCastDispatcher {
       } else if (input.elem_type().id() == DataTypeId::kTimestampMs) {
         dispatch<DateTime, RESULT_TYPE>(input, row_num, result);
         return;
+      } else if (input.elem_type().id() == DataTypeId::kInterval) {
+        dispatch<Interval, RESULT_TYPE>(input, row_num, result);
+        return;
       }
     }
     switch (input.elem_type().id()) {

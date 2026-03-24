@@ -165,6 +165,8 @@ static std::unique_ptr<ExprBase> build_expr(
         children.emplace_back(
             parse_expression(op.parameters(i), ctx_meta, var_type));
       }
+      LOG(INFO) << "Parsed scalar function expression with signature: "
+                << signature << " and return type: " << opr.DebugString();
       return std::make_unique<ScalarFunctionExpr>(fn, batch_fn, ret_type,
                                                   std::move(children));
     }

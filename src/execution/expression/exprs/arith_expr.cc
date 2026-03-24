@@ -71,6 +71,7 @@ class BindedArithExpr : public VertexExprBase,
     return builder.finish();                                            \
   }
       FOR_EACH_NUMERIC_DATA_TYPE(TYPE_DISPATCHER)
+      TYPE_DISPATCHER(kInterval, interval_t)
 #undef TYPE_DISPATCHER
     default:
       LOG(FATAL) << "Unsupported data type for arithmetic operation in chunk "

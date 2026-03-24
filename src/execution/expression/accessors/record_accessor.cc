@@ -113,14 +113,14 @@ class BindedRecordVertexPropertyExpr : public RecordExprBase {
       const Context& ctx, const select_vector_t* sel) const {
     auto vertex_col = std::dynamic_pointer_cast<IVertexColumn>(ctx.get(tag_));
     const auto& labels = vertex_col->get_labels_set();
-    std::vector<const TypedRefColumn<T>*> typed_columns(
+    using V =
+        std::conditional_t<std::is_same_v<T, std::string>, std::string_view, T>;
+
+    std::vector<const TypedRefColumn<V>*> typed_columns(
         property_columns_.size(), nullptr);
     for (auto label : labels) {
-      auto column = dynamic_cast<const TypedRefColumn<T>*>(
+      auto column = dynamic_cast<const TypedRefColumn<V>*>(
           property_columns_[label].get());
-      if (column == nullptr) {
-        return nullptr;
-      }
       typed_columns[label] = column;
     }
     size_t row_num = (sel == nullptr) ? ctx.row_num() : sel->size();
@@ -129,62 +129,110 @@ class BindedRecordVertexPropertyExpr : public RecordExprBase {
       const SLVertexColumn& sl_vertex_col =
           dynamic_cast<const SLVertexColumn&>(*vertex_col);
       auto col = typed_columns[sl_vertex_col.label()];
-      if (sl_vertex_col.is_optional()) {
+      if (sl_vertex_col.is_optional() || col == nullptr) {
         for (size_t i = 0; i < row_num; ++i) {
           size_t idx = (sel == nullptr) ? i : (*sel)[i];
           auto v = sl_vertex_col.get_vertex(idx);
-          if (v.vid_ == std::numeric_limits<vid_t>::max()) {
+          if (v.vid_ == std::numeric_limits<vid_t>::max() || col == nullptr) {
             builder.push_back_null();
           } else {
-            builder.push_back_opt(col->get_view(v.vid_));
+            if constexpr (std::is_same_v<T, std::string>) {
+              builder.push_back_opt(std::string(col->get_view(v.vid_)));
+            } else {
+              builder.push_back_opt(col->get_view(v.vid_));
+            }
           }
         }
       } else {
         for (size_t i = 0; i < row_num; ++i) {
           size_t idx = (sel == nullptr) ? i : (*sel)[i];
           auto v = sl_vertex_col.get_vertex(idx);
-          builder.push_back_opt(col->get_view(v.vid_));
+          if constexpr (std::is_same_v<T, std::string>) {
+            builder.push_back_opt(std::string(col->get_view(v.vid_)));
+          } else {
+            builder.push_back_opt(col->get_view(v.vid_));
+          }
         }
       }
     } else if (vertex_col->vertex_column_type() ==
                VertexColumnType::kMultiple) {
       const MLVertexColumn& ml_vertex_col =
           dynamic_cast<const MLVertexColumn&>(*vertex_col);
-      if (ml_vertex_col.is_optional()) {
+      bool is_optional = ml_vertex_col.is_optional();
+      if (!is_optional) {
+        for (auto label : ml_vertex_col.get_labels_set()) {
+          if (typed_columns[label] == nullptr) {
+            is_optional = true;
+            break;
+          }
+        }
+      }
+      if (is_optional) {
         for (size_t i = 0; i < row_num; ++i) {
           size_t idx = (sel == nullptr) ? i : (*sel)[i];
           auto v = ml_vertex_col.get_vertex(idx);
-          if (v.vid_ == std::numeric_limits<vid_t>::max()) {
+          if (v.vid_ == std::numeric_limits<vid_t>::max() ||
+              typed_columns[v.label_] == nullptr) {
             builder.push_back_null();
           } else {
-            builder.push_back_opt(typed_columns[v.label_]->get_view(v.vid_));
+            if constexpr (std::is_same_v<T, std::string>) {
+              builder.push_back_opt(
+                  std::string(typed_columns[v.label_]->get_view(v.vid_)));
+            } else {
+              builder.push_back_opt(typed_columns[v.label_]->get_view(v.vid_));
+            }
           }
         }
       } else {
         for (size_t i = 0; i < row_num; ++i) {
           size_t idx = (sel == nullptr) ? i : (*sel)[i];
           auto v = ml_vertex_col.get_vertex(idx);
-          builder.push_back_opt(typed_columns[v.label_]->get_view(v.vid_));
+          if constexpr (std::is_same_v<T, std::string>) {
+            builder.push_back_opt(
+                std::string(typed_columns[v.label_]->get_view(v.vid_)));
+          } else {
+            builder.push_back_opt(typed_columns[v.label_]->get_view(v.vid_));
+          }
         }
       }
     } else {
       const auto& ms_vertex_col =
           dynamic_cast<const MSVertexColumn&>(*vertex_col);
-      if (ms_vertex_col.is_optional()) {
+      bool is_optional = ms_vertex_col.is_optional();
+      if (!is_optional) {
+        for (auto label : ms_vertex_col.get_labels_set()) {
+          if (typed_columns[label] == nullptr) {
+            is_optional = true;
+            break;
+          }
+        }
+      }
+      if (is_optional) {
         for (size_t i = 0; i < row_num; ++i) {
           size_t idx = (sel == nullptr) ? i : (*sel)[i];
           auto v = ms_vertex_col.get_vertex(idx);
-          if (v.vid_ == std::numeric_limits<vid_t>::max()) {
+          if (v.vid_ == std::numeric_limits<vid_t>::max() ||
+              typed_columns[v.label_] == nullptr) {
             builder.push_back_null();
           } else {
-            builder.push_back_opt(typed_columns[v.label_]->get_view(v.vid_));
+            if constexpr (std::is_same_v<T, std::string>) {
+              builder.push_back_opt(
+                  std::string(typed_columns[v.label_]->get_view(v.vid_)));
+            } else {
+              builder.push_back_opt(typed_columns[v.label_]->get_view(v.vid_));
+            }
           }
         }
       } else {
         for (size_t i = 0; i < row_num; ++i) {
           size_t idx = (sel == nullptr) ? i : (*sel)[i];
           auto v = ms_vertex_col.get_vertex(idx);
-          builder.push_back_opt(typed_columns[v.label_]->get_view(v.vid_));
+          if constexpr (std::is_same_v<T, std::string>) {
+            builder.push_back_opt(
+                std::string(typed_columns[v.label_]->get_view(v.vid_)));
+          } else {
+            builder.push_back_opt(typed_columns[v.label_]->get_view(v.vid_));
+          }
         }
       }
     }
@@ -356,6 +404,7 @@ class BindedEdgeRecordPropertyExpr : public RecordExprBase {
 #define TYPE_DISPATCHER(enum_val, cpp_type) \
   case DataTypeId::enum_val:                \
     return typed_eval_chunk<cpp_type>(ctx, sel);
+      FOR_EACH_DATA_TYPE(TYPE_DISPATCHER)
 #undef TYPE_DISPATCHER
     default:
       LOG(WARNING) << "Unsupported data type for edge property: "
@@ -374,28 +423,55 @@ class BindedEdgeRecordPropertyExpr : public RecordExprBase {
     const auto& labels = edge_col->get_labels();
     size_t row_num = (sel == nullptr) ? ctx.row_num() : sel->size();
     ValueColumnBuilder<T> builder(row_num);
-    foreach_edge(
-        edge_col,
-        [&](size_t, const LabelTriplet& label, Direction, vid_t src, vid_t dst,
-            const void* prop_ptr) {
-          if (src == std::numeric_limits<vid_t>::max() ||
-              dst == std::numeric_limits<vid_t>::max()) {
-            builder.push_back_null();
-            return;
-          }
-          auto it = edge_accessors_.find(label);
-          if (it == edge_accessors_.end()) {
-            builder.push_back_null();
-          } else {
-            auto accessor = it->second;
-            auto prop = accessor.template get_typed_data_from_ptr<T>(prop_ptr);
-            // push back the property value to the builder
-            builder.push_back_opt(prop);
-          }
-        },
-        sel);
-    return builder.finish();
+    if constexpr (std::is_same_v<T, std::string>) {
+      foreach_edge(
+          *edge_col,
+          [&](size_t, const LabelTriplet& label, Direction, vid_t src,
+              vid_t dst, const void* prop_ptr) {
+            if (src == std::numeric_limits<vid_t>::max() ||
+                dst == std::numeric_limits<vid_t>::max()) {
+              builder.push_back_null();
+              return;
+            }
+            auto it = edge_accessors_.find(label);
+            if (it == edge_accessors_.end()) {
+              builder.push_back_null();
+            } else {
+              auto accessor = it->second;
+              auto prop =
+                  accessor.get_typed_data_from_ptr<std::string_view>(prop_ptr);
+              // Assuming the property is stored as a null-terminated string
+              builder.push_back_opt(std::string(prop));
+            }
+          },
+          sel);
+      return builder.finish();
+    } else {
+      foreach_edge(
+          *edge_col,
+          [&](size_t, const LabelTriplet& label, Direction, vid_t src,
+              vid_t dst, const void* prop_ptr) {
+            if (src == std::numeric_limits<vid_t>::max() ||
+                dst == std::numeric_limits<vid_t>::max()) {
+              builder.push_back_null();
+              return;
+            }
+            auto it = edge_accessors_.find(label);
+            if (it == edge_accessors_.end()) {
+              builder.push_back_null();
+            } else {
+              auto accessor = it->second;
+              auto prop =
+                  accessor.template get_typed_data_from_ptr<T>(prop_ptr);
+              // push back the property value to the builder
+              builder.push_back_opt(prop);
+            }
+          },
+          sel);
+      return builder.finish();
+    }
   }
+
   int tag_;
   DataType type_;
   std::map<LabelTriplet, EdgeDataAccessor> edge_accessors_;

@@ -27,7 +27,7 @@ struct NeugScalarFunction : public ScalarFunction {
       std::string name, std::vector<common::LogicalTypeID> parameterTypeIDs,
       common::LogicalTypeID returnTypeID,
       execution::neug_func_exec_t neugExecFunc,
-      execution::neug_func_exec_batch_t /*neugExecBatchFunc*/ = nullptr)
+      execution::neug_func_exec_batch_t neugExecBatchFunc = nullptr)
       : ScalarFunction{std::move(name), std::move(parameterTypeIDs),
                        returnTypeID},
         neugExecFunc{std::move(neugExecFunc)},

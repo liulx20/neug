@@ -220,6 +220,20 @@ std::shared_ptr<IContextColumn> ValueColumn<T>::union_col(
       builder.push_back_opt(v);
     }
   }
+  if (other->is_constant()) {
+    Value val = other->get_elem(0);
+    if (val.IsNull()) {
+      for (size_t i = 0; i < other->size(); ++i) {
+        builder.push_back_null();
+      }
+    } else {
+      T const_val = val.GetValue<T>();
+      for (size_t i = 0; i < other->size(); ++i) {
+        builder.push_back_opt(const_val);
+      }
+    }
+    return builder.finish();
+  }
   const ValueColumn<T>& rhs = *std::dynamic_pointer_cast<ValueColumn<T>>(other);
   if (rhs.is_optional_) {
     for (size_t i = 0; i < rhs.data_.size(); ++i) {

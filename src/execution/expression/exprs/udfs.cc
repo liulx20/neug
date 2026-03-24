@@ -14,6 +14,7 @@
  */
 
 #include "neug/execution/expression/exprs/udfs.h"
+#include "neug/execution/common/columns/columns_utils.h"
 
 namespace neug {
 namespace execution {
@@ -62,6 +63,30 @@ class BindedScalarFunctionExpr : public VertexExprBase,
 
   std::shared_ptr<IContextColumn> eval_chunk(
       const Context& ctx, const select_vector_t* sel) const override {
+    if (batch_func_ == nullptr) {
+      std::vector<std::shared_ptr<IContextColumn>> param_cols;
+      param_cols.reserve(children_.size());
+      for (auto& ch : children_) {
+        param_cols.emplace_back(
+            ch->Cast<RecordExprBase>().eval_chunk(ctx, sel));
+      }
+      size_t row_num = ctx.row_num();
+      auto builder = ColumnsUtils::create_builder(ret_type_);
+      for (size_t i = 0; i < row_num; ++i) {
+        std::vector<Value> params;
+        params.reserve(children_.size());
+        for (auto& col : param_cols) {
+          params.emplace_back(col->get_elem(i));
+        }
+        Value val = func_(params);
+        if (val.IsNull()) {
+          builder->push_back_null();
+        } else {
+          builder->push_back_elem(val);
+        }
+      }
+      return builder->finish();
+    }
     std::vector<std::shared_ptr<IContextColumn>> param_cols;
     param_cols.reserve(children_.size());
     for (auto& ch : children_) {

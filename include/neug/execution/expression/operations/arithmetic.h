@@ -69,45 +69,46 @@ struct ArithmeticDispatcher {
   static void execute(const IContextColumn& left, const IContextColumn& right,
                       size_t row_num, const ::common::Arithmetic& logic,
                       ValueColumnBuilder<TR>& result) {
-    if (left.elem_type() == right.elem_type()) {
-      switch (left.elem_type().id()) {
+    if constexpr (std::is_same_v<TR, interval_t>) {
+      if (left.elem_type().id() == DataTypeId::kTimestampMs &&
+          right.elem_type().id() == DataTypeId::kTimestampMs &&
+          logic == ::common::Arithmetic::SUB) {
+        dispatch_constant<timestamp_ms_t, timestamp_ms_t, interval_t,
+                          SubtractOperator>(left, right, row_num, logic,
+                                            result);
+      } else if (left.elem_type().id() == DataTypeId::kDate &&
+                 right.elem_type().id() == DataTypeId::kDate &&
+                 logic == ::common::Arithmetic::SUB) {
+        dispatch_constant<date_t, date_t, interval_t, SubtractOperator>(
+            left, right, row_num, logic, result);
+      } else {
+        LOG(FATAL)
+            << "Unsupported data type combination for interval arithmetic: "
+            << left.elem_type().ToString() << " and "
+            << right.elem_type().ToString() << " with operation "
+            << static_cast<int>(logic);
+      }
+    } else {
+      if (left.elem_type() == right.elem_type()) {
+        switch (left.elem_type().id()) {
 #define TYPE_DISPATCHER(enum_val, cpp_type)                                    \
   case DataTypeId::enum_val:                                                   \
     if constexpr (std::is_same_v<cpp_type, TR>) {                              \
       dispatch_arithmetic<cpp_type, cpp_type, TR>(left, right, row_num, logic, \
                                                   result);                     \
-    }
-        break;
-        FOR_EACH_NUMERIC_DATA_TYPE(TYPE_DISPATCHER)
+    }                                                                          \
+    break;
+          FOR_EACH_NUMERIC_DATA_TYPE(TYPE_DISPATCHER)
 #undef TYPE_DISPATCHER
-      default:
-        LOG(FATAL) << "Unsupported data type for arithmetic operation: "
-                   << left.elem_type().ToString();
-      }
-    } else {
-      /**
-      if (left.elem_type().id() == DataTypeId::kDate &&
-          right.elem_type().id() == DataTypeId::kInterval) {
-        dispatch_arithmetic<date_t, interval_t, TR>(left, right, row_num, logic,
-                                                    result);
-      } else if (left.elem_type().id() == DataTypeId::kInterval &&
-                 right.elem_type().id() == DataTypeId::kDate) {
-        dispatch_arithmetic<interval_t, date_t, TR>(left, right, row_num, logic,
-                                                    result);
-      } else if (left.elem_type().id() == DataTypeId::kTimestampMs &&
-                 right.elem_type().id() == DataTypeId::kInterval) {
-        dispatch_arithmetic<timestamp_ms_t, interval_t, TR>(
-            left, right, row_num, logic, result);
-      } else if (left.elem_type().id() == DataTypeId::kInterval &&
-                 right.elem_type().id() == DataTypeId::kTimestampMs) {
-        dispatch_arithmetic<interval_t, timestamp_ms_t, TR>(
-            left, right, row_num, logic, result);
+        default:
+          LOG(FATAL) << "Unsupported data type for arithmetic operation: "
+                     << left.elem_type().ToString();
+        }
       } else {
-        LOG(FATAL)
-            << "Unsupported data type combination for arithmetic operation: "
-            << left.elem_type().ToString() << " vs "
-            << right.elem_type().ToString();
-      }*/
+        LOG(FATAL) << "Mismatched data types for arithmetic operation: "
+                   << left.elem_type().ToString() << " and "
+                   << right.elem_type().ToString();
+      }
     }
   }
 

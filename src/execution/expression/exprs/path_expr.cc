@@ -95,12 +95,12 @@ class BindedPathRelationsExpr : public RecordExprBase {
     for (const auto& edge : edges) {
       edge_values.push_back(Value::EDGE(edge));
     }
-    return Value::LIST(DataType::List(DataType::EDGE), std::move(edge_values));
+    return Value::LIST(DataType::EDGE, std::move(edge_values));
   }
 
   std::shared_ptr<IContextColumn> eval_chunk(
       const Context& ctx, const select_vector_t* sel) const override {
-    ListColumnBuilder builder(DataType::List(DataType::EDGE));
+    ListColumnBuilder builder(DataType::EDGE);
     auto path_col = std::dynamic_pointer_cast<PathColumn>(
         path_expr_->Cast<RecordExprBase>().eval_chunk(ctx, sel));
     size_t row_num = (sel == nullptr) ? ctx.row_num() : sel->size();
@@ -115,8 +115,8 @@ class BindedPathRelationsExpr : public RecordExprBase {
         for (const auto& edge : edges) {
           edge_values.push_back(Value::EDGE(edge));
         }
-        builder.push_back_elem(Value::LIST(DataType::List(DataType::EDGE),
-                                           std::move(edge_values)));
+        builder.push_back_elem(
+            Value::LIST(DataType::EDGE, std::move(edge_values)));
       }
     }
     return builder.finish();

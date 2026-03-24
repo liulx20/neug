@@ -213,7 +213,8 @@ struct GeneralExpr : public ProjectExprBase {
       : graph(igraph), expr(std::move(expr)), type(type) {}
 
   std::shared_ptr<IContextColumn> evaluate(const Context& ctx) override {
-    auto column_builder = ColumnsUtils::create_builder(type);
+    return expr->Cast<RecordExprBase>().eval_chunk(ctx);
+    /**auto column_builder = ColumnsUtils::create_builder(type);
     column_builder->reserve(ctx.row_num());
     const auto& e = expr->Cast<RecordExprBase>();
 
@@ -225,7 +226,7 @@ struct GeneralExpr : public ProjectExprBase {
         column_builder->push_back_elem(val);
       }
     }
-    return column_builder->finish();
+    return column_builder->finish();*/
   }
 
   bool order_by_limit(const Context& ctx, bool asc, size_t limit,

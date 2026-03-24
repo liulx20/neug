@@ -75,49 +75,60 @@ class BindedCaseWhenExpr : public VertexExprBase,
 
   std::shared_ptr<IContextColumn> eval_chunk(
       const Context& ctx, const select_vector_t* sel) const override {
-    return nullptr;
-    /**  auto builder = ColumnsUtils::create_builder(type_);
-     select_vector_t true_sel, false_sel;
-     for (const auto& when_then : when_then_exprs_) {
-       auto when_col =
-           when_then.first->Cast<RecordExprBase>().eval_chunk(ctx, sel);
-       auto bcol = dynamic_cast<ValueColumn<bool>*>(when_col.get());
-       true_sel.clear();
-       false_sel.clear();
-       if (bcol->is_optional()) {
-         for (size_t i = 0; i < bcol->size(); ++i) {
-           if (bcol->has_value(i) && bcol->get_value(i)) {
-             true_sel.push_back(sel ? (*sel)[i] : i);
-           } else {
-             false_sel.push_back(sel ? (*sel)[i] : i);
-           }
-         }
-       } else {
-         for (size_t i = 0; i < bcol->size(); ++i) {
-           if (bcol->get_value(i)) {
-             true_sel.push_back(sel ? (*sel)[i] : i);
-           } else {
-             false_sel.push_back(sel ? (*sel)[i] : i);
-           }
-         }
-       }
-       if (true_sel.empty()) {
-         continue;
-       }
-       auto then_col =
-           when_then.second->Cast<RecordExprBase>().eval_chunk(ctx, &true_sel);
-       // builder->push_back_elem(then_col, true_sel);
-       sel = &false_sel;
-       if (false_sel.empty()) {
-         break;
-       }
-     }
+    auto builder = ColumnsUtils::create_builder(type_);
+    for (size_t i = 0; i < ctx.row_num(); ++i) {
+      size_t idx = sel ? (*sel)[i] : i;
+      Value val = eval_record(ctx, idx);
+      if (val.IsNull()) {
+        builder->push_back_null();
+      } else {
+        builder->push_back_elem(val);
+      }
+      // builder->push_back_elem(val);
+    }
+    return builder->finish();
+    /**
+    select_vector_t true_sel, false_sel;
+    for (const auto& when_then : when_then_exprs_) {
+      auto when_col =
+          when_then.first->Cast<RecordExprBase>().eval_chunk(ctx, sel);
+      auto bcol = dynamic_cast<ValueColumn<bool>*>(when_col.get());
+      true_sel.clear();
+      false_sel.clear();
+      if (bcol->is_optional()) {
+        for (size_t i = 0; i < bcol->size(); ++i) {
+          if (bcol->has_value(i) && bcol->get_value(i)) {
+            true_sel.push_back(sel ? (*sel)[i] : i);
+          } else {
+            false_sel.push_back(sel ? (*sel)[i] : i);
+          }
+        }
+      } else {
+        for (size_t i = 0; i < bcol->size(); ++i) {
+          if (bcol->get_value(i)) {
+            true_sel.push_back(sel ? (*sel)[i] : i);
+          } else {
+            false_sel.push_back(sel ? (*sel)[i] : i);
+          }
+        }
+      }
+      if (true_sel.empty()) {
+        continue;
+      }
+      auto then_col =
+          when_then.second->Cast<RecordExprBase>().eval_chunk(ctx, &true_sel);
+      // builder->push_back_elem(then_col, true_sel);
+      sel = &false_sel;
+      if (false_sel.empty()) {
+        break;
+      }
+    }
 
-     if (!sel->empty()) {
-       auto else_col = else_expr_->Cast<RecordExprBase>().eval_chunk(ctx, sel);
-       // builder->push_back_elem(else_col, *sel);
-     }
-     return builder->finish();*/
+    if (!sel->empty()) {
+      auto else_col = else_expr_->Cast<RecordExprBase>().eval_chunk(ctx, sel);
+      builder->push_back_elem(else_col, *sel);
+    }
+    return builder->finish();*/
   }
 
  private:

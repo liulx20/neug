@@ -19,8 +19,9 @@ namespace neug {
 namespace execution {
 
 std::shared_ptr<IContextColumn> ConstExpr::eval_chunk(
-    const Context& ctx, const select_vector_t*) const {
-  return std::make_shared<ConstColumn>(inner_);
+    const Context& ctx, const select_vector_t* sel) const {
+  size_t row_num = (sel == nullptr) ? ctx.row_num() : sel->size();
+  return std::make_shared<ConstColumn>(inner_, row_num);
 }
 std::unique_ptr<BindedExprBase> ConstExpr::bind(
     const IStorageInterface* storage, const ParamsMap& params) const {
