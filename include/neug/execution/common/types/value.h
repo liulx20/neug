@@ -341,6 +341,30 @@ struct ValueConverter<std::string> {
   static DataType type() { return DataType(DataTypeId::kVarchar); }
   static std::string name() { return "string"; }
   static std::string typed_from_string(const std::string& str) { return str; }
+  template <typename T>
+  static bool cast(const T& input, std::string& output) {
+    if constexpr (std::is_same_v<T, std::string>) {
+      output = input;
+      return true;
+    } else if constexpr (std::is_same_v<T, Date>) {
+      output = input.to_string();
+      return true;
+    } else if constexpr (std::is_same_v<T, DateTime>) {
+      output = input.to_string();
+      return true;
+    } else if constexpr (std::is_same_v<T, Interval>) {
+      output = input.to_string();
+      return true;
+    } else if constexpr (std::is_same_v<T, bool>) {
+      output = input ? "true" : "false";
+      return true;
+    } else if constexpr (std::is_arithmetic_v<T>) {
+      output = std::to_string(input);
+      return true;
+    } else {
+      return false;
+    }
+  }
 };
 
 template <>

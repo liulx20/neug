@@ -15,6 +15,9 @@
 
 #include "neug/execution/expression/exprs/logical_expr.h"
 #include "neug/execution/common/columns/value_columns.h"
+#include "neug/execution/expression/operations/comparsion.h"
+#include "neug/execution/expression/operations/expr_executors.h"
+#include "neug/execution/expression/operations/logical.h"
 
 #include <regex>
 
@@ -47,6 +50,31 @@ class BindedUnaryLogicalExpr : public VertexExprBase,
     const auto& val =
         operand_->Cast<EdgeExprBase>().eval_edge(label, src, dst, data_ptr);
     return eval_impl(logical_, val);
+  }
+
+  std::shared_ptr<IContextColumn> eval_chunk(
+      const Context& ctx, const select_vector_t* offsets) const override {
+    auto operand_col =
+        operand_->Cast<RecordExprBase>().eval_chunk(ctx, offsets);
+    ValueColumnBuilder<bool> result;
+    size_t row_num = ctx.row_num();
+    if (logical_ == ::common::Logical::NOT) {
+      if (operand_col->is_constant()) {
+        UnaryExecutor<bool, bool, UnarySingleArgumentOperatorWrapper,
+                      NotOperator, false>::evaluate(*operand_col, row_num,
+                                                    result);
+      } else {
+        UnaryExecutor<bool, bool, UnarySingleArgumentOperatorWrapper,
+                      NotOperator, false>::evaluate(*operand_col, row_num,
+                                                    result);
+      }
+    } else if (logical_ == ::common::Logical::ISNULL) {
+      IsNullExecutor<false>::evaluate(*operand_col, row_num, result);
+    } else {
+      LOG(FATAL) << "Unsupported unary logical operation in chunk evaluation: "
+                 << static_cast<int>(logical_);
+    }
+    return result.finish();
   }
 
  private:
@@ -133,6 +161,27 @@ class BindedBinaryLogicalExpr : public VertexExprBase,
         rhs_->Cast<EdgeExprBase>().eval_edge(label, src, dst, data_ptr));
   }
 
+  std::shared_ptr<IContextColumn> eval_chunk(
+      const Context& ctx, const select_vector_t* offsets) const override {
+    auto left_col = lhs_->Cast<RecordExprBase>().eval_chunk(ctx, offsets);
+    auto right_col = rhs_->Cast<RecordExprBase>().eval_chunk(ctx, offsets);
+    ValueColumnBuilder<bool> result;
+    if (logical_ == ::common::Logical::LT ||
+        logical_ == ::common::Logical::LE ||
+        logical_ == ::common::Logical::GT ||
+        logical_ == ::common::Logical::GE ||
+        logical_ == ::common::Logical::EQ ||
+        logical_ == ::common::Logical::NE) {
+      ComparisonDispatcher::execute(*left_col, *right_col, ctx.row_num(),
+                                    logical_, result);
+      return result.finish();
+    } else {
+      LOG(FATAL) << "Unsupported binary logical operation in chunk evaluation: "
+                 << static_cast<int>(logical_);
+      return result.finish();
+    }
+  }
+
  private:
   std::unique_ptr<BindedExprBase> lhs_;
   std::unique_ptr<BindedExprBase> rhs_;
@@ -175,6 +224,16 @@ class BindedAndExpr : public VertexExprBase,
       return Value::BOOLEAN(false);
     }
     return rhs_->Cast<EdgeExprBase>().eval_edge(label, src, dst, data_ptr);
+  }
+
+  std::shared_ptr<IContextColumn> eval_chunk(
+      const Context& ctx, const select_vector_t* offsets) const override {
+    auto left_col = lhs_->Cast<RecordExprBase>().eval_chunk(ctx, offsets);
+    auto right_col = rhs_->Cast<RecordExprBase>().eval_chunk(ctx, offsets);
+    ValueColumnBuilder<bool> result;
+    size_t row_num = ctx.row_num();
+    TemplatedLogical<TernaryAnd>(*left_col, *right_col, row_num, result);
+    return result.finish();
   }
 
  private:
@@ -221,6 +280,16 @@ class BindedOrExpr : public VertexExprBase,
       return Value::BOOLEAN(true);
     }
     return rhs_->Cast<EdgeExprBase>().eval_edge(label, src, dst, data_ptr);
+  }
+
+  std::shared_ptr<IContextColumn> eval_chunk(
+      const Context& ctx, const select_vector_t* offsets) const override {
+    auto left_col = lhs_->Cast<RecordExprBase>().eval_chunk(ctx, offsets);
+    auto right_col = rhs_->Cast<RecordExprBase>().eval_chunk(ctx, offsets);
+    ValueColumnBuilder<bool> result;
+    size_t row_num = ctx.row_num();
+    TemplatedLogical<TernaryOr>(*left_col, *right_col, row_num, result);
+    return result.finish();
   }
 
  private:

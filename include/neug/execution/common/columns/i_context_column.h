@@ -100,6 +100,8 @@ class IContextColumn {
                << ", return false by default";
     return false;
   }
+
+  virtual bool is_constant() const { return false; }
 };
 
 class IContextColumnBuilder {

@@ -39,6 +39,10 @@
 #include "neug/execution/common/types/value.h"
 #include "neug/utils/exception/exception.h"
 
+#include "neug/execution/common/columns/const_column.h"
+#include "neug/execution/common/columns/value_columns.h"
+#include "neug/execution/expression/operations/column_cast.h"
+
 using namespace neug::common;
 using namespace neug::binder;
 
@@ -749,8 +753,8 @@ static std::unique_ptr<ScalarFunction> bindCastToDateFunction(
     break;
   case LogicalTypeID::TIMESTAMP_TZ:
   case LogicalTypeID::TIMESTAMP:
-    func = ScalarFunction::UnaryExecFunction<neug::common::timestamp_t, DST_TYPE,
-                                             CastToDate, EXECUTOR>;
+    func = ScalarFunction::UnaryExecFunction<neug::common::timestamp_t,
+                                             DST_TYPE, CastToDate, EXECUTOR>;
     break;
   // LCOV_EXCL_START
   default:
@@ -788,8 +792,9 @@ static std::unique_ptr<ScalarFunction> bindCastToTimestampFunction(
   } break;
   case LogicalTypeID::TIMESTAMP_TZ:
   case LogicalTypeID::TIMESTAMP: {
-    func = ScalarFunction::UnaryExecFunction<neug::common::timestamp_t, DST_TYPE,
-                                             CastBetweenTimestamp, EXECUTOR>;
+    func =
+        ScalarFunction::UnaryExecFunction<neug::common::timestamp_t, DST_TYPE,
+                                          CastBetweenTimestamp, EXECUTOR>;
   } break;
   default:
     THROW_CONVERSION_EXCEPTION(
@@ -1032,14 +1037,73 @@ static execution::Value castFunc(const std::vector<execution::Value>& args) {
   return execution::Value(DataType::SQLNULL);
 }
 
+static std::shared_ptr<execution::IContextColumn> batchCastFunc(
+    const std::vector<std::shared_ptr<execution::IContextColumn>>& args) {
+  assert(args.size() == 2);
+  if (args[1]->is_constant()) {
+    const auto& type = args[1]->get_elem(0).GetValue<std::string>();
+    if (type == "INT64") {
+      execution::ValueColumnBuilder<int64_t> builder;
+      execution::ColumnCastDispatcher::evaluate(*args[0], args[0]->size(),
+                                                builder);
+      return builder.finish();
+    } else if (type == "INT32") {
+      execution::ValueColumnBuilder<int32_t> builder;
+      execution::ColumnCastDispatcher::evaluate(*args[0], args[0]->size(),
+                                                builder);
+      return builder.finish();
+    } else if (type == "FLOAT") {
+      execution::ValueColumnBuilder<float> builder;
+      execution::ColumnCastDispatcher::evaluate(*args[0], args[0]->size(),
+                                                builder);
+      return builder.finish();
+    } else if (type == "DOUBLE") {
+      execution::ValueColumnBuilder<double> builder;
+      execution::ColumnCastDispatcher::evaluate(*args[0], args[0]->size(),
+                                                builder);
+      return builder.finish();
+    } else if (type == "STRING") {
+      execution::ValueColumnBuilder<std::string> builder;
+      execution::ColumnCastDispatcher::evaluate(*args[0], args[0]->size(),
+                                                builder);
+      return builder.finish();
+    } else if (type == "DATE") {
+      execution::ValueColumnBuilder<neug::Date> builder;
+      execution::ColumnCastDispatcher::evaluate(*args[0], args[0]->size(),
+                                                builder);
+      return builder.finish();
+    } else if (type == "TIMESTAMP") {
+      execution::ValueColumnBuilder<neug::DateTime> builder;
+      execution::ColumnCastDispatcher::evaluate(*args[0], args[0]->size(),
+                                                builder);
+      return builder.finish();
+    } else if (type == "UINT32") {
+      execution::ValueColumnBuilder<uint32_t> builder;
+      execution::ColumnCastDispatcher::evaluate(*args[0], args[0]->size(),
+                                                builder);
+      return builder.finish();
+    } else if (type == "UINT64") {
+      execution::ValueColumnBuilder<uint64_t> builder;
+      execution::ColumnCastDispatcher::evaluate(*args[0], args[0]->size(),
+                                                builder);
+      return builder.finish();
+    } else {
+      LOG(FATAL) << "Unsupported target type for CAST: " << type;
+    }
+  } else {
+    LOG(FATAL) << "Second parameter of CAST function must be a constant.";
+  }
+}
+
 function_set CastAnyFunction::getFunctionSet() {
   function_set result;
   // todo(engine): support cast execution function in NeugScalarFunction
   auto func = std::make_unique<NeugScalarFunction>(
       name,
       std::vector<LogicalTypeID>{LogicalTypeID::ANY, LogicalTypeID::STRING},
-      LogicalTypeID::ANY, std::move(castFunc));
+      LogicalTypeID::ANY, std::move(castFunc), std::move(batchCastFunc));
   func->bindFunc = castBindFunc;
+
   result.push_back(std::move(func));
   return result;
 }

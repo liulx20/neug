@@ -25,6 +25,7 @@
 #include "neug/compiler/function/list/vector_list_functions.h"
 #include "neug/compiler/function/neug_scalar_function.h"
 #include "neug/compiler/function/scalar_function.h"
+#include "neug/execution/common/columns/value_columns.h"
 #include "neug/execution/common/types/value.h"
 
 using namespace neug::common;

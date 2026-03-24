@@ -14,6 +14,8 @@
  */
 
 #include "neug/execution/expression/exprs/arith_expr.h"
+#include "neug/execution/common/columns/columns_utils.h"
+#include "neug/execution/expression/operations/arithmetic.h"
 
 namespace neug {
 namespace execution {
@@ -52,6 +54,30 @@ class BindedArithExpr : public VertexExprBase,
     const auto& rhs_val =
         rhs_->Cast<EdgeExprBase>().eval_edge(label, src, dst, data_ptr);
     return eval_impl(arith_, lhs_val, rhs_val);
+  }
+
+  std::shared_ptr<IContextColumn> eval_chunk(
+      const Context& ctx, const select_vector_t* offsets) const override {
+    auto left_col = lhs_->Cast<RecordExprBase>().eval_chunk(ctx, offsets);
+    auto right_col = rhs_->Cast<RecordExprBase>().eval_chunk(ctx, offsets);
+
+    size_t row_num = ctx.row_num();
+    switch (type_.id()) {
+#define TYPE_DISPATCHER(enum_val, type)                                 \
+  case DataTypeId::enum_val: {                                          \
+    ValueColumnBuilder<type> builder;                                   \
+    ArithmeticDispatcher::execute<type>(*left_col, *right_col, row_num, \
+                                        arith_, builder);               \
+    return builder.finish();                                            \
+  }
+      FOR_EACH_NUMERIC_DATA_TYPE(TYPE_DISPATCHER)
+#undef TYPE_DISPATCHER
+    default:
+      LOG(FATAL) << "Unsupported data type for arithmetic operation in chunk "
+                    "evaluation: "
+                 << type_.ToString();
+      return nullptr;
+    }
   }
 
  private:

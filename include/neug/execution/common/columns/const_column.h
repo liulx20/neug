@@ -54,6 +54,19 @@ class ConstColumn : public IContextColumn {
 
   bool has_value(size_t idx) const override { return !val_.IsNull(); }
 
+  template <typename T>
+  T get_value() const {
+    if constexpr (std::is_same_v<T, std::string_view>) {
+      return val_.GetValue<std::string>();
+    } else {
+      return val_.GetValue<T>();
+    }
+  }
+
+  bool is_null() const { return val_.IsNull(); }
+
+  bool is_constant() const override { return true; }
+
  private:
   Value val_;
 };
