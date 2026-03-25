@@ -279,6 +279,34 @@ std::shared_ptr<IContextColumn> MLVertexColumn::optional_shuffle(
   return builder.finish();
 }
 
+std::shared_ptr<IContextColumn> MLVertexColumn::union_col(
+    std::shared_ptr<IContextColumn> other) const {
+  CHECK(other->column_type() == ContextColumnType::kVertex);
+
+  auto col = dynamic_cast<const IVertexColumn*>(other.get());
+  std::set<label_t> labels_set = col->get_labels_set();
+  for (auto label : labels_) {
+    labels_set.insert(label);
+  }
+  MLVertexColumnBuilderOpt builder(labels_set);
+  for (size_t i = 0; i < size(); ++i) {
+    if (vertices_[i].vid_ != std::numeric_limits<vid_t>::max()) {
+      builder.push_back_vertex(vertices_[i]);
+    } else {
+      builder.push_back_null();
+    }
+  }
+  for (size_t i = 0; i < col->size(); ++i) {
+    auto v = col->get_vertex(i);
+    if (v.vid_ != std::numeric_limits<vid_t>::max()) {
+      builder.push_back_vertex(v);
+    } else {
+      builder.push_back_null();
+    }
+  }
+  return builder.finish();
+}
+
 bool MLVertexColumn::generate_dedup_offset(std::vector<size_t>& offsets) const {
   offsets.clear();
   std::set<VertexRecord> vset;

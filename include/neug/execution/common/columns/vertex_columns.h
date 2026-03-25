@@ -385,6 +385,9 @@ class MLVertexColumn : public IVertexColumn {
 
   bool generate_dedup_offset(select_vector_t& offsets) const override;
 
+  std::shared_ptr<IContextColumn> union_col(
+      std::shared_ptr<IContextColumn> other) const override;
+
  private:
   friend class MLVertexColumnBuilder;
   friend class MLVertexColumnBuilderOpt;

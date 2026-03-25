@@ -49,6 +49,7 @@ struct VertexPropertyExpr : public ProjectExprBase {
         property_name_(property_name) {}
 
   std::shared_ptr<IContextColumn> evaluate(const Context& ctx) override {
+    return nullptr;
     auto col = ctx.get(tag_);
     if (col->is_optional() ||
         col->column_type() != ContextColumnType::kVertex) {

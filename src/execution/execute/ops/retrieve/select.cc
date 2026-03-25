@@ -20,6 +20,7 @@
 #include "neug/storages/graph/graph_interface.h"
 #include "neug/utils/property/types.h"
 
+#include "neug/execution/common/columns/value_columns.h"
 #include "neug/execution/common/columns/vertex_columns.h"
 #include "neug/execution/expression/predicates.h"
 
@@ -103,9 +104,27 @@ class SelectOpr : public IOperator {
       neug::execution::Context&& ctx,
       neug::execution::OprTimer* timer) override {
     auto expr = pred_->bind(&graph, params);
+    auto col = expr->Cast<RecordExprBase>().eval_chunk(ctx);
+    const auto& casted_col = dynamic_cast<const ValueColumn<bool>&>(*col);
+    select_vector_t offsets;
+    if (casted_col.is_optional()) {
+      for (size_t i = 0; i < casted_col.size(); ++i) {
+        if (casted_col.has_value(i) && casted_col.get_value(i)) {
+          offsets.push_back(i);
+        }
+      }
+    } else {
+      for (size_t i = 0; i < casted_col.size(); ++i) {
+        if (casted_col.get_value(i)) {
+          offsets.push_back(i);
+        }
+      }
+    }
+    ctx.reshuffle(offsets);
+    return ctx;
 
-    neug::execution::GeneralPred expr_wrapper(std::move(expr));
-    return Select::select(std::move(ctx), expr_wrapper);
+    // neug::execution::GeneralPred expr_wrapper(std::move(expr));
+    // return Select::select(std::move(ctx), expr_wrapper);
   }
 
  private:
@@ -116,14 +135,14 @@ neug::result<OpBuildResultT> SelectOprBuilder::Build(
     const neug::Schema& schema, const ContextMeta& ctx_meta,
     const physical::PhysicalPlan& plan, int op_idx) {
   auto opr = plan.plan(op_idx).opr().select();
-  auto type = parse_sp_pred(opr.predicate());
-  const auto& op2 = opr.predicate().operators(2);
+  // auto type = parse_sp_pred(opr.predicate());
+  //  const auto& op2 = opr.predicate().operators(2);
 
   std::unique_ptr<neug::execution::ExprBase> pred =
       neug::execution::parse_expression(opr.predicate(), ctx_meta,
                                         neug::execution::VarType::kRecord);
   ContextMeta ret_meta = ctx_meta;
-  if (type == SPPredicateType::kPropertyNE && op2.has_param()) {
+  /**if (type == SPPredicateType::kPropertyNE && op2.has_param()) {
     auto var = opr.predicate().operators(0).var();
     int tag = var.has_tag() ? var.tag().id() : -1;
     if (var.has_property()) {
@@ -137,7 +156,7 @@ neug::result<OpBuildResultT> SelectOprBuilder::Build(
                               ret_meta);
       }
     }
-  }
+  }*/
 
   return std::make_pair(std::make_unique<SelectOpr>(std::move(pred)), ret_meta);
 }
