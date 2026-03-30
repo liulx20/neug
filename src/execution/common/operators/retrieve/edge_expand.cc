@@ -122,6 +122,9 @@ neug::result<Context> EdgeExpand::expand_count(
     return ret;
   }
   foreach_vertex(*vertex_col, [&](size_t index, label_t label, vid_t v) {
+    if (v == graph.kInvalidVid) {
+      return;
+    }
     if (mps.count(label)) {
       for (auto& view : mps.at(label)) {
         auto es = view.get_edges(v);
