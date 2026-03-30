@@ -520,6 +520,7 @@ neug::result<OpBuildResultT> ExpandCountFuseBuilder::Build(
   eep.v_tag = v_tag;
   eep.labels = parse_label_triplets(plan.plan(op_idx).meta_data(0));
   eep.dir = parse_direction(edge_opr.direction());
+  eep.is_optional = edge_opr.is_optional();
   int alias = func.has_alias() ? func.alias().value() : -1;
   eep.alias = alias;
   ContextMeta meta;
