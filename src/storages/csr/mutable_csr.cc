@@ -181,41 +181,14 @@ void MutableCsr<EDATA_T>::dump(const std::string& name,
 
   degree_list.dump(new_snapshot_dir + "/" + name + ".deg");
 
-  FILE* fout = fopen((new_snapshot_dir + "/" + name + ".nbr").c_str(), "wb");
-  std::string filename = new_snapshot_dir + "/" + name + ".nbr";
-  if (fout == nullptr) {
-    std::stringstream ss;
-    ss << "Failed to open nbr list " << filename << ", " << strerror(errno);
-    LOG(ERROR) << ss.str();
-    throw std::runtime_error(ss.str());
-  }
+  BufferWriter writer(new_snapshot_dir + "/" + name + ".nbr");
 
   for (size_t i = 0; i < vnum; ++i) {
-    size_t ret{};
-    if ((ret = fwrite(adj_list_buffer_[i], sizeof(nbr_t), adj_list_capacity_[i],
-                      fout)) != static_cast<size_t>(adj_list_capacity_[i])) {
-      std::stringstream ss;
-      ss << "Failed to write nbr list " << filename << ", expected "
-         << adj_list_capacity_[i] << ", got " << ret << ", " << strerror(errno);
-      LOG(ERROR) << ss.str();
-      throw std::runtime_error(ss.str());
-    }
+    writer.write(reinterpret_cast<const char*>(adj_list_buffer_[i]),
+                 adj_list_size_[i] * sizeof(nbr_t));
   }
-  int ret = 0;
-  if ((ret = fflush(fout)) != 0) {
-    std::stringstream ss;
-    ss << "Failed to flush nbr list " << filename << ", error code: " << ret
-       << " " << strerror(errno);
-    LOG(ERROR) << ss.str();
-    throw std::runtime_error(ss.str());
-  }
-  if ((ret = fclose(fout)) != 0) {
-    std::stringstream ss;
-    ss << "Failed to close nbr list " << filename << ", error code: " << ret
-       << " " << strerror(errno);
-    LOG(ERROR) << ss.str();
-    throw std::runtime_error(ss.str());
-  }
+  writer.flush();
+  writer.close();
 }
 
 template <typename EDATA_T>

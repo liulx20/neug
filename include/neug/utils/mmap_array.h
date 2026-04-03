@@ -506,18 +506,49 @@ class mmap_array<std::string_view> {
 
   void dump(const std::string& filename) {
     // Compact before dumping to reclaim unused space
-    auto plan = prepare_compaction_plan();
-    size_t effective_size = plan.total_size - plan.reused_size;
-    bool should_stream =
-        !data_.is_sync_to_file() && effective_size < data_.size();
-    if (should_stream) {
-      stream_compact_and_dump(plan, filename + ".data", filename + ".items");
-      return;
+    // auto plan = prepare_compaction_plan();
+    // size_t effective_size = plan.total_size - plan.reused_size;
+    // bool should_stream =
+    //  !data_.is_sync_to_file() && effective_size < data_.size();
+    // if (should_stream) {
+    // stream_compact_and_dump(plan, filename + ".data", filename + ".items");
+    // return;
+    // }
+
+    // compact();
+    // items_.dump(filename + ".items");
+    // data_.dump(filename + ".data");
+
+    auto datas_file = filename + ".data";
+    auto items_file = filename + ".items";
+
+    BufferWriter fout_data(datas_file);
+    BufferWriter fout_items(items_file);
+    size_t offset = 0;
+    for (size_t i = 0; i < items_.size(); ++i) {
+      const string_item& item = items_.get(i);
+      if (item.length > 0) {
+        fout_data.write(data_.data() + item.offset, item.length);
+        fout_items.write(reinterpret_cast<const char*>(&item), sizeof(item));
+      } else {
+        string_item empty_item = {0, 0};
+        fout_items.write(reinterpret_cast<const char*>(&empty_item),
+                         sizeof(empty_item));
+      }
+    }
+    fout_data.close();
+    fout_items.close();
+    size_t data_file_size = offset;
+    // ftruncate data file to actual data size
+    int rt = truncate(datas_file.c_str(), data_file_size);
+    if (rt != 0) {
+      std::stringstream ss;
+      ss << "Failed to truncate file [ " << datas_file << " ], "
+         << strerror(errno);
+      LOG(ERROR) << ss.str();
+      THROW_RUNTIME_ERROR(ss.str());
     }
 
-    compact();
-    items_.dump(filename + ".items");
-    data_.dump(filename + ".data");
     reset();
   }
 

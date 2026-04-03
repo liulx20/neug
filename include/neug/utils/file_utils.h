@@ -15,7 +15,14 @@
 
 #pragma once
 
+#include <assert.h>
+#include <glog/logging.h>
+#include <cstdio>
+#include <cstring>
+#include <sstream>
+#include <stdexcept>
 #include <string>
+#include <vector>
 
 namespace neug {
 
@@ -49,5 +56,76 @@ void write_statistic_file(const std::string& file_path, size_t capacity,
 
 void read_statistic_file(const std::string& file_path, size_t& capacity,
                          size_t& size);
+
+struct BufferWriter {
+  FILE* fout;
+  std::vector<char> buffer;
+  size_t buffered_bytes;
+  constexpr static size_t kBufferSize = 4UL << 20;  // 4MB
+
+  BufferWriter(const std::string& filename)
+      : buffer(kBufferSize), buffered_bytes(0) {
+    fout = fopen(filename.c_str(), "wb");
+    if (fout == nullptr) {
+      std::stringstream ss;
+      ss << "Failed to open file " << filename << ", " << strerror(errno);
+      LOG(ERROR) << ss.str();
+      throw std::runtime_error(ss.str());
+    }
+  }
+
+  ~BufferWriter() { assert(fout == nullptr); }
+
+  void write(const char* data, size_t bytes) {
+    size_t offset = 0;
+    while (bytes > 0) {
+      size_t space_left = buffer.size() - buffered_bytes;
+      if (space_left == 0) {
+        flush();
+        space_left = buffer.size();
+      }
+      size_t chunk = std::min(space_left, bytes);
+      memcpy(buffer.data() + buffered_bytes, data + offset, chunk);
+      buffered_bytes += chunk;
+      offset += chunk;
+      bytes -= chunk;
+
+      if (buffered_bytes == buffer.size()) {
+        flush();
+      }
+    }
+  }
+
+  void flush() {
+    if (buffered_bytes > 0) {
+      if (fwrite(buffer.data(), 1, buffered_bytes, fout) != buffered_bytes) {
+        std::stringstream ss;
+        ss << "Failed to write to file, error code: " << strerror(errno);
+        LOG(ERROR) << ss.str();
+        throw std::runtime_error(ss.str());
+      }
+      buffered_bytes = 0;
+    }
+  }
+
+  void close() {
+    flush();
+    if (fout != nullptr) {
+      if (fflush(fout) != 0) {
+        std::stringstream ss;
+        ss << "Failed to flush file, error code: " << strerror(errno);
+        LOG(ERROR) << ss.str();
+        throw std::runtime_error(ss.str());
+      }
+      if (fclose(fout) != 0) {
+        std::stringstream ss;
+        ss << "Failed to close file, error code: " << strerror(errno);
+        LOG(ERROR) << ss.str();
+        throw std::runtime_error(ss.str());
+      }
+      fout = nullptr;
+    }
+  }
+};
 
 }  // namespace neug
