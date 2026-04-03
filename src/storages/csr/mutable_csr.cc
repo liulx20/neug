@@ -158,25 +158,20 @@ void MutableCsr<EDATA_T>::dump(const std::string& name,
   size_t vnum = adj_list_buffer_.size();
   dump_meta(new_snapshot_dir + "/" + name);
   mmap_array<int> degree_list;
-  std::vector<int> cap_list;
+
   degree_list.open("", false);
   degree_list.resize(vnum);
-  cap_list.resize(vnum);
   bool need_cap_list = false;
-  size_t offset = 0;
   for (size_t i = 0; i < vnum; ++i) {
-    offset += adj_list_capacity_[i];
-
     degree_list[i] = adj_list_size_[i];
-    cap_list[i] = adj_list_capacity_[i];
-    if (degree_list[i] != cap_list[i]) {
+    if (degree_list[i] != adj_list_capacity_[i]) {
       need_cap_list = true;
     }
   }
 
   if (need_cap_list) {
-    write_file(new_snapshot_dir + "/" + name + ".cap", cap_list.data(),
-               sizeof(int), cap_list.size());
+    write_file(new_snapshot_dir + "/" + name + ".cap",
+               adj_list_capacity_.data(), sizeof(int), vnum);
   }
 
   degree_list.dump(new_snapshot_dir + "/" + name + ".deg");
@@ -185,7 +180,7 @@ void MutableCsr<EDATA_T>::dump(const std::string& name,
 
   for (size_t i = 0; i < vnum; ++i) {
     writer.write(reinterpret_cast<const char*>(adj_list_buffer_[i]),
-                 adj_list_size_[i] * sizeof(nbr_t));
+                 adj_list_capacity_[i] * sizeof(nbr_t));
   }
   writer.flush();
   writer.close();
