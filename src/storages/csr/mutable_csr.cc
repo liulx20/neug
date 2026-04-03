@@ -182,7 +182,6 @@ void MutableCsr<EDATA_T>::dump(const std::string& name,
     writer.write(reinterpret_cast<const char*>(adj_list_buffer_[i]),
                  adj_list_capacity_[i] * sizeof(nbr_t));
   }
-  writer.flush();
   writer.close();
 }
 

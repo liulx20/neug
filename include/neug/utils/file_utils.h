@@ -16,7 +16,9 @@
 #pragma once
 
 #include <assert.h>
+#include <errno.h>
 #include <glog/logging.h>
+#include <algorithm>
 #include <cstdio>
 #include <cstring>
 #include <sstream>
@@ -61,7 +63,10 @@ struct BufferWriter {
   FILE* fout;
   std::vector<char> buffer;
   size_t buffered_bytes;
-  constexpr static size_t kBufferSize = 4UL << 20;  // 4MB
+  constexpr static size_t kBufferSize = 16UL << 20;  // 16MB
+
+  BufferWriter(const BufferWriter&) = delete;
+  BufferWriter& operator=(const BufferWriter&) = delete;
 
   BufferWriter(const std::string& filename)
       : buffer(kBufferSize), buffered_bytes(0) {
@@ -74,7 +79,13 @@ struct BufferWriter {
     }
   }
 
-  ~BufferWriter() { assert(fout == nullptr); }
+  ~BufferWriter() {
+    try {
+      close();
+    } catch (const std::exception& e) {
+      LOG(ERROR) << "Exception in BufferWriter destructor: " << e.what();
+    }
+  }
 
   void write(const char* data, size_t bytes) {
     size_t offset = 0;

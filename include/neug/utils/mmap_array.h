@@ -511,8 +511,10 @@ class mmap_array<std::string_view> {
     BufferWriter fout_data(datas_file);
     BufferWriter fout_items(items_file);
     size_t offset = 0;
+    size_t byte_size = 0;
     for (size_t i = 0; i < items_.size(); ++i) {
       const string_item& item = items_.get(i);
+      byte_size += item.length;
       if (item.length > 0) {
         string_item new_item = {offset, item.length};
         fout_data.write(data_.data() + item.offset, item.length);
@@ -527,7 +529,7 @@ class mmap_array<std::string_view> {
     }
     fout_data.close();
     fout_items.close();
-    size_t data_file_size = data_.size();
+    size_t data_file_size = std::max(data_.size(), byte_size);
     // ftruncate data file to actual data size
     int rt = truncate(datas_file.c_str(), data_file_size);
     if (rt != 0) {
