@@ -240,6 +240,7 @@ void ImmutableCsr<EDATA_T>::batch_delete_vertices(
     adj_arr[i] = ptr;
     ptr += deg_arr[i];
   }
+  edge_num_.fetch_sub(removed, std::memory_order_relaxed);
 }
 
 template <typename EDATA_T>
@@ -270,6 +271,7 @@ void ImmutableCsr<EDATA_T>::batch_delete_edges(
         if (write_ptr->neighbor != std::numeric_limits<vid_t>::max() &&
             dst_set.find(write_ptr->neighbor) != dst_set.end()) {
           write_ptr->neighbor = std::numeric_limits<vid_t>::max();
+          edge_num_.fetch_sub(1, std::memory_order_relaxed);
         }
         ++write_ptr;
       }
@@ -300,6 +302,7 @@ void ImmutableCsr<EDATA_T>::batch_delete_edges(
       nbr_t* write_ptr = adj_arr[i];
       for (const auto& offset : iter->second) {
         write_ptr[offset].neighbor = std::numeric_limits<vid_t>::max();
+        edge_num_.fetch_sub(1, std::memory_order_relaxed);
       }
     }
   }
@@ -320,6 +323,7 @@ void ImmutableCsr<EDATA_T>::delete_edge(vid_t src, int32_t offset,
     return;
   }
   nbrs[offset].neighbor = std::numeric_limits<vid_t>::max();
+  edge_num_.fetch_sub(1, std::memory_order_relaxed);
 }
 
 template <typename EDATA_T>
@@ -337,6 +341,7 @@ void ImmutableCsr<EDATA_T>::revert_delete_edge(vid_t src, vid_t nbr,
         "Attempting to revert delete on edge that is not deleted.");
   }
   nbrs[offset].neighbor = nbr;
+  edge_num_.fetch_add(1, std::memory_order_relaxed);
 }
 
 template <typename EDATA_T>
@@ -371,6 +376,7 @@ void ImmutableCsr<EDATA_T>::batch_put_edges(
     auto& nbr = adj_arr[src][old_degree_list[src]++];
     nbr.neighbor = dst_list[i];
     nbr.data = data_list[i];
+    edge_num_.fetch_add(1, std::memory_order_relaxed);
   }
 }
 
@@ -380,6 +386,9 @@ void ImmutableCsr<EDATA_T>::load_meta(const std::string& prefix) {
   if (std::filesystem::exists(meta_file_path)) {
     FILE* meta_file_fd = fopen(meta_file_path.c_str(), "r");
     CHECK_EQ(fread(&unsorted_since_, sizeof(timestamp_t), 1, meta_file_fd), 1);
+    uint64_t edge_num;
+    CHECK_EQ(fread(&edge_num, sizeof(uint64_t), 1, meta_file_fd), 1);
+    edge_num_.store(edge_num);
     fclose(meta_file_fd);
   } else {
     unsorted_since_ = 0;
@@ -391,6 +400,8 @@ void ImmutableCsr<EDATA_T>::dump_meta(const std::string& prefix) const {
   std::string meta_file_path = prefix + ".meta";
   FILE* meta_file_fd = fopen((prefix + ".meta").c_str(), "wb");
   CHECK_EQ(fwrite(&unsorted_since_, sizeof(timestamp_t), 1, meta_file_fd), 1);
+  uint64_t edge_num = edge_num_.load();
+  CHECK_EQ(fwrite(&edge_num, sizeof(uint64_t), 1, meta_file_fd), 1);
   fflush(meta_file_fd);
   fclose(meta_file_fd);
 }
@@ -399,6 +410,7 @@ template <typename EDATA_T>
 void SingleImmutableCsr<EDATA_T>::open(const std::string& name,
                                        const std::string& snapshot_dir,
                                        const std::string& work_dir) {
+  load_meta(snapshot_dir + "/" + name);
   nbr_list_buffer_ = OpenContainer(snapshot_dir + "/" + name + ".snbr",
                                    tmp_dir(work_dir) + "/" + name + ".snbr",
                                    MemoryLevel::kSyncToFile);
@@ -406,6 +418,7 @@ void SingleImmutableCsr<EDATA_T>::open(const std::string& name,
 
 template <typename EDATA_T>
 void SingleImmutableCsr<EDATA_T>::open_in_memory(const std::string& prefix) {
+  load_meta(prefix);
   nbr_list_buffer_ =
       OpenContainer(prefix + ".snbr", "", MemoryLevel::kInMemory);
 }
@@ -413,6 +426,7 @@ void SingleImmutableCsr<EDATA_T>::open_in_memory(const std::string& prefix) {
 template <typename EDATA_T>
 void SingleImmutableCsr<EDATA_T>::open_with_hugepages(
     const std::string& prefix) {
+  load_meta(prefix);
   nbr_list_buffer_ =
       OpenContainer(prefix + ".snbr", "", MemoryLevel::kHugePagePrefered);
 }
@@ -420,7 +434,7 @@ void SingleImmutableCsr<EDATA_T>::open_with_hugepages(
 template <typename EDATA_T>
 void SingleImmutableCsr<EDATA_T>::dump(const std::string& name,
                                        const std::string& new_snapshot_dir) {
-  // TODO: opt with mv
+  dump_meta(new_snapshot_dir + "/" + name);
   nbr_list_buffer_->Dump(new_snapshot_dir + "/" + name + ".snbr");
 }
 
@@ -467,12 +481,14 @@ void SingleImmutableCsr<EDATA_T>::batch_delete_vertices(
       continue;
     }
     nbr_arr[src].neighbor = std::numeric_limits<vid_t>::max();
+    edge_num_.fetch_sub(1, std::memory_order_relaxed);
   }
   for (vid_t i = 0; i < vnum; ++i) {
     auto nbr = nbr_arr[i].neighbor;
     if (nbr != std::numeric_limits<vid_t>::max() &&
         dst_set.find(nbr) != dst_set.end()) {
       nbr_arr[i].neighbor = std::numeric_limits<vid_t>::max();
+      edge_num_.fetch_sub(1, std::memory_order_relaxed);
     }
   }
 }
@@ -490,6 +506,7 @@ void SingleImmutableCsr<EDATA_T>::batch_delete_edges(
     vid_t dst = dst_list[i];
     if (nbr_arr[src].neighbor == dst) {
       nbr_arr[src].neighbor = std::numeric_limits<vid_t>::max();
+      edge_num_.fetch_sub(1, std::memory_order_relaxed);
     }
   }
 }
@@ -506,6 +523,7 @@ void SingleImmutableCsr<EDATA_T>::batch_delete_edges(
     }
     assert(edge.second == 0);
     nbr_arr[src].neighbor = std::numeric_limits<vid_t>::max();
+    edge_num_.fetch_sub(1, std::memory_order_relaxed);
   }
 }
 
@@ -523,6 +541,7 @@ void SingleImmutableCsr<EDATA_T>::delete_edge(vid_t src, int32_t offset,
     return;
   }
   nbr_arr[src].neighbor = std::numeric_limits<vid_t>::max();
+  edge_num_.fetch_sub(1, std::memory_order_relaxed);
 }
 
 template <typename EDATA_T>
@@ -539,6 +558,7 @@ void SingleImmutableCsr<EDATA_T>::revert_delete_edge(vid_t src, vid_t nbr,
         "Attempting to revert delete on edge that is not deleted.");
   }
   nbr_arr[src].neighbor = nbr;
+  edge_num_.fetch_add(1, std::memory_order_relaxed);
 }
 
 template <typename EDATA_T>
@@ -553,9 +573,38 @@ void SingleImmutableCsr<EDATA_T>::batch_put_edges(
       continue;
     }
     auto& nbr = nbr_arr[src];
+    if (nbr.neighbor != std::numeric_limits<vid_t>::max()) {
+      LOG(ERROR) << "Fail to put edge, edge already exists.";
+      continue;
+    }
     nbr.neighbor = dst_list[i];
     nbr.data = data_list[i];
+    edge_num_.fetch_add(1, std::memory_order_relaxed);
   }
+}
+
+template <typename EDATA_T>
+void SingleImmutableCsr<EDATA_T>::load_meta(const std::string& prefix) {
+  std::string meta_file_path = prefix + ".meta";
+  if (std::filesystem::exists(meta_file_path)) {
+    FILE* meta_file_fd = fopen(meta_file_path.c_str(), "r");
+    uint64_t edge_num;
+    CHECK_EQ(fread(&edge_num, sizeof(uint64_t), 1, meta_file_fd), 1);
+    edge_num_.store(edge_num);
+    fclose(meta_file_fd);
+  } else {
+    edge_num_.store(0);
+  }
+}
+
+template <typename EDATA_T>
+void SingleImmutableCsr<EDATA_T>::dump_meta(const std::string& prefix) const {
+  std::string meta_file_path = prefix + ".meta";
+  FILE* meta_file_fd = fopen((prefix + ".meta").c_str(), "wb");
+  uint64_t edge_num = edge_num_.load();
+  CHECK_EQ(fwrite(&edge_num, sizeof(uint64_t), 1, meta_file_fd), 1);
+  fflush(meta_file_fd);
+  fclose(meta_file_fd);
 }
 
 template class ImmutableCsr<int32_t>;
