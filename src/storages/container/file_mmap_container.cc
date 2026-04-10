@@ -68,9 +68,6 @@ void FileSharedMMap::Resize(size_t size) {
   if (size == size_) {
     return;
   }
-  if (mmap_data_ && size_ > 0) {
-    Sync();  // Ensure changes are flushed before resizing
-  }
   size_t real_size = size + sizeof(FileHeader);
   if (mmap_data_ && mmap_size_ > 0) {
     munmapImpl(mmap_data_, mmap_size_);
@@ -98,10 +95,6 @@ void FileSharedMMap::Resize(size_t size) {
   }
   data_ = static_cast<char*>(mmap_data_) + sizeof(FileHeader);
   size_ = mmap_size_ - sizeof(FileHeader);
-  // Recompute and persist the MD5 for the new payload (including any
-  // zero-extended region from ftruncate), so that a subsequent Open()
-  // passes the integrity check.
-  Sync();
 }
 
 void* FileSharedMMap::mmapImpl(const std::string& path, size_t mmap_size) {
@@ -124,7 +117,7 @@ void FileSharedMMap::Sync() {
     return;
   }
   unsigned char md5[MD5_DIGEST_LENGTH];
-  MD5((unsigned char*) this->data_, this->size_, md5);
+  // MD5((unsigned char*) this->data_, this->size_, md5);
   if (memcmp(md5, reinterpret_cast<FileHeader*>(mmap_data_)->data_md5,
              MD5_DIGEST_LENGTH) != 0) {
     memcpy(reinterpret_cast<FileHeader*>(mmap_data_)->data_md5, md5,
