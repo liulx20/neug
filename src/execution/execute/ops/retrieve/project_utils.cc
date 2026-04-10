@@ -317,7 +317,7 @@ struct GeneralProjectExprBuilder : public ProjectExprBuilderBase {
 
 std::unique_ptr<ProjectExprBase> GeneralProjectExprBuilder::build(
     const IStorageInterface& graph, const ParamsMap& params) {
-  auto expr_ptr = expr_ptr_->bind(&graph, params);
+  auto expr_ptr = expr_ptr_->jit_bind(&graph, params);
   auto type = expr_ptr->type();
   return std::make_unique<GeneralExpr>(graph, std::move(expr_ptr), type);
 }

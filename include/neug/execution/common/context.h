@@ -43,6 +43,10 @@ class Context {
 
   const std::shared_ptr<IContextColumn> get(int alias) const;
 
+  const IContextColumn* get_ptr(int alias) const {
+    return columns[alias].get();
+  }
+
   void remove(int alias);
 
   size_t row_num() const;

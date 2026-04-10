@@ -42,6 +42,27 @@ class ExprBase {
   virtual std::unique_ptr<BindedExprBase> bind(
       const IStorageInterface* storage, const ParamsMap& params) const = 0;
   virtual std::string name() const { return "unnamed_expr"; }
+
+  // Attempt JIT compilation for expressions.
+  // Falls back to interpreter-based bind() if JIT is not available or fails.
+  // The var_type parameter determines which eval path to compile:
+  //   kRecord -> record eval, kVertex -> vertex eval, kEdge -> edge eval.
+  std::unique_ptr<BindedExprBase> jit_bind(
+      const IStorageInterface* storage, const ParamsMap& params,
+      VarType var_type = VarType::kRecord) const;
+
+  // Pre-compile the expression tree into a JIT template without binding.
+  // The returned template can be bound later with different storage/params
+  // via jit_bind_with_template(), avoiding redundant JIT compilation.
+  // Returns nullptr if JIT is not available or compilation fails.
+  std::shared_ptr<void> jit_compile(VarType var_type = VarType::kRecord) const;
+
+  // Bind a pre-compiled JIT template with storage/params.
+  // The template should be obtained from jit_compile().
+  // Falls back to interpreter-based bind() if template is null.
+  std::unique_ptr<BindedExprBase> jit_bind_with_template(
+      const std::shared_ptr<void>& jit_template,
+      const IStorageInterface* storage, const ParamsMap& params) const;
 };
 
 class BindedExprBase {
@@ -92,6 +113,12 @@ class VertexExprBase : public virtual BindedExprBase {
   VertexExprBase() { vertex_ptr_ = this; }
   virtual ~VertexExprBase() = default;
   virtual Value eval_vertex(label_t v_label, vid_t v_id) const = 0;
+
+  // Typed eval: write the primitive value directly into out_value,
+  // avoiding Value construction overhead. Returns true if null.
+  // Default implementation falls back to eval_vertex() + Value extraction.
+  virtual bool typed_eval_vertex(label_t v_label, vid_t v_id,
+                                 void* out_value) const;
 };
 
 class EdgeExprBase : public virtual BindedExprBase {
@@ -100,6 +127,11 @@ class EdgeExprBase : public virtual BindedExprBase {
   virtual ~EdgeExprBase() = default;
   virtual Value eval_edge(const LabelTriplet&, vid_t src, vid_t dst,
                           const void*) const = 0;
+
+  // Typed eval: write the primitive value directly into out_value,
+  // avoiding Value construction overhead. Returns true if null.
+  virtual bool typed_eval_edge(const LabelTriplet& label, vid_t src, vid_t dst,
+                               const void* edata, void* out_value) const;
 };
 
 class RecordExprBase : public virtual BindedExprBase {
@@ -107,6 +139,11 @@ class RecordExprBase : public virtual BindedExprBase {
   RecordExprBase() { record_ptr_ = this; }
   virtual ~RecordExprBase() = default;
   virtual Value eval_record(const Context& ctx, size_t idx) const = 0;
+
+  // Typed eval: write the primitive value directly into out_value,
+  // avoiding Value construction overhead. Returns true if null.
+  virtual bool typed_eval_record(const Context& ctx, size_t idx,
+                                 void* out_value) const;
 };
 
 std::unique_ptr<ExprBase> parse_expression(const ::common::Expression& expr,

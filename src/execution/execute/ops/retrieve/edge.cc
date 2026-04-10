@@ -119,7 +119,7 @@ class EdgeExpandVWithEPCmpOpr : public IOperator {
       }
     }
 
-    auto expr = pred_->bind(&graph, params);
+    auto expr = pred_->jit_bind(&graph, params, VarType::kEdge);
     GeneralPred expr_wrapper(std::move(expr));
     EdgePredicate<GeneralPred> pred(expr_wrapper);
     return EdgeExpand::expand_vertex<decltype(pred)>(graph, std::move(ctx),
@@ -147,7 +147,7 @@ class EdgeExpandVOpr : public IOperator {
         dynamic_cast<const StorageReadInterface&>(graph_interface);
 
     if (pred_ != nullptr) {
-      auto expr = pred_->bind(&graph, params);
+      auto expr = pred_->jit_bind(&graph, params, VarType::kEdge);
       GeneralPred expr_wrapper(std::move(expr));
       EdgePredicate pred(expr_wrapper);
       return EdgeExpand::expand_vertex<decltype(pred)>(graph, std::move(ctx),
@@ -205,7 +205,7 @@ class EdgeExpandEOpr : public IOperator {
     if (pred_ == nullptr) {
       return EdgeExpand::expand_edge(graph, std::move(ctx), eep_, DummyPred());
     } else {
-      auto expr = pred_->bind(&graph, params);
+      auto expr = pred_->jit_bind(&graph, params, VarType::kEdge);
       GeneralPred expr_wrapper(std::move(expr));
       EdgePredicate pred(expr_wrapper);
       return EdgeExpand::expand_edge<decltype(pred)>(graph, std::move(ctx),
@@ -258,7 +258,7 @@ class EdgeExpandVWithGPVertexPredOpr : public IOperator {
       neug::execution::OprTimer* timer) override {
     const auto& graph =
         dynamic_cast<const StorageReadInterface&>(graph_interface);
-    auto expr = pred_->bind(&graph, params);
+    auto expr = pred_->jit_bind(&graph, params, VarType::kVertex);
     GeneralPred expr_wrapper(std::move(expr));
     EdgeNbrPredicate vpred(expr_wrapper);
     return EdgeExpand::expand_vertex<EdgeNbrPredicate<GeneralPred>>(

@@ -41,6 +41,7 @@ option(WITH_MIMALLOC "Whether to use mimalloc" ON) # Whether to use mimalloc, de
 # Options to control the building of tools
 option(BUILD_PYTHON "Whether to build python embedded" ON)
 option(BUILD_COMPILER "Whether to build compiler" ON)
+option(BUILD_JIT_EXPRESSION "Whether to build LLVM JIT expression codegen" OFF)
 #---------------------------------------------------------------------------------
 #-------------------------------Compiler related options-------------------------------
 option(NEUG_DEFAULT_REL_STORAGE_DIRECTION "Only store fwd direction in rel tables by default." BOTH)
@@ -193,7 +194,7 @@ if (OPTIMIZE_FOR_HOST AND NOT APPLE)
 endif()
 
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -O0 -g")
-set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3")
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -g")
 #if compiler is gcc
 if (CMAKE_CXX_COMPILER_ID MATCHES "GNU")
     # -Wno-missing-requires: protobuf v29.6 headers use C++20 concepts in port.h
@@ -340,6 +341,12 @@ include_directories(SYSTEM ${CMAKE_SOURCE_DIR}/third_party/fast_float/include)
 
 include(cmake/BuildAbseilThirdParty.cmake)
 build_abseil_as_third_party()
+
+if (BUILD_JIT_EXPRESSION)
+    include(cmake/BuildLLVMAsThirdParty.cmake)
+    build_llvm_as_third_party()
+    add_compile_definitions(NEUG_ENABLE_JIT_EXPRESSION)
+endif()
 
 if(BUILD_TEST)
     enable_testing()

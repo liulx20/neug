@@ -44,7 +44,7 @@ class GetVFromEdgesOpr : public IOperator {
       neug::execution::Context&& ctx,
       neug::execution::OprTimer* timer) override {
     if (pred_ != nullptr) {
-      auto expr = pred_->bind(&graph, params);
+      auto expr = pred_->jit_bind(&graph, params, VarType::kVertex);
       GeneralPred pred(std::move(expr));
       return GetV::get_vertex_from_edges(graph, std::move(ctx), v_params_,
                                          pred);

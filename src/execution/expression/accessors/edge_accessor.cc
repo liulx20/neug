@@ -65,6 +65,49 @@ class BindedEdgePropertyAccessor : public EdgeExprBase {
     return property_to_value(prop);
   }
 
+  bool typed_eval_edge(const LabelTriplet& label, vid_t src, vid_t dst,
+                       const void* data_ptr, void* out_value) const override {
+    auto it = edge_accessors_.find(label);
+    if (it == edge_accessors_.end()) {
+      return true;  // null
+    }
+    const auto& accessor = it->second;
+    switch (type_.id()) {
+    case DataTypeId::kBoolean:
+      *static_cast<bool*>(out_value) =
+          accessor.get_typed_data_from_ptr<bool>(data_ptr);
+      return false;
+    case DataTypeId::kInt32:
+      *static_cast<int32_t*>(out_value) =
+          accessor.get_typed_data_from_ptr<int32_t>(data_ptr);
+      return false;
+    case DataTypeId::kInt64:
+      *static_cast<int64_t*>(out_value) =
+          accessor.get_typed_data_from_ptr<int64_t>(data_ptr);
+      return false;
+    case DataTypeId::kUInt32:
+      *static_cast<uint32_t*>(out_value) =
+          accessor.get_typed_data_from_ptr<uint32_t>(data_ptr);
+      return false;
+    case DataTypeId::kUInt64:
+      *static_cast<uint64_t*>(out_value) =
+          accessor.get_typed_data_from_ptr<uint64_t>(data_ptr);
+      return false;
+    case DataTypeId::kFloat:
+      *static_cast<float*>(out_value) =
+          accessor.get_typed_data_from_ptr<float>(data_ptr);
+      return false;
+    case DataTypeId::kDouble:
+      *static_cast<double*>(out_value) =
+          accessor.get_typed_data_from_ptr<double>(data_ptr);
+      return false;
+    default:
+      break;
+    }
+    // Fallback: go through Property → Value path
+    return EdgeExprBase::typed_eval_edge(label, src, dst, data_ptr, out_value);
+  }
+
   const DataType& type() const override { return type_; }
 
  private:

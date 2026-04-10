@@ -14,6 +14,7 @@
  */
 
 #include "neug/execution/expression/accessors/vertex_accessor.h"
+#include "neug/utils/property/column.h"
 
 namespace neug {
 namespace execution {
@@ -40,6 +41,57 @@ class BindedVertexPropertyAccessor : public VertexExprBase {
     }
     auto val = property_columns_[v_label]->get(v);
     return property_to_value(val);
+  }
+
+  bool typed_eval_vertex(label_t v_label, vid_t v,
+                         void* out_value) const override {
+    if (property_columns_[v_label] == nullptr) {
+      return true;  // null
+    }
+    const auto* col = property_columns_[v_label].get();
+    switch (type_.id()) {
+    case DataTypeId::kBoolean: {
+      auto* typed = reinterpret_cast<const TypedRefColumn<bool>*>(col);
+      *static_cast<bool*>(out_value) = typed->get_view(v);
+      return false;
+    }
+    case DataTypeId::kInt32: {
+      auto* typed = reinterpret_cast<const TypedRefColumn<int32_t>*>(col);
+      *static_cast<int32_t*>(out_value) = typed->get_view(v);
+      return false;
+    }
+    case DataTypeId::kInt64: {
+      auto* typed = reinterpret_cast<const TypedRefColumn<int64_t>*>(col);
+
+      *static_cast<int64_t*>(out_value) = typed->get_view(v);
+      return false;
+    }
+    case DataTypeId::kUInt32: {
+      auto* typed = reinterpret_cast<const TypedRefColumn<uint32_t>*>(col);
+      *static_cast<uint32_t*>(out_value) = typed->get_view(v);
+      return false;
+    }
+    case DataTypeId::kUInt64: {
+      auto* typed = reinterpret_cast<const TypedRefColumn<uint64_t>*>(col);
+      *static_cast<uint64_t*>(out_value) = typed->get_view(v);
+      return false;
+    }
+    case DataTypeId::kFloat: {
+      auto* typed = reinterpret_cast<const TypedRefColumn<float>*>(col);
+      *static_cast<float*>(out_value) = typed->get_view(v);
+      return false;
+    }
+    case DataTypeId::kDouble: {
+      auto* typed = reinterpret_cast<const TypedRefColumn<double>*>(col);
+
+      *static_cast<double*>(out_value) = typed->get_view(v);
+      return false;
+    }
+    default:
+      break;
+    }
+    // Fallback: go through Property → Value path
+    return VertexExprBase::typed_eval_vertex(v_label, v, out_value);
   }
 
   const DataType& type() const override { return type_; }
@@ -72,13 +124,16 @@ class VertexGIdVertexAccessor : public VertexExprBase {
  public:
   explicit VertexGIdVertexAccessor() { type_ = DataType(DataTypeId::kInt64); }
 
-  int64_t typed_eval_vertex(label_t v_label, vid_t v_id) const {
-    return encode_unique_vertex_id(v_label, v_id);
-  }
-
   Value eval_vertex(label_t v_label, vid_t v_id) const override {
     return Value::CreateValue<int64_t>(encode_unique_vertex_id(v_label, v_id));
   }
+
+  bool typed_eval_vertex(label_t v_label, vid_t v_id,
+                         void* out_value) const override {
+    *static_cast<int64_t*>(out_value) = encode_unique_vertex_id(v_label, v_id);
+    return false;  // never null
+  }
+
   const DataType& type() const override { return type_; }
 
  private:

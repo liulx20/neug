@@ -115,9 +115,17 @@ result<QueryResult> QueryProcessor::execute_internal(
     std::shared_ptr<execution::CacheValue> cache_value, AccessMode access_mode,
     const execution::ParamsMap& parameters, int32_t num_threads) {
   StorageAPUpdateInterface graph(g_, 0, allocator_);
-  std::unique_ptr<execution::OprTimer> timer_ptr = nullptr;
+  std::unique_ptr<execution::OprTimer> timer_ptr =
+      std::make_unique<execution::OprTimer>();
+  auto begin = std::chrono::high_resolution_clock::now();
   auto ctx_res = cache_value->pipeline.Execute(graph, execution::Context(),
                                                parameters, timer_ptr.get());
+  LOG(INFO) << "Query execution time: "
+            << std::chrono::duration_cast<std::chrono::microseconds>(
+                   std::chrono::high_resolution_clock::now() - begin)
+                   .count()
+            << " us";
+  timer_ptr->output("", std::cout);
   if (!ctx_res) {
     LOG(ERROR) << "Error in executing query: " << query_string
                << ", error code: " << ctx_res.error().error_code()

@@ -79,7 +79,7 @@ class SelectIdNeOpr : public IOperator {
       }
     }
 
-    auto expr = pred_->bind(&graph_interface, params);
+    auto expr = pred_->jit_bind(&graph_interface, params);
     neug::execution::GeneralPred expr_wrapper(std::move(expr));
     return Select::select(std::move(ctx), expr_wrapper);
   }
@@ -102,10 +102,20 @@ class SelectOpr : public IOperator {
       IStorageInterface& graph, const ParamsMap& params,
       neug::execution::Context&& ctx,
       neug::execution::OprTimer* timer) override {
-    auto expr = pred_->bind(&graph, params);
+    auto expr = pred_->jit_bind(&graph, params);
 
     neug::execution::GeneralPred expr_wrapper(std::move(expr));
     return Select::select(std::move(ctx), expr_wrapper);
+    // auto col0 = dynamic_cast<const IVertexColumn*>(ctx.get(0).get());
+    // auto col1 = dynamic_cast<const IVertexColumn*>(ctx.get(2).get());
+    // std::vector<size_t> offsets;
+    // for (size_t i = 0; i < ctx.row_num(); i++) {
+    // if (col0->get_vertex(i).vid_ != col1->get_vertex(i).vid_) {
+    // offsets.push_back(i);
+    //}
+    //}
+    // ctx.reshuffle(offsets);
+    // return std::move(ctx);
   }
 
  private:
@@ -116,6 +126,7 @@ neug::result<OpBuildResultT> SelectOprBuilder::Build(
     const neug::Schema& schema, const ContextMeta& ctx_meta,
     const physical::PhysicalPlan& plan, int op_idx) {
   auto opr = plan.plan(op_idx).opr().select();
+
   auto type = parse_sp_pred(opr.predicate());
   const auto& op2 = opr.predicate().operators(2);
 

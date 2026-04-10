@@ -31,6 +31,9 @@ class UnaryLogicalExpr : public ExprBase {
   std::unique_ptr<BindedExprBase> bind(const IStorageInterface* storage,
                                        const ParamsMap& params) const override;
 
+  const ExprBase* operand() const { return operand_.get(); }
+  ::common::Logical logical() const { return logical_; }
+
  private:
   std::unique_ptr<ExprBase> operand_;
   DataType type_;
@@ -51,6 +54,10 @@ class BinaryLogicalExpr : public ExprBase {
   std::unique_ptr<BindedExprBase> bind(const IStorageInterface* storage,
                                        const ParamsMap& params) const override;
 
+  const ExprBase* lhs() const { return lhs_.get(); }
+  const ExprBase* rhs() const { return rhs_.get(); }
+  ::common::Logical logical() const { return logical_; }
+
  private:
   std::unique_ptr<ExprBase> lhs_;
   std::unique_ptr<ExprBase> rhs_;
@@ -69,6 +76,9 @@ class WithInExpr : public ExprBase {
   const DataType& type() const override { return type_; }
   std::unique_ptr<BindedExprBase> bind(const IStorageInterface* storage,
                                        const ParamsMap& params) const override;
+
+  const ExprBase* expr() const { return expr_.get(); }
+  const ExprBase* list_expr() const { return list_expr_.get(); }
 
  private:
   std::unique_ptr<ExprBase> expr_;

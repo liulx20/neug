@@ -50,4 +50,7 @@ install_neug_target(neug)
 if (ENABLE_BACKTRACES)
     target_link_libraries(neug PUBLIC cpptrace::cpptrace)
 endif()
+if (BUILD_JIT_EXPRESSION)
+    target_link_libraries(neug PRIVATE ${LLVM_LIBRARIES})
+endif()
 

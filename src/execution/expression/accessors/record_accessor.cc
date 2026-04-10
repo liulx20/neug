@@ -15,6 +15,8 @@
 
 #include "neug/execution/expression/accessors/record_accessor.h"
 #include "neug/execution/common/columns/i_context_column.h"
+#include "neug/execution/common/columns/vertex_columns.h"
+#include "neug/utils/property/column.h"
 
 namespace neug {
 namespace execution {
@@ -25,7 +27,7 @@ class BindedRecordAccessor : public RecordExprBase {
       : tag_(tag), type_(type) {}
 
   Value eval_record(const Context& ctx, size_t idx) const override {
-    return ctx.get(tag_)->get_elem(idx);
+    return ctx.get_ptr(tag_)->get_elem(idx);
   }
 
   const DataType& type() const override { return type_; }
@@ -60,20 +62,98 @@ class BindedRecordVertexPropertyExpr : public RecordExprBase {
   }
 
   Value eval_record(const Context& ctx, size_t idx) const override {
-    const auto& vertex_val = ctx.get(tag_)->get_elem(idx);
-    if (vertex_val.IsNull()) {
+    auto vertex_col = reinterpret_cast<const IVertexColumn*>(ctx.get_ptr(tag_));
+
+    if (!vertex_col->has_value(idx)) {
       return Value(type_);
     }
-    vertex_t vertex = vertex_val.GetValue<vertex_t>();
+    vertex_t vertex = vertex_col->get_vertex(idx);
     vid_t vid = static_cast<vid_t>(vertex.vid());
     label_t vlabel = static_cast<label_t>(vertex.label());
 
-    auto column = property_columns_[vlabel];
+    auto column = property_columns_[vlabel].get();
     if (column == nullptr) {
       return Value(type_);  // return null value
     }
 
     return property_to_value(column->get(vid));
+  }
+
+  bool typed_eval_record(const Context& ctx, size_t idx,
+                         void* out_value) const override {
+    const auto* vertex_col =
+        reinterpret_cast<const IVertexColumn*>(ctx.get_ptr(tag_));
+    if (!vertex_col->has_value(idx)) {
+      return true;
+    }
+    vertex_t vertex = vertex_col->get_vertex(idx);
+    vid_t vid = static_cast<vid_t>(vertex.vid());
+    label_t vlabel = static_cast<label_t>(vertex.label());
+
+    auto col = property_columns_[vlabel].get();
+    if (col == nullptr) {
+      return true;  // null
+    }
+
+    switch (type_.id()) {
+    case DataTypeId::kBoolean: {
+      auto* typed = reinterpret_cast<const TypedRefColumn<bool>*>(col);
+      *static_cast<bool*>(out_value) = typed->get_view(vid);
+      return false;
+      break;
+    }
+    case DataTypeId::kInt32: {
+      auto* typed = reinterpret_cast<const TypedRefColumn<int32_t>*>(col);
+
+      *static_cast<int32_t*>(out_value) = typed->get_view(vid);
+      return false;
+      break;
+    }
+    case DataTypeId::kInt64: {
+      auto* typed = reinterpret_cast<const TypedRefColumn<int64_t>*>(col);
+
+      *static_cast<int64_t*>(out_value) = typed->get_view(vid);
+      return false;
+
+      break;
+    }
+    case DataTypeId::kUInt32: {
+      auto* typed = reinterpret_cast<const TypedRefColumn<uint32_t>*>(col);
+
+      *static_cast<uint32_t*>(out_value) = typed->get_view(vid);
+      return false;
+
+      break;
+    }
+    case DataTypeId::kUInt64: {
+      auto* typed = reinterpret_cast<const TypedRefColumn<uint64_t>*>(col);
+
+      *static_cast<uint64_t*>(out_value) = typed->get_view(vid);
+      return false;
+
+      break;
+    }
+    case DataTypeId::kFloat: {
+      auto* typed = reinterpret_cast<const TypedRefColumn<float>*>(col);
+
+      *static_cast<float*>(out_value) = typed->get_view(vid);
+      return false;
+
+      break;
+    }
+    case DataTypeId::kDouble: {
+      auto* typed = reinterpret_cast<const TypedRefColumn<double>*>(col);
+
+      *static_cast<double*>(out_value) = typed->get_view(vid);
+      return false;
+
+      break;
+    }
+    default:
+      break;
+    }
+    // Fallback: go through Property → Value path
+    return RecordExprBase::typed_eval_record(ctx, idx, out_value);
   }
 
   const DataType& type() const override { return type_; }
@@ -110,7 +190,7 @@ class BindedRecordVertexGIdExpr : public RecordExprBase {
  public:
   BindedRecordVertexGIdExpr(int tag) : tag_(tag), type_(DataTypeId::kInt64) {}
   Value eval_record(const Context& ctx, size_t idx) const override {
-    Value vertex_val = ctx.get(tag_)->get_elem(idx);
+    Value vertex_val = ctx.get_ptr(tag_)->get_elem(idx);
     if (vertex_val.IsNull()) {
       return Value(type_);
     }
@@ -118,6 +198,19 @@ class BindedRecordVertexGIdExpr : public RecordExprBase {
     int64_t gid = encode_unique_vertex_id(static_cast<label_t>(vertex.label()),
                                           static_cast<vid_t>(vertex.vid()));
     return Value::CreateValue<int64_t>(gid);
+  }
+
+  bool typed_eval_record(const Context& ctx, size_t idx,
+                         void* out_value) const override {
+    auto vertex_col = reinterpret_cast<const IVertexColumn*>(ctx.get_ptr(tag_));
+    if (!vertex_col->has_value(idx)) {
+      return true;
+    }
+    auto vertex = vertex_col->get_vertex(idx);
+
+    *static_cast<int64_t*>(out_value) = encode_unique_vertex_id(
+        static_cast<label_t>(vertex.label()), static_cast<vid_t>(vertex.vid()));
+    return false;
   }
 
   const DataType& type() const override { return type_; }
@@ -273,12 +366,23 @@ class BindedRecordPathLengthExpr : public RecordExprBase {
  public:
   BindedRecordPathLengthExpr(int tag) : tag_(tag), type_(DataTypeId::kInt64) {}
   Value eval_record(const Context& ctx, size_t idx) const override {
-    Value path_val = ctx.get(tag_)->get_elem(idx);
+    Value path_val = ctx.get_ptr(tag_)->get_elem(idx);
     if (path_val.IsNull()) {
       return Value(type_);
     }
     const auto& path = PathValue::Get(path_val);
     return Value::CreateValue<int64_t>(static_cast<int64_t>(path.length()));
+  }
+
+  bool typed_eval_record(const Context& ctx, size_t idx,
+                         void* out_value) const override {
+    Value path_val = ctx.get_ptr(tag_)->get_elem(idx);
+    if (path_val.IsNull()) {
+      return true;
+    }
+    const auto& path = PathValue::Get(path_val);
+    *static_cast<int64_t*>(out_value) = static_cast<int64_t>(path.length());
+    return false;
   }
 
   const DataType& type() const override { return type_; }
@@ -292,12 +396,23 @@ class BindedPathWeightExpr : public RecordExprBase {
  public:
   BindedPathWeightExpr(int tag) : tag_(tag), type_(DataTypeId::kDouble) {}
   Value eval_record(const Context& ctx, size_t idx) const override {
-    Value path_val = ctx.get(tag_)->get_elem(idx);
+    Value path_val = ctx.get_ptr(tag_)->get_elem(idx);
     if (path_val.IsNull()) {
       return Value(type_);
     }
     const auto& path = PathValue::Get(path_val);
     return Value::CreateValue<double>(path.get_weight());
+  }
+
+  bool typed_eval_record(const Context& ctx, size_t idx,
+                         void* out_value) const override {
+    Value path_val = ctx.get_ptr(tag_)->get_elem(idx);
+    if (path_val.IsNull()) {
+      return true;
+    }
+    const auto& path = PathValue::Get(path_val);
+    *static_cast<double*>(out_value) = path.get_weight();
+    return false;
   }
 
   const DataType& type() const override { return type_; }

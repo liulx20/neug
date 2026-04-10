@@ -28,6 +28,9 @@ class ExtractExpr : public ExprBase {
   std::unique_ptr<BindedExprBase> bind(const IStorageInterface* storage,
                                        const ParamsMap& params) const override;
 
+  const ExprBase* inner_expr() const { return expr_.get(); }
+  const ::common::Extract& extract_type() const { return extract_type_; }
+
  private:
   std::unique_ptr<ExprBase> expr_;
   ::common::Extract extract_type_;

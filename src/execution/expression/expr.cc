@@ -16,6 +16,10 @@
 #include "neug/execution/expression/expr.h"
 #include <stack>
 
+#ifdef NEUG_ENABLE_JIT_EXPRESSION
+#include "neug/execution/expression/codegen/jit_compiled_expr.h"
+#endif
+
 #include "neug/compiler/function/neug_scalar_function.h"
 #include "neug/compiler/function/scalar_function.h"
 #include "neug/compiler/main/metadata_registry.h"
@@ -334,5 +338,115 @@ std::unique_ptr<ExprBase> parse_expression(const ::common::Expression& expr,
   }
   return build_expr(opr_stack2, ctx_meta, var_type);
 }
+
+// ============================================================================
+// Default typed_eval implementations: fallback to eval_xxx() + Value extraction
+// ============================================================================
+
+namespace {
+// Helper: extract primitive value from Value into out_value based on type.
+// Returns true if null.
+inline bool extractPrimitiveFromValue(const Value& val, void* out_value,
+                                      DataTypeId type_id) {
+  if (val.IsNull()) {
+    return true;
+  }
+  switch (type_id) {
+  case DataTypeId::kBoolean:
+    *static_cast<bool*>(out_value) = val.GetValue<bool>();
+    break;
+  case DataTypeId::kInt32:
+    *static_cast<int32_t*>(out_value) = val.GetValue<int32_t>();
+    break;
+  case DataTypeId::kInt64:
+    *static_cast<int64_t*>(out_value) = val.GetValue<int64_t>();
+    break;
+  case DataTypeId::kUInt32:
+    *static_cast<uint32_t*>(out_value) = val.GetValue<uint32_t>();
+    break;
+  case DataTypeId::kUInt64:
+    *static_cast<uint64_t*>(out_value) = val.GetValue<uint64_t>();
+    break;
+  case DataTypeId::kFloat:
+    *static_cast<float*>(out_value) = val.GetValue<float>();
+    break;
+  case DataTypeId::kDouble:
+    *static_cast<double*>(out_value) = val.GetValue<double>();
+    break;
+  default:
+    return true;
+  }
+  return false;
+}
+}  // namespace
+
+bool VertexExprBase::typed_eval_vertex(label_t v_label, vid_t v_id,
+                                       void* out_value) const {
+  Value val = eval_vertex(v_label, v_id);
+  return extractPrimitiveFromValue(val, out_value, type().id());
+}
+
+bool EdgeExprBase::typed_eval_edge(const LabelTriplet& label, vid_t src,
+                                   vid_t dst, const void* edata,
+                                   void* out_value) const {
+  Value val = eval_edge(label, src, dst, edata);
+  return extractPrimitiveFromValue(val, out_value, type().id());
+}
+
+bool RecordExprBase::typed_eval_record(const Context& ctx, size_t idx,
+                                       void* out_value) const {
+  Value val = eval_record(ctx, idx);
+  return extractPrimitiveFromValue(val, out_value, type().id());
+}
+
+std::unique_ptr<BindedExprBase> ExprBase::jit_bind(
+    const IStorageInterface* storage, const ParamsMap& params,
+    VarType var_type) const {
+#ifdef NEUG_ENABLE_JIT_EXPRESSION
+  switch (var_type) {
+  case VarType::kVertex:
+    return codegen::tryJitCompileVertex(this, storage, params);
+  case VarType::kEdge:
+    return codegen::tryJitCompileEdge(this, storage, params);
+  case VarType::kRecord:
+  default:
+    return codegen::tryJitCompileRecord(this, storage, params);
+  }
+#else
+  return bind(storage, params);
+#endif
+}
+
+std::shared_ptr<void> ExprBase::jit_compile(VarType var_type) const {
+#ifdef NEUG_ENABLE_JIT_EXPRESSION
+  codegen::EvalMode mode;
+  switch (var_type) {
+  case VarType::kVertex: mode = codegen::EvalMode::kVertex; break;
+  case VarType::kEdge:   mode = codegen::EvalMode::kEdge;   break;
+  case VarType::kRecord:
+  default:               mode = codegen::EvalMode::kRecord;  break;
+  }
+  return codegen::compileExprTemplate(this, mode);
+#else
+  return nullptr;
+#endif
+}
+
+std::unique_ptr<BindedExprBase> ExprBase::jit_bind_with_template(
+    const std::shared_ptr<void>& jit_template,
+    const IStorageInterface* storage, const ParamsMap& params) const {
+#ifdef NEUG_ENABLE_JIT_EXPRESSION
+  if (jit_template) {
+    auto tmpl = std::static_pointer_cast<codegen::JitCompiledTemplate>(
+        jit_template);
+    auto result = codegen::bindTemplate(tmpl, storage, params);
+    if (result) {
+      return result;
+    }
+  }
+#endif
+  return bind(storage, params);
+}
+
 }  // namespace execution
 }  // namespace neug

@@ -28,19 +28,25 @@ class GeneralPred {
       : pred_(std::move(pred)) {}
 
   inline bool operator()(label_t v_label, vid_t v_id) const {
-    VertexExprBase& vertex_expr = pred_->Cast<VertexExprBase>();
-    return vertex_expr.eval_vertex(v_label, v_id).IsTrue();
+    bool result = false;
+    bool is_null = pred_->Cast<VertexExprBase>().typed_eval_vertex(
+        v_label, v_id, &result);
+    return !is_null && result;
   }
 
   inline bool operator()(const LabelTriplet& triplet, vid_t src, vid_t dst,
                          const void* edge_data) const {
-    EdgeExprBase& edge_expr = pred_->Cast<EdgeExprBase>();
-    return edge_expr.eval_edge(triplet, src, dst, edge_data).IsTrue();
+    bool result = false;
+    bool is_null = pred_->Cast<EdgeExprBase>().typed_eval_edge(
+        triplet, src, dst, edge_data, &result);
+    return !is_null && result;
   }
 
   inline bool operator()(const Context& ctx, size_t idx) const {
-    RecordExprBase& record_expr = pred_->Cast<RecordExprBase>();
-    return record_expr.eval_record(ctx, idx).IsTrue();
+    bool result = false;
+    bool is_null = pred_->Cast<RecordExprBase>().typed_eval_record(
+        ctx, idx, &result);
+    return !is_null && result;
   }
 
  private:
@@ -101,9 +107,10 @@ struct EdgeAndNbrPredicate {
   bool operator()(label_t v_label, vid_t v_id, label_t nbr_label, vid_t nbr_id,
                   label_t e_label, Direction dir, const void* edata_ptr) const {
     if (v_expr_) {
-      auto v_val =
-          v_expr_->Cast<VertexExprBase>().eval_vertex(nbr_label, nbr_id);
-      if (!v_val.IsTrue()) {
+      bool v_result = false;
+      bool v_null = v_expr_->Cast<VertexExprBase>().typed_eval_vertex(
+          nbr_label, nbr_id, &v_result);
+      if (v_null || !v_result) {
         return false;
       }
     }
@@ -111,10 +118,11 @@ struct EdgeAndNbrPredicate {
       auto triplet = (dir == Direction::kOut)
                          ? LabelTriplet(v_label, nbr_label, e_label)
                          : LabelTriplet(nbr_label, v_label, e_label);
-      return e_expr_->Cast<EdgeExprBase>()
-          .eval_edge(triplet, dir == Direction::kOut ? v_id : nbr_id,
-                     dir == Direction::kOut ? nbr_id : v_id, edata_ptr)
-          .IsTrue();
+      bool e_result = false;
+      bool e_null = e_expr_->Cast<EdgeExprBase>().typed_eval_edge(
+          triplet, dir == Direction::kOut ? v_id : nbr_id,
+          dir == Direction::kOut ? nbr_id : v_id, edata_ptr, &e_result);
+      return !e_null && e_result;
     }
     return true;
   }

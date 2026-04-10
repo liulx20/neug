@@ -33,6 +33,13 @@ class CaseWhenExpr : public ExprBase {
   std::unique_ptr<BindedExprBase> bind(const IStorageInterface* storage,
                                        const ParamsMap& params) const override;
 
+  const std::vector<std::pair<std::unique_ptr<ExprBase>,
+                              std::unique_ptr<ExprBase>>>&
+  when_then_exprs() const {
+    return when_then_exprs_;
+  }
+  const ExprBase* else_expr() const { return else_expr_.get(); }
+
  private:
   DataType type_;
   std::vector<std::pair<std::unique_ptr<ExprBase>, std::unique_ptr<ExprBase>>>

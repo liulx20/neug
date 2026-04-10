@@ -32,6 +32,10 @@ class ArithExpr : public ExprBase {
   std::unique_ptr<BindedExprBase> bind(const IStorageInterface* storage,
                                        const ParamsMap& params) const override;
 
+  const ExprBase* lhs() const { return lhs_.get(); }
+  const ExprBase* rhs() const { return rhs_.get(); }
+  ::common::Arithmetic arith() const { return arith_; }
+
  private:
   std::unique_ptr<ExprBase> lhs_;
   std::unique_ptr<ExprBase> rhs_;

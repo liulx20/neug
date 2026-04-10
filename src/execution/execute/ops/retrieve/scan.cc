@@ -56,7 +56,7 @@ class FilterOidsGPredOpr : public IOperator {
       return Scan::filter_oids(std::move(ctx), graph, params_, DummyPred(),
                                oids);
     } else {
-      auto pred = pred_->bind(&graph, params);
+      auto pred = pred_->jit_bind(&graph, params, VarType::kVertex);
       GeneralPred predicate_wrapper(std::move(pred));
       return Scan::filter_oids(std::move(ctx), graph, params_,
                                predicate_wrapper, oids);
@@ -111,7 +111,7 @@ class ScanWithGPredOpr : public IOperator {
                                DummyPred());
 
     } else {
-      auto pred = pred_->bind(&graph, params);
+      auto pred = pred_->jit_bind(&graph, params, VarType::kVertex);
       GeneralPred pred_wrapper(std::move(pred));
       auto ret =
           Scan::scan_vertex(std::move(ctx), graph, scan_params_, pred_wrapper);
