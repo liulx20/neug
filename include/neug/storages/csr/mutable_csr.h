@@ -284,6 +284,7 @@ class SingleMutableCsr : public TypedCsrBase<EDATA_T> {
     nbrs[src].data = data;
     CHECK_EQ(nbrs[src].timestamp, std::numeric_limits<timestamp_t>::max());
     nbrs[src].timestamp.store(ts);
+    edge_num_.fetch_add(1, std::memory_order_relaxed);
     return 0;
   }
 
