@@ -238,6 +238,38 @@ struct GeneralExpr : public ProjectExprBase {
   DataType type;
 };
 
+template <typename T>
+struct TypedGeneralExpr : public ProjectExprBase {
+  TypedGeneralExpr(const IStorageInterface& igraph,
+                   std::unique_ptr<BindedExprBase>&& expr)
+      : graph(igraph), expr(std::move(expr)) {}
+
+  std::shared_ptr<IContextColumn> evaluate(const Context& ctx) override {
+    ValueColumnBuilder<T> column_builder;
+    column_builder.reserve(ctx.row_num());
+    const auto& record_expr = expr->Cast<RecordExprBase>();
+
+    for (size_t i = 0; i < ctx.row_num(); ++i) {
+      T result{};
+      bool is_null = record_expr.typed_eval_record(ctx, i, &result);
+      if (is_null) {
+        column_builder.push_back_null();
+      } else {
+        column_builder.push_back_opt(result);
+      }
+    }
+    return column_builder.finish();
+  }
+
+  bool order_by_limit(const Context& ctx, bool asc, size_t limit,
+                      std::vector<size_t>& indices) const override {
+    return false;
+  }
+
+  const IStorageInterface& graph;
+  std::unique_ptr<BindedExprBase> expr;
+};
+
 struct DummyGetterBuilder : public ProjectExprBuilderBase {
   DummyGetterBuilder(int from, int to) : from_(from), to_(to) {}
   std::unique_ptr<ProjectExprBase> build(const IStorageInterface& graph,
@@ -319,7 +351,16 @@ std::unique_ptr<ProjectExprBase> GeneralProjectExprBuilder::build(
     const IStorageInterface& graph, const ParamsMap& params) {
   auto expr_ptr = expr_ptr_->jit_bind(&graph, params);
   auto type = expr_ptr->type();
-  return std::make_unique<GeneralExpr>(graph, std::move(expr_ptr), type);
+  switch (type.id()) {
+#define TYPE_DISPATCHER(enum_val, cpp_type)                              \
+  case DataTypeId::enum_val:                                             \
+    return std::make_unique<TypedGeneralExpr<cpp_type>>(graph,           \
+                                                        std::move(expr_ptr));
+    FOR_EACH_DATA_TYPE(TYPE_DISPATCHER)
+#undef TYPE_DISPATCHER
+  default:
+    return std::make_unique<GeneralExpr>(graph, std::move(expr_ptr), type);
+  }
 }
 
 bool is_exchange_index(const common::Expression& expr, int& tag) {
