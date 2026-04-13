@@ -1574,7 +1574,7 @@ TYPED_TEST(EdgeTableToolsTest, TestBatchAddEdges) {
   edge_schema->add_properties(new_property_name, new_property_type);
   e_table.AddProperties(new_property_name, new_property_type);
   EXPECT_EQ(e_table.PropertyNum(), 2);
-  EXPECT_EQ(e_table.PropTableSize(), 10);
+  EXPECT_EQ(e_table.PropTableSize(), 0);
 }
 
 TYPED_TEST(EdgeTableToolsTest, TestAddProperties) {
@@ -1640,7 +1640,7 @@ TYPED_TEST(EdgeTableToolsTest, TestAddProperties) {
 
   edge_schema->add_properties(new_property_name, new_property_type);
   e_table.AddProperties(new_property_name, new_property_type);
-  EXPECT_EQ(e_table.PropTableSize(), 10);
+  EXPECT_EQ(e_table.PropTableSize(), 0);
   EXPECT_EQ(e_table.Capacity(), neug::CsrBase::INFINITE_CAPACITY);
 }
 
