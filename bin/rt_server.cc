@@ -13,37 +13,15 @@
  * limitations under the License.
  */
 
-#include "neug/main/file_lock.h"
 #include "neug/main/neug_db.h"
 #include "neug/server/neug_db_service.h"
 #include "neug/utils/service_utils.h"
 
 #include <glog/logging.h>
 #include <chrono>
-#include <csignal>
 #include "cxxopts/cxxopts.hpp"
 
 using namespace neug;
-
-void signal_handler(int signal) {
-  LOG(INFO) << "Received signal " << signal << ", exiting...";
-  // support SIGKILL, SIGINT, SIGTERM
-  if (signal == SIGINT || signal == SIGTERM || signal == SIGABRT) {
-    LOG(ERROR) << "Received signal " << signal << ", Remove all filelocks";
-    // remove all files in work_dir
-    neug::FileLock::CleanupAllLocks();
-    exit(signal);
-  } else {
-    LOG(ERROR) << "Received unexpected signal " << signal << ", exiting...";
-    exit(1);
-  }
-}
-
-void setup_signal_handler() {
-  std::signal(SIGINT, signal_handler);
-  std::signal(SIGTERM, signal_handler);
-  std::signal(SIGABRT, signal_handler);
-}
 
 int main(int argc, char** argv) {
   cxxopts::Options options("rt_server", "Real-time graph server for NeuG");
@@ -65,8 +43,6 @@ int main(int argc, char** argv) {
   FLAGS_logtostderr = true;
 
   cxxopts::ParseResult vm = options.parse(argc, argv);
-
-  setup_signal_handler();
 
   if (vm.count("help")) {
     std::cout << options.help() << std::endl;
