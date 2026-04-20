@@ -373,6 +373,18 @@ inline bool extractPrimitiveFromValue(const Value& val, void* out_value,
   case DataTypeId::kDouble:
     *static_cast<double*>(out_value) = val.GetValue<double>();
     break;
+  case DataTypeId::kTimestampMs:
+    *static_cast<timestamp_ms_t*>(out_value) = val.GetValue<timestamp_ms_t>();
+    break;
+  case DataTypeId::kDate:
+    *static_cast<date_t*>(out_value) = val.GetValue<date_t>();
+    break;
+  case DataTypeId::kInterval:
+    *static_cast<interval_t*>(out_value) = val.GetValue<interval_t>();
+    break;
+  // case DataTypeId::kVarchar:
+  //*static_cast<std::string*>(out_value) = val.GetValue<std::string>();
+  // break;
   default:
     return true;
   }
@@ -421,10 +433,16 @@ std::shared_ptr<void> ExprBase::jit_compile(VarType var_type) const {
 #ifdef NEUG_ENABLE_JIT_EXPRESSION
   codegen::EvalMode mode;
   switch (var_type) {
-  case VarType::kVertex: mode = codegen::EvalMode::kVertex; break;
-  case VarType::kEdge:   mode = codegen::EvalMode::kEdge;   break;
+  case VarType::kVertex:
+    mode = codegen::EvalMode::kVertex;
+    break;
+  case VarType::kEdge:
+    mode = codegen::EvalMode::kEdge;
+    break;
   case VarType::kRecord:
-  default:               mode = codegen::EvalMode::kRecord;  break;
+  default:
+    mode = codegen::EvalMode::kRecord;
+    break;
   }
   return codegen::compileExprTemplate(this, mode);
 #else
@@ -433,12 +451,12 @@ std::shared_ptr<void> ExprBase::jit_compile(VarType var_type) const {
 }
 
 std::unique_ptr<BindedExprBase> ExprBase::jit_bind_with_template(
-    const std::shared_ptr<void>& jit_template,
-    const IStorageInterface* storage, const ParamsMap& params) const {
+    const std::shared_ptr<void>& jit_template, const IStorageInterface* storage,
+    const ParamsMap& params) const {
 #ifdef NEUG_ENABLE_JIT_EXPRESSION
   if (jit_template) {
-    auto tmpl = std::static_pointer_cast<codegen::JitCompiledTemplate>(
-        jit_template);
+    auto tmpl =
+        std::static_pointer_cast<codegen::JitCompiledTemplate>(jit_template);
     auto result = codegen::bindTemplate(tmpl, storage, params);
     if (result) {
       return result;

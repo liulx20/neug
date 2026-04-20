@@ -1,10 +1,10 @@
 #pragma once
 #ifdef NEUG_ENABLE_JIT_EXPRESSION
 
+#include <memory>
 #include "neug/execution/expression/codegen/codegen_types.h"
 #include "neug/execution/expression/codegen/expr_codegen.h"
 #include "neug/execution/expression/expr.h"
-#include <memory>
 
 namespace neug {
 namespace execution {
@@ -24,8 +24,7 @@ namespace codegen {
 // ============================================================================
 class JitCompiledTemplate {
  public:
-  JitCompiledTemplate(void* function_ptr,
-                      DataTypeId result_type,
+  JitCompiledTemplate(void* function_ptr, DataTypeId result_type,
                       EvalMode eval_mode,
                       std::unique_ptr<UnboundLeafSlots> unbound_leaves)
       : function_ptr_(function_ptr),
@@ -35,9 +34,8 @@ class JitCompiledTemplate {
 
   // Bind all leaf expressions with the given storage and params.
   // Returns a LeafExprSlots ready for use by the JIT function.
-  std::unique_ptr<LeafExprSlots> bindLeaves(
-      const IStorageInterface* storage,
-      const ParamsMap& params) const;
+  std::unique_ptr<LeafExprSlots> bindLeaves(const IStorageInterface* storage,
+                                            const ParamsMap& params) const;
 
   void* function_ptr() const { return function_ptr_; }
   DataTypeId result_type() const { return result_type_; }
@@ -109,34 +107,29 @@ class JitCompiledExpr : public VertexExprBase,
 // This is expensive (LLVM IR generation + JIT compilation) but only needs
 // to be done once per expression tree.
 // Returns nullptr if codegen is not possible.
-std::shared_ptr<JitCompiledTemplate> compileExprTemplate(
-    const ExprBase* expr,
-    EvalMode eval_mode);
+std::shared_ptr<JitCompiledTemplate> compileExprTemplate(const ExprBase* expr,
+                                                         EvalMode eval_mode);
 
 // Phase 2: Bind a pre-compiled template with storage/params to produce
 // a ready-to-evaluate JitCompiledExpr.
 std::unique_ptr<BindedExprBase> bindTemplate(
     const std::shared_ptr<JitCompiledTemplate>& tmpl,
-    const IStorageInterface* storage,
-    const ParamsMap& params);
+    const IStorageInterface* storage, const ParamsMap& params);
 
 // ============================================================================
 // One-shot API: compile + bind in one call (convenience wrappers)
 // ============================================================================
 
 std::unique_ptr<BindedExprBase> tryJitCompileRecord(
-    const ExprBase* expr,
-    const IStorageInterface* storage,
+    const ExprBase* expr, const IStorageInterface* storage,
     const ParamsMap& params);
 
 std::unique_ptr<BindedExprBase> tryJitCompileVertex(
-    const ExprBase* expr,
-    const IStorageInterface* storage,
+    const ExprBase* expr, const IStorageInterface* storage,
     const ParamsMap& params);
 
 std::unique_ptr<BindedExprBase> tryJitCompileEdge(
-    const ExprBase* expr,
-    const IStorageInterface* storage,
+    const ExprBase* expr, const IStorageInterface* storage,
     const ParamsMap& params);
 
 }  // namespace codegen

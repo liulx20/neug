@@ -15,6 +15,9 @@
 
 #include "neug/execution/execute/ops/retrieve/project_utils.h"
 #include "neug/execution/expression/special_predicates.h"
+#ifdef NEUG_ENABLE_JIT_EXPRESSION
+#include "neug/execution/expression/codegen/jit_compiled_expr.h"
+#endif
 
 namespace neug {
 namespace execution {
@@ -270,6 +273,22 @@ struct TypedGeneralExpr : public ProjectExprBase {
   std::unique_ptr<BindedExprBase> expr;
 };
 
+// Check if a data type is supported by TypedGeneralExpr.
+// All value types (primitive + datetime + string) are supported since
+// extractPrimitiveFromValue and all accessor typed_eval overrides handle them.
+// Only complex types (Vertex/Edge/Path/Struct/List) are unsupported.
+inline bool isTypedProjectSupported(DataTypeId type_id) {
+  switch (type_id) {
+#define TYPE_CHECK(enum_val, cpp_type) \
+  case DataTypeId::enum_val:           \
+    return true;
+    FOR_EACH_DATA_TYPE(TYPE_CHECK)
+#undef TYPE_CHECK
+  default:
+    return false;
+  }
+}
+
 struct DummyGetterBuilder : public ProjectExprBuilderBase {
   DummyGetterBuilder(int from, int to) : from_(from), to_(to) {}
   std::unique_ptr<ProjectExprBase> build(const IStorageInterface& graph,
@@ -351,16 +370,19 @@ std::unique_ptr<ProjectExprBase> GeneralProjectExprBuilder::build(
     const IStorageInterface& graph, const ParamsMap& params) {
   auto expr_ptr = expr_ptr_->jit_bind(&graph, params);
   auto type = expr_ptr->type();
-  switch (type.id()) {
-#define TYPE_DISPATCHER(enum_val, cpp_type)                              \
-  case DataTypeId::enum_val:                                             \
-    return std::make_unique<TypedGeneralExpr<cpp_type>>(graph,           \
+  /**if (isTypedProjectSupported(type.id())) {
+    switch (type.id()) {
+#define TYPE_DISPATCHER(enum_val, cpp_type)                    \
+  case DataTypeId::enum_val:                                   \
+    return std::make_unique<TypedGeneralExpr<cpp_type>>(graph, \
                                                         std::move(expr_ptr));
-    FOR_EACH_DATA_TYPE(TYPE_DISPATCHER)
+      FOR_EACH_DATA_TYPE(TYPE_DISPATCHER)
 #undef TYPE_DISPATCHER
-  default:
-    return std::make_unique<GeneralExpr>(graph, std::move(expr_ptr), type);
-  }
+    default:
+      break;
+    }
+  }*/
+  return std::make_unique<GeneralExpr>(graph, std::move(expr_ptr), type);
 }
 
 bool is_exchange_index(const common::Expression& expr, int& tag) {

@@ -82,6 +82,19 @@ class ConstExpr : public ExprBase,
     case DataTypeId::kDouble:
       *static_cast<double*>(out_value) = inner_.GetValue<double>();
       return false;
+    case DataTypeId::kTimestampMs:
+      *static_cast<timestamp_ms_t*>(out_value) =
+          inner_.GetValue<timestamp_ms_t>();
+      return false;
+    case DataTypeId::kDate:
+      *static_cast<date_t*>(out_value) = inner_.GetValue<date_t>();
+      return false;
+    case DataTypeId::kInterval:
+      *static_cast<interval_t*>(out_value) = inner_.GetValue<interval_t>();
+      return false;
+    // case DataTypeId::kVarchar:
+    //*static_cast<std::string*>(out_value) = inner_.GetValue<std::string>();
+    // return false;
     default:
       return true;
     }

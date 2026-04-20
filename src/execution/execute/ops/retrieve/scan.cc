@@ -172,14 +172,14 @@ neug::result<OpBuildResultT> ScanOprBuilder::Build(
                           ret_meta);
 
   } else {
-    if (scan_opr.params().has_predicate()) {
+    /*if (scan_opr.params().has_predicate()) {
       SpecialPredicateConfig config;
       if (is_special_vertex_predicate(schema, scan_params.tables,
                                       scan_opr.params().predicate(), config)) {
         return std::make_pair(
             std::make_unique<ScanWithSPredOpr>(scan_params, config), ret_meta);
       }
-    }
+    }*/
     std::unique_ptr<ExprBase> pred = nullptr;
     if (scan_opr.params().has_predicate()) {
       pred = parse_expression(scan_opr.params().predicate(), ctx_meta,

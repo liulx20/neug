@@ -101,6 +101,18 @@ class BindedEdgePropertyAccessor : public EdgeExprBase {
       *static_cast<double*>(out_value) =
           accessor.get_typed_data_from_ptr<double>(data_ptr);
       return false;
+    case DataTypeId::kTimestampMs:
+      *static_cast<DateTime*>(out_value) =
+          accessor.get_typed_data_from_ptr<DateTime>(data_ptr);
+      return false;
+    case DataTypeId::kDate:
+      *static_cast<Date*>(out_value) =
+          accessor.get_typed_data_from_ptr<Date>(data_ptr);
+      return false;
+    case DataTypeId::kInterval:
+      *static_cast<Interval*>(out_value) =
+          accessor.get_typed_data_from_ptr<Interval>(data_ptr);
+      return false;
     default:
       break;
     }

@@ -55,18 +55,13 @@ class ExprCodegen {
  private:
   // Recursively generate LLVM IR for an ExprBase node.
   // Leaf nodes are recorded in unbound_leaves (no bind happens here).
-  CodegenValue generateExprIR(const ExprBase* expr,
-                              llvm::IRBuilder<>& builder,
-                              llvm::Value* slots_ptr,
-                              llvm::Value* context_ptr,
+  CodegenValue generateExprIR(const ExprBase* expr, llvm::IRBuilder<>& builder,
+                              llvm::Value* slots_ptr, llvm::Value* context_ptr,
                               llvm::Value* idx_val,
                               UnboundLeafSlots& unbound_leaves);
 
   // Get the LLVM type corresponding to a DataTypeId
   llvm::Type* getLLVMType(llvm::LLVMContext& ctx, DataTypeId type_id);
-
-  // Get the LLVM struct type for NullableValue<T>
-  llvm::StructType* getNullableType(llvm::LLVMContext& ctx, DataTypeId type_id);
 
   // Create a null CodegenValue
   CodegenValue createNull(llvm::IRBuilder<>& builder, DataTypeId type_id);
@@ -84,35 +79,26 @@ class ExprCodegen {
                                   UnboundLeafSlots& unbound_leaves);
 
   // Generate null-propagating arithmetic IR
-  CodegenValue generateArithIR(const CodegenValue& lhs,
-                               const CodegenValue& rhs,
-                               DataTypeId result_type,
-                               int arith_op,
+  CodegenValue generateArithIR(const CodegenValue& lhs, const CodegenValue& rhs,
+                               DataTypeId result_type, int arith_op,
                                llvm::IRBuilder<>& builder);
 
   // Generate comparison/logical IR
   CodegenValue generateCompareIR(const CodegenValue& lhs,
-                                 const CodegenValue& rhs,
-                                 int logical_op,
+                                 const CodegenValue& rhs, int logical_op,
                                  DataTypeId operand_type,
                                  llvm::IRBuilder<>& builder);
 
   // Generate AND with short-circuit
-  CodegenValue generateAndIR(const ExprBase* lhs_expr,
-                             const ExprBase* rhs_expr,
-                             llvm::IRBuilder<>& builder,
-                             llvm::Value* slots_ptr,
-                             llvm::Value* context_ptr,
-                             llvm::Value* idx_val,
+  CodegenValue generateAndIR(const ExprBase* lhs_expr, const ExprBase* rhs_expr,
+                             llvm::IRBuilder<>& builder, llvm::Value* slots_ptr,
+                             llvm::Value* context_ptr, llvm::Value* idx_val,
                              UnboundLeafSlots& unbound_leaves);
 
   // Generate OR with short-circuit
-  CodegenValue generateOrIR(const ExprBase* lhs_expr,
-                            const ExprBase* rhs_expr,
-                            llvm::IRBuilder<>& builder,
-                            llvm::Value* slots_ptr,
-                            llvm::Value* context_ptr,
-                            llvm::Value* idx_val,
+  CodegenValue generateOrIR(const ExprBase* lhs_expr, const ExprBase* rhs_expr,
+                            llvm::IRBuilder<>& builder, llvm::Value* slots_ptr,
+                            llvm::Value* context_ptr, llvm::Value* idx_val,
                             UnboundLeafSlots& unbound_leaves);
 
   // Generate NOT IR

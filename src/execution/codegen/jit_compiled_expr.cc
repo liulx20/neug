@@ -9,171 +9,65 @@
 namespace neug {
 namespace execution {
 namespace codegen {
+// All JIT functions return uint8_t (0 = not null, 1 = null) and write the
+// value through an out pointer. This avoids ABI issues with large return types.
 
-// ============================================================================
-// JIT function pointer typedefs
-// ============================================================================
+// Record: uint8_t fn(slots_ptr, ctx_ptr, idx, out_value)
+using JitRecordFn = uint8_t (*)(const void*, const void*, uint64_t, void*);
 
-// Record: fn(slots_ptr, ctx_ptr, idx) -> NullableValue<T>
-using JitRecordFn_Bool = NullableBool (*)(const void*, const void*, uint64_t);
-using JitRecordFn_Int32 = NullableInt32 (*)(const void*, const void*, uint64_t);
-using JitRecordFn_Int64 = NullableInt64 (*)(const void*, const void*, uint64_t);
-using JitRecordFn_UInt32 = NullableUInt32 (*)(const void*, const void*, uint64_t);
-using JitRecordFn_UInt64 = NullableUInt64 (*)(const void*, const void*, uint64_t);
-using JitRecordFn_Float = NullableFloat (*)(const void*, const void*, uint64_t);
-using JitRecordFn_Double = NullableDouble (*)(const void*, const void*, uint64_t);
+// Vertex: uint8_t fn(slots_ptr, label_u8, vid_u32, out_value)
+using JitVertexFn = uint8_t (*)(const void*, uint8_t, uint32_t, void*);
 
-// Vertex: fn(slots_ptr, label_u8, vid_u32) -> NullableValue<T>
-using JitVertexFn_Bool = NullableBool (*)(const void*, uint8_t, uint32_t);
-using JitVertexFn_Int32 = NullableInt32 (*)(const void*, uint8_t, uint32_t);
-using JitVertexFn_Int64 = NullableInt64 (*)(const void*, uint8_t, uint32_t);
-using JitVertexFn_UInt32 = NullableUInt32 (*)(const void*, uint8_t, uint32_t);
-using JitVertexFn_UInt64 = NullableUInt64 (*)(const void*, uint8_t, uint32_t);
-using JitVertexFn_Float = NullableFloat (*)(const void*, uint8_t, uint32_t);
-using JitVertexFn_Double = NullableDouble (*)(const void*, uint8_t, uint32_t);
-
-// Edge: fn(slots_ptr, triplet_ptr, src_u32, dst_u32, edata_ptr) -> NullableValue<T>
-using JitEdgeFn_Bool = NullableBool (*)(const void*, const void*, uint32_t, uint32_t, const void*);
-using JitEdgeFn_Int32 = NullableInt32 (*)(const void*, const void*, uint32_t, uint32_t, const void*);
-using JitEdgeFn_Int64 = NullableInt64 (*)(const void*, const void*, uint32_t, uint32_t, const void*);
-using JitEdgeFn_UInt32 = NullableUInt32 (*)(const void*, const void*, uint32_t, uint32_t, const void*);
-using JitEdgeFn_UInt64 = NullableUInt64 (*)(const void*, const void*, uint32_t, uint32_t, const void*);
-using JitEdgeFn_Float = NullableFloat (*)(const void*, const void*, uint32_t, uint32_t, const void*);
-using JitEdgeFn_Double = NullableDouble (*)(const void*, const void*, uint32_t, uint32_t, const void*);
-
+// Edge: uint8_t fn(slots_ptr, triplet_ptr, src_u32, dst_u32, edata_ptr, out_value)
+using JitEdgeFn = uint8_t (*)(const void*, const void*, uint32_t, uint32_t,
+                               const void*, void*);
 // ============================================================================
 // JitCompiledExpr eval implementations
 // ============================================================================
 
-#define JIT_DISPATCH_RECORD(RESULT_TYPE, FN, SLOTS, CTX, IDX)                 \
-  do {                                                                        \
-    const void* _s = (SLOTS);                                                 \
-    const void* _c = (CTX);                                                   \
-    uint64_t _i = (IDX);                                                      \
-    switch (RESULT_TYPE) {                                                    \
-    case DataTypeId::kBoolean: {                                              \
-      auto r = reinterpret_cast<JitRecordFn_Bool>(FN)(_s, _c, _i);          \
-      return r.is_null ? Value(DataType::BOOLEAN) : Value::BOOLEAN(r.value); \
-    }                                                                         \
-    case DataTypeId::kInt32: {                                                \
-      auto r = reinterpret_cast<JitRecordFn_Int32>(FN)(_s, _c, _i);         \
-      return r.is_null ? Value(DataType::INT32) : Value::INT32(r.value);     \
-    }                                                                         \
-    case DataTypeId::kInt64: {                                                \
-      auto r = reinterpret_cast<JitRecordFn_Int64>(FN)(_s, _c, _i);         \
-      return r.is_null ? Value(DataType::INT64) : Value::INT64(r.value);     \
-    }                                                                         \
-    case DataTypeId::kUInt32: {                                               \
-      auto r = reinterpret_cast<JitRecordFn_UInt32>(FN)(_s, _c, _i);        \
-      return r.is_null ? Value(DataType::UINT32) : Value::UINT32(r.value);   \
-    }                                                                         \
-    case DataTypeId::kUInt64: {                                               \
-      auto r = reinterpret_cast<JitRecordFn_UInt64>(FN)(_s, _c, _i);        \
-      return r.is_null ? Value(DataType::UINT64) : Value::UINT64(r.value);   \
-    }                                                                         \
-    case DataTypeId::kFloat: {                                                \
-      auto r = reinterpret_cast<JitRecordFn_Float>(FN)(_s, _c, _i);         \
-      return r.is_null ? Value(DataType::FLOAT) : Value::FLOAT(r.value);     \
-    }                                                                         \
-    case DataTypeId::kDouble: {                                               \
-      auto r = reinterpret_cast<JitRecordFn_Double>(FN)(_s, _c, _i);        \
-      return r.is_null ? Value(DataType::DOUBLE) : Value::DOUBLE(r.value);   \
-    }                                                                         \
-    default:                                                                  \
-      LOG(FATAL) << "Unsupported JIT result type";                           \
-      return Value(DataType::SQLNULL);                                        \
-    }                                                                         \
-  } while (0)
-
-#define JIT_DISPATCH_VERTEX(RESULT_TYPE, FN, SLOTS, LABEL, VID)               \
-  do {                                                                        \
-    const void* _s = (SLOTS);                                                 \
-    uint8_t _l = (LABEL);                                                     \
-    uint32_t _v = (VID);                                                      \
-    switch (RESULT_TYPE) {                                                    \
-    case DataTypeId::kBoolean: {                                              \
-      auto r = reinterpret_cast<JitVertexFn_Bool>(FN)(_s, _l, _v);          \
-      return r.is_null ? Value(DataType::BOOLEAN) : Value::BOOLEAN(r.value); \
-    }                                                                         \
-    case DataTypeId::kInt32: {                                                \
-      auto r = reinterpret_cast<JitVertexFn_Int32>(FN)(_s, _l, _v);         \
-      return r.is_null ? Value(DataType::INT32) : Value::INT32(r.value);     \
-    }                                                                         \
-    case DataTypeId::kInt64: {                                                \
-      auto r = reinterpret_cast<JitVertexFn_Int64>(FN)(_s, _l, _v);         \
-      return r.is_null ? Value(DataType::INT64) : Value::INT64(r.value);     \
-    }                                                                         \
-    case DataTypeId::kUInt32: {                                               \
-      auto r = reinterpret_cast<JitVertexFn_UInt32>(FN)(_s, _l, _v);        \
-      return r.is_null ? Value(DataType::UINT32) : Value::UINT32(r.value);   \
-    }                                                                         \
-    case DataTypeId::kUInt64: {                                               \
-      auto r = reinterpret_cast<JitVertexFn_UInt64>(FN)(_s, _l, _v);        \
-      return r.is_null ? Value(DataType::UINT64) : Value::UINT64(r.value);   \
-    }                                                                         \
-    case DataTypeId::kFloat: {                                                \
-      auto r = reinterpret_cast<JitVertexFn_Float>(FN)(_s, _l, _v);         \
-      return r.is_null ? Value(DataType::FLOAT) : Value::FLOAT(r.value);     \
-    }                                                                         \
-    case DataTypeId::kDouble: {                                               \
-      auto r = reinterpret_cast<JitVertexFn_Double>(FN)(_s, _l, _v);        \
-      return r.is_null ? Value(DataType::DOUBLE) : Value::DOUBLE(r.value);   \
-    }                                                                         \
-    default:                                                                  \
-      LOG(FATAL) << "Unsupported JIT result type";                           \
-      return Value(DataType::SQLNULL);                                        \
-    }                                                                         \
-  } while (0)
-
-#define JIT_DISPATCH_EDGE(RESULT_TYPE, FN, SLOTS, TRIP, SRC, DST, EDATA)      \
-  do {                                                                        \
-    const void* _s = (SLOTS);                                                 \
-    const void* _t = (TRIP);                                                  \
-    uint32_t _src = (SRC);                                                    \
-    uint32_t _dst = (DST);                                                    \
-    const void* _e = (EDATA);                                                 \
-    switch (RESULT_TYPE) {                                                    \
-    case DataTypeId::kBoolean: {                                              \
-      auto r = reinterpret_cast<JitEdgeFn_Bool>(FN)(_s, _t, _src, _dst, _e);\
-      return r.is_null ? Value(DataType::BOOLEAN) : Value::BOOLEAN(r.value); \
-    }                                                                         \
-    case DataTypeId::kInt32: {                                                \
-      auto r = reinterpret_cast<JitEdgeFn_Int32>(FN)(_s, _t, _src, _dst, _e);\
-      return r.is_null ? Value(DataType::INT32) : Value::INT32(r.value);     \
-    }                                                                         \
-    case DataTypeId::kInt64: {                                                \
-      auto r = reinterpret_cast<JitEdgeFn_Int64>(FN)(_s, _t, _src, _dst, _e);\
-      return r.is_null ? Value(DataType::INT64) : Value::INT64(r.value);     \
-    }                                                                         \
-    case DataTypeId::kUInt32: {                                               \
-      auto r = reinterpret_cast<JitEdgeFn_UInt32>(FN)(_s, _t, _src, _dst, _e);\
-      return r.is_null ? Value(DataType::UINT32) : Value::UINT32(r.value);   \
-    }                                                                         \
-    case DataTypeId::kUInt64: {                                               \
-      auto r = reinterpret_cast<JitEdgeFn_UInt64>(FN)(_s, _t, _src, _dst, _e);\
-      return r.is_null ? Value(DataType::UINT64) : Value::UINT64(r.value);   \
-    }                                                                         \
-    case DataTypeId::kFloat: {                                                \
-      auto r = reinterpret_cast<JitEdgeFn_Float>(FN)(_s, _t, _src, _dst, _e);\
-      return r.is_null ? Value(DataType::FLOAT) : Value::FLOAT(r.value);     \
-    }                                                                         \
-    case DataTypeId::kDouble: {                                               \
-      auto r = reinterpret_cast<JitEdgeFn_Double>(FN)(_s, _t, _src, _dst, _e);\
-      return r.is_null ? Value(DataType::DOUBLE) : Value::DOUBLE(r.value);   \
-    }                                                                         \
-    default:                                                                  \
-      LOG(FATAL) << "Unsupported JIT result type";                           \
-      return Value(DataType::SQLNULL);                                        \
-    }                                                                         \
-  } while (0)
+// Helper: convert typed value to Value based on DataTypeId.
+// Used by eval_record/eval_vertex/eval_edge to construct Value from out buffer.
+static Value makeValueFromBuffer(DataTypeId type_id, const void* buf,
+                                 int8_t is_null) {
+  if (is_null) {
+    switch (type_id) {
+    case DataTypeId::kBoolean:    return Value(DataType::BOOLEAN);
+    case DataTypeId::kInt32:      return Value(DataType::INT32);
+    case DataTypeId::kInt64:      return Value(DataType::INT64);
+    case DataTypeId::kUInt32:     return Value(DataType::UINT32);
+    case DataTypeId::kUInt64:     return Value(DataType::UINT64);
+    case DataTypeId::kFloat:      return Value(DataType::FLOAT);
+    case DataTypeId::kDouble:     return Value(DataType::DOUBLE);
+    case DataTypeId::kTimestampMs: return Value(DataType::TIMESTAMP_MS);
+    case DataTypeId::kDate:       return Value(DataType::DATE);
+    default:                      return Value(DataType::SQLNULL);
+    }
+  }
+  switch (type_id) {
+  case DataTypeId::kBoolean:    return Value::BOOLEAN(*static_cast<const bool*>(buf));
+  case DataTypeId::kInt32:      return Value::INT32(*static_cast<const int32_t*>(buf));
+  case DataTypeId::kInt64:      return Value::INT64(*static_cast<const int64_t*>(buf));
+  case DataTypeId::kUInt32:     return Value::UINT32(*static_cast<const uint32_t*>(buf));
+  case DataTypeId::kUInt64:     return Value::UINT64(*static_cast<const uint64_t*>(buf));
+  case DataTypeId::kFloat:      return Value::FLOAT(*static_cast<const float*>(buf));
+  case DataTypeId::kDouble:     return Value::DOUBLE(*static_cast<const double*>(buf));
+  case DataTypeId::kTimestampMs: return Value::TIMESTAMPMS(*static_cast<const DateTime*>(buf));
+  case DataTypeId::kDate:       return Value::DATE(*static_cast<const Date*>(buf));
+  default:
+    LOG(FATAL) << "Unsupported JIT result type";
+    return Value(DataType::SQLNULL);
+  }
+}
 
 Value JitCompiledExpr::eval_record(const Context& ctx, size_t idx) const {
   if (!record_fn_) {
     LOG(FATAL) << "JIT record function not compiled";
     return Value(DataType::SQLNULL);
   }
-  JIT_DISPATCH_RECORD(result_type_, record_fn_, record_slots_.get(),
-                      &ctx, static_cast<uint64_t>(idx));
+  alignas(16) char buf[16];
+  uint8_t is_null = reinterpret_cast<JitRecordFn>(record_fn_)(
+      record_slots_.get(), &ctx, static_cast<uint64_t>(idx), buf);
+  return makeValueFromBuffer(result_type_, buf, is_null);
 }
 
 Value JitCompiledExpr::eval_vertex(label_t v_label, vid_t v_id) const {
@@ -181,9 +75,11 @@ Value JitCompiledExpr::eval_vertex(label_t v_label, vid_t v_id) const {
     LOG(FATAL) << "JIT vertex function not compiled";
     return Value(DataType::SQLNULL);
   }
-  JIT_DISPATCH_VERTEX(result_type_, vertex_fn_, vertex_slots_.get(),
-                      static_cast<uint8_t>(v_label),
-                      static_cast<uint32_t>(v_id));
+  alignas(16) char buf[16];
+  uint8_t is_null = reinterpret_cast<JitVertexFn>(vertex_fn_)(
+      vertex_slots_.get(), static_cast<uint8_t>(v_label),
+      static_cast<uint32_t>(v_id), buf);
+  return makeValueFromBuffer(result_type_, buf, is_null);
 }
 
 Value JitCompiledExpr::eval_edge(const LabelTriplet& label, vid_t src,
@@ -192,159 +88,17 @@ Value JitCompiledExpr::eval_edge(const LabelTriplet& label, vid_t src,
     LOG(FATAL) << "JIT edge function not compiled";
     return Value(DataType::SQLNULL);
   }
-  JIT_DISPATCH_EDGE(result_type_, edge_fn_, edge_slots_.get(),
-                    &label, static_cast<uint32_t>(src),
-                    static_cast<uint32_t>(dst), edata);
+  alignas(16) char buf[16];
+  uint8_t is_null = reinterpret_cast<JitEdgeFn>(edge_fn_)(
+      edge_slots_.get(), &label, static_cast<uint32_t>(src),
+      static_cast<uint32_t>(dst), edata, buf);
+  return makeValueFromBuffer(result_type_, buf, is_null);
 }
 
 // ============================================================================
 // JitCompiledExpr typed_eval implementations
-// Directly extract primitive from NullableValue<T>, bypassing Value entirely.
+// Directly write primitive to out_value, bypassing Value entirely.
 // ============================================================================
-
-#define JIT_TYPED_DISPATCH_RECORD(RESULT_TYPE, FN, SLOTS, CTX, IDX, OUT)      \
-  do {                                                                        \
-    const void* _s = (SLOTS);                                                 \
-    const void* _c = (CTX);                                                   \
-    uint64_t _i = (IDX);                                                      \
-    switch (RESULT_TYPE) {                                                    \
-    case DataTypeId::kBoolean: {                                              \
-      auto r = reinterpret_cast<JitRecordFn_Bool>(FN)(_s, _c, _i);          \
-      *static_cast<bool*>(OUT) = r.value;                                    \
-      return r.is_null != 0;                                                  \
-    }                                                                         \
-    case DataTypeId::kInt32: {                                                \
-      auto r = reinterpret_cast<JitRecordFn_Int32>(FN)(_s, _c, _i);         \
-      *static_cast<int32_t*>(OUT) = r.value;                                 \
-      return r.is_null != 0;                                                  \
-    }                                                                         \
-    case DataTypeId::kInt64: {                                                \
-      auto r = reinterpret_cast<JitRecordFn_Int64>(FN)(_s, _c, _i);         \
-      *static_cast<int64_t*>(OUT) = r.value;                                 \
-      return r.is_null != 0;                                                  \
-    }                                                                         \
-    case DataTypeId::kUInt32: {                                               \
-      auto r = reinterpret_cast<JitRecordFn_UInt32>(FN)(_s, _c, _i);        \
-      *static_cast<uint32_t*>(OUT) = r.value;                                \
-      return r.is_null != 0;                                                  \
-    }                                                                         \
-    case DataTypeId::kUInt64: {                                               \
-      auto r = reinterpret_cast<JitRecordFn_UInt64>(FN)(_s, _c, _i);        \
-      *static_cast<uint64_t*>(OUT) = r.value;                                \
-      return r.is_null != 0;                                                  \
-    }                                                                         \
-    case DataTypeId::kFloat: {                                                \
-      auto r = reinterpret_cast<JitRecordFn_Float>(FN)(_s, _c, _i);         \
-      *static_cast<float*>(OUT) = r.value;                                   \
-      return r.is_null != 0;                                                  \
-    }                                                                         \
-    case DataTypeId::kDouble: {                                               \
-      auto r = reinterpret_cast<JitRecordFn_Double>(FN)(_s, _c, _i);        \
-      *static_cast<double*>(OUT) = r.value;                                  \
-      return r.is_null != 0;                                                  \
-    }                                                                         \
-    default:                                                                  \
-      LOG(FATAL) << "Unsupported JIT result type";                           \
-      return true;                                                            \
-    }                                                                         \
-  } while (0)
-
-#define JIT_TYPED_DISPATCH_VERTEX(RESULT_TYPE, FN, SLOTS, LABEL, VID, OUT)    \
-  do {                                                                        \
-    const void* _s = (SLOTS);                                                 \
-    uint8_t _l = (LABEL);                                                     \
-    uint32_t _v = (VID);                                                      \
-    switch (RESULT_TYPE) {                                                    \
-    case DataTypeId::kBoolean: {                                              \
-      auto r = reinterpret_cast<JitVertexFn_Bool>(FN)(_s, _l, _v);          \
-      *static_cast<bool*>(OUT) = r.value;                                    \
-      return r.is_null != 0;                                                  \
-    }                                                                         \
-    case DataTypeId::kInt32: {                                                \
-      auto r = reinterpret_cast<JitVertexFn_Int32>(FN)(_s, _l, _v);         \
-      *static_cast<int32_t*>(OUT) = r.value;                                 \
-      return r.is_null != 0;                                                  \
-    }                                                                         \
-    case DataTypeId::kInt64: {                                                \
-      auto r = reinterpret_cast<JitVertexFn_Int64>(FN)(_s, _l, _v);         \
-      *static_cast<int64_t*>(OUT) = r.value;                                 \
-      return r.is_null != 0;                                                  \
-    }                                                                         \
-    case DataTypeId::kUInt32: {                                               \
-      auto r = reinterpret_cast<JitVertexFn_UInt32>(FN)(_s, _l, _v);        \
-      *static_cast<uint32_t*>(OUT) = r.value;                                \
-      return r.is_null != 0;                                                  \
-    }                                                                         \
-    case DataTypeId::kUInt64: {                                               \
-      auto r = reinterpret_cast<JitVertexFn_UInt64>(FN)(_s, _l, _v);        \
-      *static_cast<uint64_t*>(OUT) = r.value;                                \
-      return r.is_null != 0;                                                  \
-    }                                                                         \
-    case DataTypeId::kFloat: {                                                \
-      auto r = reinterpret_cast<JitVertexFn_Float>(FN)(_s, _l, _v);         \
-      *static_cast<float*>(OUT) = r.value;                                   \
-      return r.is_null != 0;                                                  \
-    }                                                                         \
-    case DataTypeId::kDouble: {                                               \
-      auto r = reinterpret_cast<JitVertexFn_Double>(FN)(_s, _l, _v);        \
-      *static_cast<double*>(OUT) = r.value;                                  \
-      return r.is_null != 0;                                                  \
-    }                                                                         \
-    default:                                                                  \
-      LOG(FATAL) << "Unsupported JIT result type";                           \
-      return true;                                                            \
-    }                                                                         \
-  } while (0)
-
-#define JIT_TYPED_DISPATCH_EDGE(RESULT_TYPE, FN, SLOTS, TRIP, SRC, DST,       \
-                                EDATA, OUT)                                   \
-  do {                                                                        \
-    const void* _s = (SLOTS);                                                 \
-    const void* _t = (TRIP);                                                  \
-    uint32_t _src = (SRC);                                                    \
-    uint32_t _dst = (DST);                                                    \
-    const void* _e = (EDATA);                                                 \
-    switch (RESULT_TYPE) {                                                    \
-    case DataTypeId::kBoolean: {                                              \
-      auto r = reinterpret_cast<JitEdgeFn_Bool>(FN)(_s, _t, _src, _dst, _e);\
-      *static_cast<bool*>(OUT) = r.value;                                    \
-      return r.is_null != 0;                                                  \
-    }                                                                         \
-    case DataTypeId::kInt32: {                                                \
-      auto r = reinterpret_cast<JitEdgeFn_Int32>(FN)(_s, _t, _src, _dst, _e);\
-      *static_cast<int32_t*>(OUT) = r.value;                                 \
-      return r.is_null != 0;                                                  \
-    }                                                                         \
-    case DataTypeId::kInt64: {                                                \
-      auto r = reinterpret_cast<JitEdgeFn_Int64>(FN)(_s, _t, _src, _dst, _e);\
-      *static_cast<int64_t*>(OUT) = r.value;                                 \
-      return r.is_null != 0;                                                  \
-    }                                                                         \
-    case DataTypeId::kUInt32: {                                               \
-      auto r = reinterpret_cast<JitEdgeFn_UInt32>(FN)(_s, _t, _src, _dst, _e);\
-      *static_cast<uint32_t*>(OUT) = r.value;                                \
-      return r.is_null != 0;                                                  \
-    }                                                                         \
-    case DataTypeId::kUInt64: {                                               \
-      auto r = reinterpret_cast<JitEdgeFn_UInt64>(FN)(_s, _t, _src, _dst, _e);\
-      *static_cast<uint64_t*>(OUT) = r.value;                                \
-      return r.is_null != 0;                                                  \
-    }                                                                         \
-    case DataTypeId::kFloat: {                                                \
-      auto r = reinterpret_cast<JitEdgeFn_Float>(FN)(_s, _t, _src, _dst, _e);\
-      *static_cast<float*>(OUT) = r.value;                                   \
-      return r.is_null != 0;                                                  \
-    }                                                                         \
-    case DataTypeId::kDouble: {                                               \
-      auto r = reinterpret_cast<JitEdgeFn_Double>(FN)(_s, _t, _src, _dst, _e);\
-      *static_cast<double*>(OUT) = r.value;                                  \
-      return r.is_null != 0;                                                  \
-    }                                                                         \
-    default:                                                                  \
-      LOG(FATAL) << "Unsupported JIT result type";                           \
-      return true;                                                            \
-    }                                                                         \
-  } while (0)
 
 bool JitCompiledExpr::typed_eval_record(const Context& ctx, size_t idx,
                                         void* out_value) const {
@@ -352,8 +106,9 @@ bool JitCompiledExpr::typed_eval_record(const Context& ctx, size_t idx,
     LOG(FATAL) << "JIT record function not compiled";
     return true;
   }
-  JIT_TYPED_DISPATCH_RECORD(result_type_, record_fn_, record_slots_.get(),
-                            &ctx, static_cast<uint64_t>(idx), out_value);
+  return reinterpret_cast<JitRecordFn>(record_fn_)(
+      record_slots_.get(), &ctx, static_cast<uint64_t>(idx),
+      out_value) != 0;
 }
 
 bool JitCompiledExpr::typed_eval_vertex(label_t v_label, vid_t v_id,
@@ -362,9 +117,9 @@ bool JitCompiledExpr::typed_eval_vertex(label_t v_label, vid_t v_id,
     LOG(FATAL) << "JIT vertex function not compiled";
     return true;
   }
-  JIT_TYPED_DISPATCH_VERTEX(result_type_, vertex_fn_, vertex_slots_.get(),
-                            static_cast<uint8_t>(v_label),
-                            static_cast<uint32_t>(v_id), out_value);
+  return reinterpret_cast<JitVertexFn>(vertex_fn_)(
+      vertex_slots_.get(), static_cast<uint8_t>(v_label),
+      static_cast<uint32_t>(v_id), out_value) != 0;
 }
 
 bool JitCompiledExpr::typed_eval_edge(const LabelTriplet& label, vid_t src,
@@ -374,11 +129,10 @@ bool JitCompiledExpr::typed_eval_edge(const LabelTriplet& label, vid_t src,
     LOG(FATAL) << "JIT edge function not compiled";
     return true;
   }
-  JIT_TYPED_DISPATCH_EDGE(result_type_, edge_fn_, edge_slots_.get(),
-                          &label, static_cast<uint32_t>(src),
-                          static_cast<uint32_t>(dst), edata, out_value);
+  return reinterpret_cast<JitEdgeFn>(edge_fn_)(
+      edge_slots_.get(), &label, static_cast<uint32_t>(src),
+      static_cast<uint32_t>(dst), edata, out_value) != 0;
 }
-
 // ============================================================================
 // JitCompiledTemplate implementation
 // ============================================================================

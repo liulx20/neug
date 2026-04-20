@@ -52,40 +52,83 @@ class BindedVertexPropertyAccessor : public VertexExprBase {
     switch (type_.id()) {
     case DataTypeId::kBoolean: {
       auto* typed = reinterpret_cast<const TypedRefColumn<bool>*>(col);
-      *static_cast<bool*>(out_value) = typed->get_view(v);
-      return false;
+      if (typed) {
+        *static_cast<bool*>(out_value) = typed->get_view(v);
+        return false;
+      }
+      break;
     }
     case DataTypeId::kInt32: {
       auto* typed = reinterpret_cast<const TypedRefColumn<int32_t>*>(col);
-      *static_cast<int32_t*>(out_value) = typed->get_view(v);
-      return false;
+      if (typed) {
+        *static_cast<int32_t*>(out_value) = typed->get_view(v);
+        return false;
+      }
+      break;
     }
     case DataTypeId::kInt64: {
       auto* typed = reinterpret_cast<const TypedRefColumn<int64_t>*>(col);
-
-      *static_cast<int64_t*>(out_value) = typed->get_view(v);
-      return false;
+      if (typed) {
+        *static_cast<int64_t*>(out_value) = typed->get_view(v);
+        return false;
+      }
+      break;
     }
     case DataTypeId::kUInt32: {
       auto* typed = reinterpret_cast<const TypedRefColumn<uint32_t>*>(col);
-      *static_cast<uint32_t*>(out_value) = typed->get_view(v);
-      return false;
+      if (typed) {
+        *static_cast<uint32_t*>(out_value) = typed->get_view(v);
+        return false;
+      }
+      break;
     }
     case DataTypeId::kUInt64: {
       auto* typed = reinterpret_cast<const TypedRefColumn<uint64_t>*>(col);
-      *static_cast<uint64_t*>(out_value) = typed->get_view(v);
-      return false;
+      if (typed) {
+        *static_cast<uint64_t*>(out_value) = typed->get_view(v);
+        return false;
+      }
+      break;
     }
     case DataTypeId::kFloat: {
       auto* typed = reinterpret_cast<const TypedRefColumn<float>*>(col);
-      *static_cast<float*>(out_value) = typed->get_view(v);
-      return false;
+      if (typed) {
+        *static_cast<float*>(out_value) = typed->get_view(v);
+        return false;
+      }
+      break;
     }
     case DataTypeId::kDouble: {
       auto* typed = reinterpret_cast<const TypedRefColumn<double>*>(col);
-
-      *static_cast<double*>(out_value) = typed->get_view(v);
-      return false;
+      if (typed) {
+        *static_cast<double*>(out_value) = typed->get_view(v);
+        return false;
+      }
+      break;
+    }
+    case DataTypeId::kTimestampMs: {
+      auto* typed = reinterpret_cast<const TypedRefColumn<DateTime>*>(col);
+      if (typed) {
+        *static_cast<DateTime*>(out_value) = typed->get_view(v);
+        return false;
+      }
+      break;
+    }
+    case DataTypeId::kDate: {
+      auto* typed = reinterpret_cast<const TypedRefColumn<Date>*>(col);
+      if (typed) {
+        *static_cast<Date*>(out_value) = typed->get_view(v);
+        return false;
+      }
+      break;
+    }
+    case DataTypeId::kInterval: {
+      auto* typed = reinterpret_cast<const TypedRefColumn<Interval>*>(col);
+      if (typed) {
+        *static_cast<Interval*>(out_value) = typed->get_view(v);
+        return false;
+      }
+      break;
     }
     default:
       break;

@@ -337,17 +337,17 @@ neug::result<OpBuildResultT> EdgeExpandOprBuilder::Build(
   } else if (opr.expand_opt() == physical::EdgeExpand_ExpandOpt_EDGE) {
     meta.set(alias, DataType::EDGE);
     if (query_params.has_predicate()) {
-      SpecialPredicateConfig config;
-      if (is_special_edge_predicate(schema, eep.labels,
-                                    query_params.predicate(), config)) {
-        return std::make_pair(
-            std::make_unique<EdgeExpandEWithSPredOpr>(eep, config), meta);
-      } else {
-        auto pred = parse_expression(query_params.predicate(), ctx_meta,
-                                     VarType::kEdge);
-        return std::make_pair(
-            std::make_unique<EdgeExpandEOpr>(eep, std::move(pred)), meta);
-      }
+      // SpecialPredicateConfig config;
+      /**  if (is_special_edge_predicate(schema, eep.labels,
+                                     query_params.predicate(), config)) {
+         return std::make_pair(
+             std::make_unique<EdgeExpandEWithSPredOpr>(eep, config), meta);
+       } else {*/
+      auto pred =
+          parse_expression(query_params.predicate(), ctx_meta, VarType::kEdge);
+      return std::make_pair(
+          std::make_unique<EdgeExpandEOpr>(eep, std::move(pred)), meta);
+      // }
     } else {
       return std::make_pair(std::make_unique<EdgeExpandEOpr>(eep, nullptr),
                             meta);
@@ -434,13 +434,13 @@ neug::result<OpBuildResultT> EdgeExpandGetVOprBuilder::Build(
       if (query_params.has_predicate()) {
         auto expr = parse_expression(query_params.predicate(), ctx_meta,
                                      VarType::kEdge);
-        SpecialPredicateConfig config;
+        /**SpecialPredicateConfig config;
         if (is_special_edge_predicate(schema, eep.labels,
                                       query_params.predicate(), config)) {
           return std::make_pair(std::make_unique<EdgeExpandVWithEPCmpOpr>(
                                     eep, config, std::move(expr)),
                                 meta);
-        }
+        }*/
         return std::make_pair(
             std::make_unique<EdgeExpandVOpr>(eep, std::move(expr)), meta);
       } else {
@@ -452,21 +452,21 @@ neug::result<OpBuildResultT> EdgeExpandGetVOprBuilder::Build(
     if (query_params.has_predicate()) {
       return std::make_pair(nullptr, meta);
     } else {
-      SpecialPredicateConfig config;
-      const auto& vertex_labels = parse_tables(v_opr.params());
-      if (is_special_vertex_predicate(schema, vertex_labels,
-                                      v_opr.params().predicate(), config)) {
-        return std::make_pair(
-            std::make_unique<EdgeExpandVWithSPVertexPredOpr>(eep, config),
-            meta);
+      /**  SpecialPredicateConfig config;
+       const auto& vertex_labels = parse_tables(v_opr.params());
+       if (is_special_vertex_predicate(schema, vertex_labels,
+                                       v_opr.params().predicate(), config)) {
+         return std::make_pair(
+             std::make_unique<EdgeExpandVWithSPVertexPredOpr>(eep, config),
+             meta);
 
-      } else {
-        auto expr = parse_expression(v_opr.params().predicate(), ctx_meta,
-                                     VarType::kVertex);
-        return std::make_pair(std::make_unique<EdgeExpandVWithGPVertexPredOpr>(
-                                  eep, std::move(expr)),
-                              meta);
-      }
+       } else {*/
+      auto expr = parse_expression(v_opr.params().predicate(), ctx_meta,
+                                   VarType::kVertex);
+      return std::make_pair(std::make_unique<EdgeExpandVWithGPVertexPredOpr>(
+                                eep, std::move(expr)),
+                            meta);
+      // }
     }
   }
   return std::make_pair(nullptr, ContextMeta());

@@ -15,6 +15,7 @@
 
 #include "neug/execution/expression/accessors/record_accessor.h"
 #include "neug/execution/common/columns/i_context_column.h"
+
 #include "neug/execution/common/columns/vertex_columns.h"
 #include "neug/utils/property/column.h"
 
@@ -27,7 +28,7 @@ class BindedRecordAccessor : public RecordExprBase {
       : tag_(tag), type_(type) {}
 
   Value eval_record(const Context& ctx, size_t idx) const override {
-    return ctx.get_ptr(tag_)->get_elem(idx);
+    return ctx.get(tag_)->get_elem(idx);
   }
 
   const DataType& type() const override { return type_; }
@@ -90,65 +91,93 @@ class BindedRecordVertexPropertyExpr : public RecordExprBase {
     vid_t vid = static_cast<vid_t>(vertex.vid());
     label_t vlabel = static_cast<label_t>(vertex.label());
 
-    auto col = property_columns_[vlabel].get();
-    if (col == nullptr) {
+    auto column = property_columns_[vlabel].get();
+    if (column == nullptr) {
       return true;  // null
     }
-
+    const auto* col = column;
     switch (type_.id()) {
     case DataTypeId::kBoolean: {
       auto* typed = reinterpret_cast<const TypedRefColumn<bool>*>(col);
-      *static_cast<bool*>(out_value) = typed->get_view(vid);
-      return false;
+      if (typed) {
+        *static_cast<bool*>(out_value) = typed->get_view(vid);
+        return false;
+      }
       break;
     }
     case DataTypeId::kInt32: {
       auto* typed = reinterpret_cast<const TypedRefColumn<int32_t>*>(col);
-
-      *static_cast<int32_t*>(out_value) = typed->get_view(vid);
-      return false;
+      if (typed) {
+        *static_cast<int32_t*>(out_value) = typed->get_view(vid);
+        return false;
+      }
       break;
     }
     case DataTypeId::kInt64: {
       auto* typed = reinterpret_cast<const TypedRefColumn<int64_t>*>(col);
-
-      *static_cast<int64_t*>(out_value) = typed->get_view(vid);
-      return false;
-
+      if (typed) {
+        *static_cast<int64_t*>(out_value) = typed->get_view(vid);
+        return false;
+      }
       break;
     }
     case DataTypeId::kUInt32: {
       auto* typed = reinterpret_cast<const TypedRefColumn<uint32_t>*>(col);
-
-      *static_cast<uint32_t*>(out_value) = typed->get_view(vid);
-      return false;
-
+      if (typed) {
+        *static_cast<uint32_t*>(out_value) = typed->get_view(vid);
+        return false;
+      }
       break;
     }
     case DataTypeId::kUInt64: {
       auto* typed = reinterpret_cast<const TypedRefColumn<uint64_t>*>(col);
-
-      *static_cast<uint64_t*>(out_value) = typed->get_view(vid);
-      return false;
-
+      if (typed) {
+        *static_cast<uint64_t*>(out_value) = typed->get_view(vid);
+        return false;
+      }
       break;
     }
     case DataTypeId::kFloat: {
       auto* typed = reinterpret_cast<const TypedRefColumn<float>*>(col);
-
-      *static_cast<float*>(out_value) = typed->get_view(vid);
-      return false;
-
+      if (typed) {
+        *static_cast<float*>(out_value) = typed->get_view(vid);
+        return false;
+      }
       break;
     }
     case DataTypeId::kDouble: {
       auto* typed = reinterpret_cast<const TypedRefColumn<double>*>(col);
-
-      *static_cast<double*>(out_value) = typed->get_view(vid);
-      return false;
-
+      if (typed) {
+        *static_cast<double*>(out_value) = typed->get_view(vid);
+        return false;
+      }
       break;
     }
+    case DataTypeId::kTimestampMs: {
+      auto* typed = reinterpret_cast<const TypedRefColumn<DateTime>*>(col);
+      if (typed) {
+        *static_cast<DateTime*>(out_value) = typed->get_view(vid);
+        return false;
+      }
+      break;
+    }
+    case DataTypeId::kDate: {
+      auto* typed = reinterpret_cast<const TypedRefColumn<Date>*>(col);
+      if (typed) {
+        *static_cast<Date*>(out_value) = typed->get_view(vid);
+        return false;
+      }
+      break;
+    }
+    case DataTypeId::kInterval: {
+      auto* typed = reinterpret_cast<const TypedRefColumn<Interval>*>(col);
+      if (typed) {
+        *static_cast<Interval*>(out_value) = typed->get_view(vid);
+        return false;
+      }
+      break;
+    }
+
     default:
       break;
     }
@@ -207,7 +236,6 @@ class BindedRecordVertexGIdExpr : public RecordExprBase {
       return true;
     }
     auto vertex = vertex_col->get_vertex(idx);
-
     *static_cast<int64_t*>(out_value) = encode_unique_vertex_id(
         static_cast<label_t>(vertex.label()), static_cast<vid_t>(vertex.vid()));
     return false;
