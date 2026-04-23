@@ -130,7 +130,7 @@ class VertexTable {
 
   // Return false if the reserved space is not enough.
   bool AddVertex(const Property& id, const std::vector<Property>& props,
-                 vid_t& vid, timestamp_t ts = 0, bool insert_safe = false);
+                 vid_t& vid, timestamp_t ts, bool insert_safe);
 
   bool UpdateProperty(vid_t vid, int32_t prop_id, const Property& value,
                       timestamp_t ts);
