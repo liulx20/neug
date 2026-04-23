@@ -344,16 +344,15 @@ class LFIndexer {
         reserve(cap + (cap >> 2));
       }
     }
-    INDEX_T ind = num_elements_.load();
+    INDEX_T ind = static_cast<INDEX_T>(
+        num_elements_.fetch_add(1, std::memory_order_acq_rel));
     if (!insert_safe && NEUG_UNLIKELY(static_cast<size_t>(ind) >= capacity())) {
       THROW_INTERNAL_EXCEPTION(
           "Reserved size is not enough: " + std::to_string(capacity()) +
           " vs " + std::to_string(ind));
     }
-    // may throw when insert_safe is false
+    // may throw if insert_safe is false and reserved size is not enough
     keys_->set_any(ind, oid, insert_safe);
-
-    num_elements_.fetch_add(1, std::memory_order_acq_rel);
     auto* indices_ptr = reinterpret_cast<INDEX_T*>(indices_->GetData());
     size_t index =
         hash_policy_.index_for_hash(hasher_(oid), num_slots_minus_one_);
