@@ -1560,7 +1560,7 @@ TYPED_TEST(EdgeTableToolsTest, TestBatchAddEdges) {
   for (uint32_t i = 0; i < 10; i++) {
     Property oid;
     oid.set_uint32(i);
-    indexer.insert(oid);
+    indexer.insert(oid, false);
   }
 
   EdgeTable e_table = EdgeTable(edge_schema);
@@ -1606,7 +1606,7 @@ TYPED_TEST(EdgeTableToolsTest, TestAddProperties) {
   for (uint32_t i = 0; i < 10; i++) {
     Property oid;
     oid.set_uint32(i);
-    indexer.insert(oid);
+    indexer.insert(oid, false);
   }
 
   std::vector<std::string> new_property_name = {"new_property"};

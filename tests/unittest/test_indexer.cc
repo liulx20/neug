@@ -126,7 +126,7 @@ TEST_F(LFIndexerTest, SupportsCoreMutableInterfacesInMemory) {
   EXPECT_GE(indexer.capacity(), 8U);
 
   std::vector<int64_t> values = {7, 11, 13, 17, 19, 23, 29, 31, 37, 41};
-  EXPECT_EQ(indexer.insert(Property::from_int64(values[0])), 0U);
+  EXPECT_EQ(indexer.insert(Property::from_int64(values[0]), false), 0U);
   for (size_t i = 1; i < values.size(); ++i) {
     EXPECT_EQ(indexer.insert(Property::from_int64(values[i]), true),
               static_cast<uint32_t>(i));
@@ -278,7 +278,7 @@ TEST_F(LFIndexerTest, VarcharReserveEnablesNonSafeInsert) {
   std::vector<std::string> values = {"alpha",   "beta", "gamma", "delta",
                                      "epsilon", "zeta", "eta",   "theta"};
   for (const auto& v : values) {
-    indexer.insert(Property::from_string_view(v));
+    indexer.insert(Property::from_string_view(v), false);
   }
   ExpectStringValues(indexer, values);
   indexer.close();
@@ -307,7 +307,7 @@ TEST_F(LFIndexerTest, VarcharReserveMaxWidthStrings) {
     values.push_back(std::string(kMaxWidth - 1, static_cast<char>('a' + i)));
   }
   for (const auto& v : values) {
-    indexer.insert(Property::from_string_view(v));
+    indexer.insert(Property::from_string_view(v), false);
   }
   ExpectStringValues(indexer, values);
   indexer.close();
@@ -328,7 +328,7 @@ TEST_F(LFIndexerTest, VarcharMultipleReservesAccumulateDataSpace) {
   indexer.reserve(4);
   std::vector<std::string> batch1 = {"alice", "bob", "carol", "dave"};
   for (const auto& v : batch1) {
-    indexer.insert(Property::from_string_view(v));
+    indexer.insert(Property::from_string_view(v), false);
   }
   ExpectStringValues(indexer, batch1);
 
@@ -338,7 +338,7 @@ TEST_F(LFIndexerTest, VarcharMultipleReservesAccumulateDataSpace) {
   indexer.reserve(8);
   std::vector<std::string> batch2 = {"erin", "frank", "grace", "heidi"};
   for (const auto& v : batch2) {
-    indexer.insert(Property::from_string_view(v));
+    indexer.insert(Property::from_string_view(v), false);
   }
 
   std::vector<std::string> all = {"alice", "bob",   "carol", "dave",
@@ -361,10 +361,10 @@ TEST_F(LFIndexerTest, VarcharReserveSmallerThanCapacityIsNoop) {
   indexer.reserve(16);
   EXPECT_GE(indexer.capacity(), 16U);
   size_t size_before = indexer.size();
-  indexer.insert(Property::from_string_view("foo"));
-  indexer.insert(Property::from_string_view("bar"));
-  indexer.insert(Property::from_string_view("baz"));
-  indexer.insert(Property::from_string_view("qux"));
+  indexer.insert(Property::from_string_view("foo"), false);
+  indexer.insert(Property::from_string_view("bar"), false);
+  indexer.insert(Property::from_string_view("baz"), false);
+  indexer.insert(Property::from_string_view("qux"), false);
 
   // Shrinking reserve must not corrupt state.
   indexer.reserve(4);
@@ -415,7 +415,7 @@ TEST_F(LFIndexerTest, VarcharReserveInsertDumpReload) {
 
   std::vector<std::string> values = {"one", "two", "three", "four", "five"};
   for (const auto& v : values) {
-    writable.insert(Property::from_string_view(v));
+    writable.insert(Property::from_string_view(v), false);
   }
   ExpectStringValues(writable, values);
 
@@ -482,7 +482,7 @@ TEST_F(LFIndexerTest, VarcharShortDumpReopenReserveThenInsertLong_InMemory) {
     long_values.push_back(std::string(60, static_cast<char>('d' + i)));
   }
   for (const auto& v : long_values) {
-    indexer.insert(Property::from_string_view(v));
+    indexer.insert(Property::from_string_view(v), false);
   }
 
   std::vector<std::string> all = short_values;
@@ -510,7 +510,7 @@ TEST_F(LFIndexerTest, VarcharShortDumpReopenInsertSafeLong_InMemory) {
     writer.open_in_memory(base);
     writer.reserve(short_values.size());
     for (const auto& v : short_values) {
-      writer.insert(Property::from_string_view(v));
+      writer.insert(Property::from_string_view(v), false);
     }
     writer.dump(name, snapshot_dir_);
   }
@@ -577,7 +577,7 @@ TEST_F(LFIndexerTest, VarcharShortDumpReopenReserveThenInsertLong_SyncToFile) {
     long_values.push_back(std::string(30, static_cast<char>('p' + i)));
   }
   for (const auto& v : long_values) {
-    indexer.insert(Property::from_string_view(v));
+    indexer.insert(Property::from_string_view(v), false);
   }
 
   std::vector<std::string> all = short_values;

@@ -334,7 +334,7 @@ class LFIndexer {
   size_t size() const { return num_elements_.load(); }
   DataTypeId get_type() const { return keys_->type(); }
 
-  INDEX_T insert(const Property& oid, bool insert_safe = false) {
+  INDEX_T insert(const Property& oid, bool insert_safe) {
     assert(oid.type() == get_type());
 
     if (insert_safe) {
