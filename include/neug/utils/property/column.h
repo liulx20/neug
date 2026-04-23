@@ -449,9 +449,14 @@ class TypedColumn<std::string_view> : public ColumnBase {
             std::max(size_ * new_avg_width, pos_.load() + dst_value.size());
         data_buffer_->Resize(new_len);
       } else {
-        THROW_STORAGE_EXCEPTION(
-            "Not enough space in buffer for new value, and insert_safe is "
-            "false");
+        std::stringstream ss;
+        ss << "Not enough space in buffer for new value, and insert_safe is "
+              "false. "
+           << "Current buffer size: " << data_buffer_->GetDataSize()
+           << ", current position: " << pos_.load()
+           << ", new value size: " << dst_value.size();
+        LOG(ERROR) << ss.str();
+        THROW_STORAGE_EXCEPTION(ss.str());
       }
     }
     set_value(idx, dst_value);
