@@ -138,88 +138,88 @@ WalParserFactory::getKnownWalParsers() {
 ////////////////////////// Serialization operators //////////////////////////
 
 void CreateVertexTypeRedo::Serialize(InArchive& arc,
-                                     const CreateVertexTypeConfig& config) {
+                                     const CreateVertexTypeParam& config) {
   arc << static_cast<uint8_t>(OpType::kCreateVertexType);
   config.Serialize(arc);
 }
 
-CreateVertexTypeConfig CreateVertexTypeRedo::Deserialize(OutArchive& arc) {
-  return CreateVertexTypeConfig::Deserialize(arc);
+CreateVertexTypeParam CreateVertexTypeRedo::Deserialize(OutArchive& arc) {
+  return CreateVertexTypeParam::Deserialize(arc);
 }
 
 void CreateEdgeTypeRedo::Serialize(InArchive& arc,
-                                   const CreateEdgeTypeConfig& config) {
+                                   const CreateEdgeTypeParam& config) {
   arc << static_cast<uint8_t>(OpType::kCreateEdgeType);
   config.Serialize(arc);
 }
 
-CreateEdgeTypeConfig CreateEdgeTypeRedo::Deserialize(OutArchive& arc) {
-  return CreateEdgeTypeConfig::Deserialize(arc);
+CreateEdgeTypeParam CreateEdgeTypeRedo::Deserialize(OutArchive& arc) {
+  return CreateEdgeTypeParam::Deserialize(arc);
 }
 
 void AddVertexPropertiesRedo::Serialize(
-    InArchive& arc, const AddVertexPropertiesConfig& config) {
+    InArchive& arc, const AddVertexPropertiesParam& config) {
   arc << static_cast<uint8_t>(OpType::kAddVertexProp);
   config.Serialize(arc);
 }
 
-AddVertexPropertiesConfig AddVertexPropertiesRedo::Deserialize(
+AddVertexPropertiesParam AddVertexPropertiesRedo::Deserialize(
     OutArchive& arc) {
-  return AddVertexPropertiesConfig::Deserialize(arc);
+  return AddVertexPropertiesParam::Deserialize(arc);
 }
 
 void AddEdgePropertiesRedo::Serialize(InArchive& arc,
-                                      const AddEdgePropertiesConfig& config) {
+                                      const AddEdgePropertiesParam& config) {
   arc << static_cast<uint8_t>(OpType::kAddEdgeProp);
   config.Serialize(arc);
 }
 
-AddEdgePropertiesConfig AddEdgePropertiesRedo::Deserialize(OutArchive& arc) {
-  return AddEdgePropertiesConfig::Deserialize(arc);
+AddEdgePropertiesParam AddEdgePropertiesRedo::Deserialize(OutArchive& arc) {
+  return AddEdgePropertiesParam::Deserialize(arc);
 }
 
 void RenameVertexPropertiesRedo::Serialize(
-    InArchive& arc, const RenameVertexPropertiesConfig& config) {
+    InArchive& arc, const RenameVertexPropertiesParam& config) {
   arc << static_cast<uint8_t>(OpType::kRenameVertexProp);
   config.Serialize(arc);
 }
 
-RenameVertexPropertiesConfig RenameVertexPropertiesRedo::Deserialize(
+RenameVertexPropertiesParam RenameVertexPropertiesRedo::Deserialize(
     OutArchive& arc) {
-  return RenameVertexPropertiesConfig::Deserialize(arc);
+  return RenameVertexPropertiesParam::Deserialize(arc);
 }
 
 void RenameEdgePropertiesRedo::Serialize(
-    InArchive& arc, const RenameEdgePropertiesConfig& config) {
+    InArchive& arc, const RenameEdgePropertiesParam& config) {
   arc << static_cast<uint8_t>(OpType::kRenameEdgeProp);
   config.Serialize(arc);
 }
 
-RenameEdgePropertiesConfig RenameEdgePropertiesRedo::Deserialize(
+RenameEdgePropertiesParam RenameEdgePropertiesRedo::Deserialize(
     OutArchive& arc) {
-  return RenameEdgePropertiesConfig::Deserialize(arc);
+  return RenameEdgePropertiesParam::Deserialize(arc);
 }
 
 void DeleteVertexPropertiesRedo::Serialize(
-    InArchive& arc, const DeleteVertexPropertiesConfig& config) {
+    InArchive& arc, const DeleteVertexPropertiesParam& config) {
   arc << static_cast<uint8_t>(OpType::kDeleteVertexProp);
   config.Serialize(arc);
 }
 
-DeleteVertexPropertiesConfig DeleteVertexPropertiesRedo::Deserialize(
+DeleteVertexPropertiesParam DeleteVertexPropertiesRedo::Deserialize(
     OutArchive& arc) {
-  return DeleteVertexPropertiesConfig::Deserialize(arc);
+  return DeleteVertexPropertiesParam::Deserialize(arc);
 }
 
 void DeleteEdgePropertiesRedo::Serialize(
-    InArchive& arc, const DeleteEdgePropertiesConfig& config) {
+    InArchive& arc, const DeleteEdgePropertiesParam& config) {
   arc << static_cast<uint8_t>(OpType::kDeleteEdgeProp);
   config.Serialize(arc);
 }
 
-DeleteEdgePropertiesConfig DeleteEdgePropertiesRedo::Deserialize(
+DeleteEdgePropertiesParam DeleteEdgePropertiesRedo::Deserialize(
     OutArchive& arc) {
-  return DeleteEdgePropertiesConfig::Deserialize(arc);
+  return DeleteEdgePropertiesParam::Deserialize(arc);
 }
 
 void DeleteVertexTypeRedo::Serialize(InArchive& arc,

@@ -43,9 +43,9 @@ class AddVertexPropertySchemaOpr : public IOperator {
       property_tuples.emplace_back(prop_value.type(), prop_name,
                                    value_to_property(prop_value));
     }
-    AddVertexPropertiesConfigBuilder builder;
-    auto config = builder.WithVertexTypeName(vertex_type_)
-                      .WithProperties(property_tuples)
+    AddVertexPropertiesParamBuilder builder;
+    auto config = builder.VertexLabel(vertex_type_)
+                      .Properties(property_tuples)
                       .Build();
     auto res = storage.AddVertexProperties(config, error_on_conflict_);
     if (!res.ok()) {

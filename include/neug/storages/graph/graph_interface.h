@@ -554,28 +554,28 @@ class StorageUpdateInterface : public StorageReadInterface,
       const std::vector<std::pair<vid_t, int32_t>>& oe_edges,
       const std::vector<std::pair<vid_t, int32_t>>& ie_edges) = 0;
 
-  virtual Status CreateVertexType(const CreateVertexTypeConfig& config,
+  virtual Status CreateVertexType(const CreateVertexTypeParam& config,
                                   bool error_on_conflict) = 0;
 
-  virtual Status CreateEdgeType(const CreateEdgeTypeConfig& config,
+  virtual Status CreateEdgeType(const CreateEdgeTypeParam& config,
                                 bool error_on_conflict) = 0;
 
-  virtual Status AddVertexProperties(const AddVertexPropertiesConfig& config,
+  virtual Status AddVertexProperties(const AddVertexPropertiesParam& config,
                                      bool error_on_conflict) = 0;
 
-  virtual Status AddEdgeProperties(const AddEdgePropertiesConfig& config,
+  virtual Status AddEdgeProperties(const AddEdgePropertiesParam& config,
                                    bool error_on_conflict) = 0;
 
   virtual Status RenameVertexProperties(
-      const RenameVertexPropertiesConfig& config, bool error_on_conflict) = 0;
+      const RenameVertexPropertiesParam& config, bool error_on_conflict) = 0;
 
-  virtual Status RenameEdgeProperties(const RenameEdgePropertiesConfig& config,
+  virtual Status RenameEdgeProperties(const RenameEdgePropertiesParam& config,
                                       bool error_on_conflict) = 0;
 
   virtual Status DeleteVertexProperties(
-      const DeleteVertexPropertiesConfig& config, bool error_on_conflict) = 0;
+      const DeleteVertexPropertiesParam& config, bool error_on_conflict) = 0;
 
-  virtual Status DeleteEdgeProperties(const DeleteEdgePropertiesConfig& config,
+  virtual Status DeleteEdgeProperties(const DeleteEdgePropertiesParam& config,
                                       bool error_on_conflict) = 0;
 
   virtual Status DeleteVertexType(const std::string& vertex_type_name,
@@ -625,22 +625,22 @@ class StorageAPUpdateInterface : public StorageUpdateInterface {
       label_t src_v_label_id, label_t dst_v_label_id, label_t edge_label_id,
       const std::vector<std::pair<vid_t, int32_t>>& oe_edges,
       const std::vector<std::pair<vid_t, int32_t>>& ie_edges) override;
-  Status CreateVertexType(const CreateVertexTypeConfig& config,
+  Status CreateVertexType(const CreateVertexTypeParam& config,
                           bool error_on_conflict = true) override;
 
-  Status CreateEdgeType(const CreateEdgeTypeConfig& config,
+  Status CreateEdgeType(const CreateEdgeTypeParam& config,
                         bool error_on_conflict) override;
-  Status AddVertexProperties(const AddVertexPropertiesConfig& config,
+  Status AddVertexProperties(const AddVertexPropertiesParam& config,
                              bool error_on_conflict) override;
-  Status AddEdgeProperties(const AddEdgePropertiesConfig& config,
+  Status AddEdgeProperties(const AddEdgePropertiesParam& config,
                            bool error_on_conflict) override;
-  Status RenameVertexProperties(const RenameVertexPropertiesConfig& config,
+  Status RenameVertexProperties(const RenameVertexPropertiesParam& config,
                                 bool error_on_conflict) override;
-  Status RenameEdgeProperties(const RenameEdgePropertiesConfig& config,
+  Status RenameEdgeProperties(const RenameEdgePropertiesParam& config,
                               bool error_on_conflict) override;
-  Status DeleteVertexProperties(const DeleteVertexPropertiesConfig& config,
+  Status DeleteVertexProperties(const DeleteVertexPropertiesParam& config,
                                 bool error_on_conflict) override;
-  Status DeleteEdgeProperties(const DeleteEdgePropertiesConfig& config,
+  Status DeleteEdgeProperties(const DeleteEdgePropertiesParam& config,
                               bool error_on_conflict) override;
   Status DeleteVertexType(const std::string& vertex_type_name,
                           bool error_on_conflict = true) override;

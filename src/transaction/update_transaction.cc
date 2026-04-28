@@ -198,9 +198,9 @@ void UpdateTransaction::revert_changes() {
   }
 }
 
-Status UpdateTransaction::CreateVertexType(const CreateVertexTypeConfig& config,
+Status UpdateTransaction::CreateVertexType(const CreateVertexTypeParam& config,
                                            bool error_on_conflict) {
-  auto name = config.GetVertexTypeName();
+  auto name = config.GetVertexLabel();
   if (graph_.schema().contains_vertex_label(name)) {
     LOG(ERROR) << "Vertex type " << name << " already exists.";
     if (error_on_conflict) {
@@ -231,7 +231,7 @@ Status UpdateTransaction::CreateVertexType(const CreateVertexTypeConfig& config,
   return status;
 }
 
-Status UpdateTransaction::CreateEdgeType(const CreateEdgeTypeConfig& config,
+Status UpdateTransaction::CreateEdgeType(const CreateEdgeTypeParam& config,
                                          bool error_on_conflict) {
   const auto& src_type = config.GetSrcLabel();
   const auto& dst_type = config.GetDstLabel();
@@ -276,8 +276,8 @@ Status UpdateTransaction::CreateEdgeType(const CreateEdgeTypeConfig& config,
 }
 
 Status UpdateTransaction::AddVertexProperties(
-    const AddVertexPropertiesConfig& config, bool error_on_conflict) {
-  const auto& vertex_type_name = config.GetVertexTypeName();
+    const AddVertexPropertiesParam& config, bool error_on_conflict) {
+  const auto& vertex_type_name = config.GetVertexLabel();
   const auto& add_properties = config.GetProperties();
   if (!graph_.schema().contains_vertex_label(vertex_type_name)) {
     LOG(ERROR) << "Vertex type " << vertex_type_name << " does not exist.";
@@ -321,10 +321,10 @@ Status UpdateTransaction::AddVertexProperties(
 }
 
 Status UpdateTransaction::AddEdgeProperties(
-    const AddEdgePropertiesConfig& config, bool error_on_conflict) {
-  const auto& src_type = config.GetSrcTypeName();
-  const auto& dst_type = config.GetDstTypeName();
-  const auto& edge_type = config.GetEdgeTypeName();
+    const AddEdgePropertiesParam& config, bool error_on_conflict) {
+  const auto& src_type = config.GetSrcLabel();
+  const auto& dst_type = config.GetDstLabel();
+  const auto& edge_type = config.GetEdgeLabel();
   const auto& add_properties = config.GetProperties();
   if (!graph_.schema().exist(src_type, dst_type, edge_type)) {
     LOG(ERROR) << "Edge type " << edge_type << " does not exist between "
@@ -375,8 +375,8 @@ Status UpdateTransaction::AddEdgeProperties(
 }
 
 Status UpdateTransaction::RenameVertexProperties(
-    const RenameVertexPropertiesConfig& config, bool error_on_conflict) {
-  const auto& vertex_type_name = config.GetVertexTypeName();
+    const RenameVertexPropertiesParam& config, bool error_on_conflict) {
+  const auto& vertex_type_name = config.GetVertexLabel();
   const auto& rename_properties = config.GetRenameProperties();
   if (!graph_.schema().contains_vertex_label(vertex_type_name)) {
     LOG(ERROR) << "Vertex type " << vertex_type_name << " does not exist.";
@@ -411,10 +411,10 @@ Status UpdateTransaction::RenameVertexProperties(
 }
 
 Status UpdateTransaction::RenameEdgeProperties(
-    const RenameEdgePropertiesConfig& config, bool error_on_conflict) {
-  const auto& src_type = config.GetSrcTypeName();
-  const auto& dst_type = config.GetDstTypeName();
-  const auto& edge_type = config.GetEdgeTypeName();
+    const RenameEdgePropertiesParam& config, bool error_on_conflict) {
+  const auto& src_type = config.GetSrcLabel();
+  const auto& dst_type = config.GetDstLabel();
+  const auto& edge_type = config.GetEdgeLabel();
   const auto& rename_properties = config.GetRenameProperties();
   if (!graph_.schema().exist(src_type, dst_type, edge_type)) {
     LOG(ERROR) << "Edge type " << edge_type << " does not exist between "
@@ -458,8 +458,8 @@ Status UpdateTransaction::RenameEdgeProperties(
 }
 
 Status UpdateTransaction::DeleteVertexProperties(
-    const DeleteVertexPropertiesConfig& config, bool error_on_conflict) {
-  const auto& vertex_type_name = config.GetVertexTypeName();
+    const DeleteVertexPropertiesParam& config, bool error_on_conflict) {
+  const auto& vertex_type_name = config.GetVertexLabel();
   const auto& delete_properties = config.GetDeleteProperties();
   if (!graph_.schema().contains_vertex_label(vertex_type_name)) {
     LOG(ERROR) << "Vertex type " << vertex_type_name << " does not exist.";
@@ -500,10 +500,10 @@ Status UpdateTransaction::DeleteVertexProperties(
 }
 
 Status UpdateTransaction::DeleteEdgeProperties(
-    const DeleteEdgePropertiesConfig& config, bool error_on_conflict) {
-  const auto& src_type = config.GetSrcTypeName();
-  const auto& dst_type = config.GetDstTypeName();
-  const auto& edge_type = config.GetEdgeTypeName();
+    const DeleteEdgePropertiesParam& config, bool error_on_conflict) {
+  const auto& src_type = config.GetSrcLabel();
+  const auto& dst_type = config.GetDstLabel();
+  const auto& edge_type = config.GetEdgeLabel();
   const auto& delete_properties = config.GetDeleteProperties();
   if (!graph_.schema().exist(src_type, dst_type, edge_type)) {
     LOG(ERROR) << "Edge type " << edge_type << " does not exist between "
@@ -1025,7 +1025,7 @@ void UpdateTransaction::IngestWal(PropertyGraph& graph, uint32_t timestamp,
     OpType op_type;
     arc >> op_type;
     if (op_type == OpType::kCreateVertexType) {
-      CreateVertexTypeConfig redo = CreateVertexTypeRedo::Deserialize(arc);
+      CreateVertexTypeParam redo = CreateVertexTypeRedo::Deserialize(arc);
       graph.CreateVertexType(redo, true);
     } else if (op_type == OpType::kCreateEdgeType) {
       const auto& redo = CreateEdgeTypeRedo::Deserialize(arc);
@@ -1189,9 +1189,9 @@ void UpdateTransaction::applyVertexPropDeletion() {
     for (const auto& prop_name : deleted_vertex_properties_[v_label]) {
       prop_names.push_back(prop_name);
     }
-    DeleteVertexPropertiesConfigBuilder builder;
-    auto config = builder.WithVertexTypeName(v_label_name)
-                      .WithDeleteProperties(prop_names)
+    DeleteVertexPropertiesParamBuilder builder;
+    auto config = builder.VertexLabel(v_label_name)
+                      .DeleteProperties(prop_names)
                       .Build();
     graph_.DeleteVertexProperties(config);
   }
@@ -1219,11 +1219,11 @@ void UpdateTransaction::applyEdgePropDeletion() {
     for (const auto& prop_name : prop_names_set) {
       prop_names.push_back(prop_name);
     }
-    DeleteEdgePropertiesConfigBuilder builder;
-    auto config = builder.WithSrcTypeName(src_label_name)
-                      .WithDstTypeName(dst_label_name)
-                      .WithEdgeTypeName(edge_label_name)
-                      .WithDeleteProperties(prop_names)
+    DeleteEdgePropertiesParamBuilder builder;
+    auto config = builder.SrcLabel(src_label_name)
+                      .DstLabel(dst_label_name)
+                      .EdgeLabel(edge_label_name)
+                      .DeleteProperties(prop_names)
                       .Build();
     graph_.DeleteEdgeProperties(config);
   }
@@ -1309,41 +1309,41 @@ Status StorageTPUpdateInterface::BatchDeleteEdges(
 }
 
 Status StorageTPUpdateInterface::CreateVertexType(
-    const CreateVertexTypeConfig& config, bool error_on_conflict) {
+    const CreateVertexTypeParam& config, bool error_on_conflict) {
   return txn_.CreateVertexType(config, error_on_conflict);
 }
 
 Status StorageTPUpdateInterface::CreateEdgeType(
-    const CreateEdgeTypeConfig& config, bool error_on_conflict) {
+    const CreateEdgeTypeParam& config, bool error_on_conflict) {
   return txn_.CreateEdgeType(config, error_on_conflict);
 }
 
 Status StorageTPUpdateInterface::AddVertexProperties(
-    const AddVertexPropertiesConfig& config, bool error_on_conflict) {
+    const AddVertexPropertiesParam& config, bool error_on_conflict) {
   return txn_.AddVertexProperties(config, error_on_conflict);
 }
 
 Status StorageTPUpdateInterface::AddEdgeProperties(
-    const AddEdgePropertiesConfig& config, bool error_on_conflict) {
+    const AddEdgePropertiesParam& config, bool error_on_conflict) {
   return txn_.AddEdgeProperties(config, error_on_conflict);
 }
 
 Status StorageTPUpdateInterface::RenameVertexProperties(
-    const RenameVertexPropertiesConfig& config, bool error_on_conflict) {
+    const RenameVertexPropertiesParam& config, bool error_on_conflict) {
   return txn_.RenameVertexProperties(config, error_on_conflict);
 }
 Status StorageTPUpdateInterface::RenameEdgeProperties(
-    const RenameEdgePropertiesConfig& config, bool error_on_conflict) {
+    const RenameEdgePropertiesParam& config, bool error_on_conflict) {
   return txn_.RenameEdgeProperties(config, error_on_conflict);
 }
 
 Status StorageTPUpdateInterface::DeleteVertexProperties(
-    const DeleteVertexPropertiesConfig& config, bool error_on_conflict) {
+    const DeleteVertexPropertiesParam& config, bool error_on_conflict) {
   return txn_.DeleteVertexProperties(config, error_on_conflict);
 }
 
 Status StorageTPUpdateInterface::DeleteEdgeProperties(
-    const DeleteEdgePropertiesConfig& config, bool error_on_conflict) {
+    const DeleteEdgePropertiesParam& config, bool error_on_conflict) {
   return txn_.DeleteEdgeProperties(config, error_on_conflict);
 }
 

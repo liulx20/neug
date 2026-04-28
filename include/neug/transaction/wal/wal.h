@@ -21,7 +21,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include "neug/storages/graph/operation_configs.h"
+#include "neug/storages/graph/operation_params.h"
 #include "neug/transaction/transaction_utils.h"
 #include "neug/utils/property/property.h"
 #include "neug/utils/property/types.h"
@@ -147,48 +147,47 @@ class WalParserFactory {
 };
 
 struct CreateVertexTypeRedo {
-  static void Serialize(InArchive& arc, const CreateVertexTypeConfig& config);
-  static CreateVertexTypeConfig Deserialize(OutArchive& arc);
+  static void Serialize(InArchive& arc, const CreateVertexTypeParam& config);
+  static CreateVertexTypeParam Deserialize(OutArchive& arc);
 };
 
 struct CreateEdgeTypeRedo {
-  static void Serialize(InArchive& arc, const CreateEdgeTypeConfig& config);
-  static CreateEdgeTypeConfig Deserialize(OutArchive& arc);
+  static void Serialize(InArchive& arc, const CreateEdgeTypeParam& config);
+  static CreateEdgeTypeParam Deserialize(OutArchive& arc);
 };
 
 struct AddVertexPropertiesRedo {
-  static void Serialize(InArchive& arc,
-                        const AddVertexPropertiesConfig& config);
-  static AddVertexPropertiesConfig Deserialize(OutArchive& arc);
+  static void Serialize(InArchive& arc, const AddVertexPropertiesParam& config);
+  static AddVertexPropertiesParam Deserialize(OutArchive& arc);
 };
 
 struct AddEdgePropertiesRedo {
-  static void Serialize(InArchive& arc, const AddEdgePropertiesConfig& config);
-  static AddEdgePropertiesConfig Deserialize(OutArchive& arc);
+  static void Serialize(InArchive& arc, const AddEdgePropertiesParam& config);
+  static AddEdgePropertiesParam Deserialize(OutArchive& arc);
 };
 
 struct RenameVertexPropertiesRedo {
   static void Serialize(InArchive& arc,
-                        const RenameVertexPropertiesConfig& config);
-  static RenameVertexPropertiesConfig Deserialize(OutArchive& arc);
+                        const RenameVertexPropertiesParam& config);
+  static RenameVertexPropertiesParam Deserialize(OutArchive& arc);
 };
 
 struct RenameEdgePropertiesRedo {
   static void Serialize(InArchive& arc,
-                        const RenameEdgePropertiesConfig& config);
-  static RenameEdgePropertiesConfig Deserialize(OutArchive& arc);
+                        const RenameEdgePropertiesParam& config);
+  static RenameEdgePropertiesParam Deserialize(OutArchive& arc);
 };
 
 struct DeleteVertexPropertiesRedo {
   static void Serialize(InArchive& arc,
-                        const DeleteVertexPropertiesConfig& config);
-  static DeleteVertexPropertiesConfig Deserialize(OutArchive& arc);
+                        const DeleteVertexPropertiesParam& config);
+  static DeleteVertexPropertiesParam Deserialize(OutArchive& arc);
 };
 
 struct DeleteEdgePropertiesRedo {
   static void Serialize(InArchive& arc,
-                        const DeleteEdgePropertiesConfig& config);
-  static DeleteEdgePropertiesConfig Deserialize(OutArchive& arc);
+                        const DeleteEdgePropertiesParam& config);
+  static DeleteEdgePropertiesParam Deserialize(OutArchive& arc);
 };
 
 struct DeleteVertexTypeRedo {

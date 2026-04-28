@@ -44,53 +44,53 @@ class PropertyGraphLogicalDeleteTest : public ::testing::Test {
   PropertyGraph graph_;
   std::string test_dir_;
 
-  CreateVertexTypeConfig BuildCreateVertexTypeConfig(
+  CreateVertexTypeParam BuildCreateVertexTypeParam(
       const std::string& name,
       const std::vector<std::tuple<DataType, std::string, Property>>&
           properties,
       const std::vector<std::string>& primary_keys) {
-    CreateVertexTypeConfigBuilder builder;
-    builder.WithVertexTypeName(name)
-        .WithProperties(properties)
-        .WithPrimaryKeyNames(primary_keys);
+    CreateVertexTypeParamBuilder builder;
+    builder.VertexLabel(name)
+        .Properties(properties)
+        .PrimaryKeyNames(primary_keys);
     return builder.Build();
   }
 
-  CreateEdgeTypeConfig BuildCreateEdgeTypeConfig(
+  CreateEdgeTypeParam BuildCreateEdgeTypeParam(
       const std::string& src_type, const std::string& dst_type,
       const std::string& edge_type,
       const std::vector<std::tuple<DataType, std::string, Property>>&
           properties,
       EdgeStrategy oe_strategy = EdgeStrategy::kMultiple,
       EdgeStrategy ie_strategy = EdgeStrategy::kMultiple) {
-    CreateEdgeTypeConfigBuilder builder;
-    builder.WithSrcLabel(src_type)
-        .WithDstLabel(dst_type)
-        .WithEdgeLabel(edge_type)
-        .WithProperties(properties)
-        .WithOEEdgeStrategy(oe_strategy)
-        .WithIEEdgeStrategy(ie_strategy);
+    CreateEdgeTypeParamBuilder builder;
+    builder.SrcLabel(src_type)
+        .DstLabel(dst_type)
+        .EdgeLabel(edge_type)
+        .Properties(properties)
+        .OEEdgeStrategy(oe_strategy)
+        .IEEdgeStrategy(ie_strategy);
     return builder.Build();
   }
 
-  DeleteVertexPropertiesConfig BuildDeleteVertexPropertiesConfig(
+  DeleteVertexPropertiesParam BuildDeleteVertexPropertiesParam(
       const std::string& vertex_type,
       const std::vector<std::string>& delete_properties) {
-    DeleteVertexPropertiesConfigBuilder builder;
-    builder.WithVertexTypeName(vertex_type)
-        .WithDeleteProperties(delete_properties);
+    DeleteVertexPropertiesParamBuilder builder;
+    builder.VertexLabel(vertex_type)
+        .DeleteProperties(delete_properties);
     return builder.Build();
   }
 
-  DeleteEdgePropertiesConfig BuildDeleteEdgePropertiesConfig(
+  DeleteEdgePropertiesParam BuildDeleteEdgePropertiesParam(
       const std::string& src_type, const std::string& dst_type,
       const std::string& edge_type,
       const std::vector<std::string>& delete_properties) {
-    DeleteEdgePropertiesConfigBuilder builder;
-    builder.WithSrcTypeName(src_type)
-        .WithDstTypeName(dst_type)
-        .WithEdgeTypeName(edge_type)
-        .WithDeleteProperties(delete_properties);
+    DeleteEdgePropertiesParamBuilder builder;
+    builder.SrcLabel(src_type)
+        .DstLabel(dst_type)
+        .EdgeLabel(edge_type)
+        .DeleteProperties(delete_properties);
     return builder.Build();
   }
 };
@@ -106,7 +106,7 @@ TEST_F(PropertyGraphLogicalDeleteTest, DeleteVertexType_RemovesTypeAndData) {
                     {DataTypeId::kInt64, "id", Property::from_int64(0L)});
 
   auto status = graph_.CreateVertexType(
-      BuildCreateVertexTypeConfig("Person", properties, pk_names));
+      BuildCreateVertexTypeParam("Person", properties, pk_names));
   ASSERT_TRUE(status.ok());
 
   // Verify vertex type exists
@@ -131,7 +131,7 @@ TEST_F(PropertyGraphLogicalDeleteTest, CreateDeletePhysicalRecreate_Succeeds) {
 
   // First creation
   auto status = graph_.CreateVertexType(
-      BuildCreateVertexTypeConfig("Person", properties, pk_names));
+      BuildCreateVertexTypeParam("Person", properties, pk_names));
   ASSERT_TRUE(status.ok());
   graph_.schema().get_vertex_label_id("Person");
 
@@ -142,7 +142,7 @@ TEST_F(PropertyGraphLogicalDeleteTest, CreateDeletePhysicalRecreate_Succeeds) {
 
   // Recreate should succeed
   status = graph_.CreateVertexType(
-      BuildCreateVertexTypeConfig("Person", properties, pk_names));
+      BuildCreateVertexTypeParam("Person", properties, pk_names));
   ASSERT_TRUE(status.ok());
   label_t second_label = graph_.schema().get_vertex_label_id("Person");
   EXPECT_TRUE(graph_.schema().vertex_label_valid(second_label));
@@ -159,7 +159,7 @@ TEST_F(PropertyGraphLogicalDeleteTest,
   std::vector<std::string> pk_names = {"id"};
 
   auto status = graph_.CreateVertexType(
-      BuildCreateVertexTypeConfig("Person", properties, pk_names));
+      BuildCreateVertexTypeParam("Person", properties, pk_names));
   ASSERT_TRUE(status.ok());
   label_t v_label = graph_.schema().get_vertex_label_id("Person");
   EXPECT_EQ(graph_.schema().get_vertex_label_name(v_label), "Person");
@@ -173,7 +173,7 @@ TEST_F(PropertyGraphLogicalDeleteTest,
   // 2. Act as revert with error_on_conflict=false
 
   status = graph_.CreateVertexType(
-      BuildCreateVertexTypeConfig("Person", properties, pk_names), false);
+      BuildCreateVertexTypeParam("Person", properties, pk_names), false);
   ASSERT_TRUE(status.ok());
 }
 
@@ -185,17 +185,17 @@ TEST_F(PropertyGraphLogicalDeleteTest, DeleteEdgeTypePhysical_RemovesEdgeType) {
   std::vector<std::string> pk_names = {"id"};
 
   auto status = graph_.CreateVertexType(
-      BuildCreateVertexTypeConfig("Person", v_props, pk_names));
+      BuildCreateVertexTypeParam("Person", v_props, pk_names));
   ASSERT_TRUE(status.ok());
   status = graph_.CreateVertexType(
-      BuildCreateVertexTypeConfig("Company", v_props, pk_names));
+      BuildCreateVertexTypeParam("Company", v_props, pk_names));
   ASSERT_TRUE(status.ok());
 
   // Create edge type
   std::vector<std::tuple<DataType, std::string, Property>> e_props = {
       {DataTypeId::kInt32, "years", Property::from_int32(0)}};
   status = graph_.CreateEdgeType(
-      BuildCreateEdgeTypeConfig("Person", "Company", "WorksAt", e_props));
+      BuildCreateEdgeTypeParam("Person", "Company", "WorksAt", e_props));
   ASSERT_TRUE(status.ok());
 
   // Verify edge exists
@@ -219,7 +219,7 @@ TEST_F(PropertyGraphLogicalDeleteTest,
   std::vector<std::string> pk_names = {"id"};
 
   auto status = graph_.CreateVertexType(
-      BuildCreateVertexTypeConfig("Person", properties, pk_names));
+      BuildCreateVertexTypeParam("Person", properties, pk_names));
   ASSERT_TRUE(status.ok());
 
   label_t v_label = graph_.schema().get_vertex_label_id("Person");
@@ -229,7 +229,7 @@ TEST_F(PropertyGraphLogicalDeleteTest,
   // Delete property physically
   std::vector<std::string> delete_props = {"age"};
   status = graph_.DeleteVertexProperties(
-      BuildDeleteVertexPropertiesConfig("Person", delete_props));
+      BuildDeleteVertexPropertiesParam("Person", delete_props));
   ASSERT_TRUE(status.ok());
 
   // Verify property is removed
@@ -247,7 +247,7 @@ TEST_F(PropertyGraphLogicalDeleteTest,
   std::vector<std::string> pk_names = {"id"};
 
   auto status = graph_.CreateVertexType(
-      BuildCreateVertexTypeConfig("Person", properties, pk_names));
+      BuildCreateVertexTypeParam("Person", properties, pk_names));
   ASSERT_TRUE(status.ok());
 
   label_t v_label = graph_.schema().get_vertex_label_id("Person");
@@ -255,7 +255,7 @@ TEST_F(PropertyGraphLogicalDeleteTest,
   // Delete property logically
   std::vector<std::string> delete_props = {"age"};
   status = graph_.DeleteVertexProperties(
-      BuildDeleteVertexPropertiesConfig("Person", delete_props), true);
+      BuildDeleteVertexPropertiesParam("Person", delete_props), true);
   ASSERT_TRUE(status.ok());
 
   // Property should be logically hidden
@@ -273,7 +273,7 @@ TEST_F(PropertyGraphLogicalDeleteTest,
   std::vector<std::string> pk_names = {"id"};
 
   auto status = graph_.CreateVertexType(
-      BuildCreateVertexTypeConfig("Person", properties, pk_names));
+      BuildCreateVertexTypeParam("Person", properties, pk_names));
   ASSERT_TRUE(status.ok());
 
   label_t v_label = graph_.schema().get_vertex_label_id("Person");
@@ -297,15 +297,15 @@ TEST_F(PropertyGraphLogicalDeleteTest,
   std::vector<std::string> pk_names = {"id"};
 
   graph_.CreateVertexType(
-      BuildCreateVertexTypeConfig("Person", v_props, pk_names));
+      BuildCreateVertexTypeParam("Person", v_props, pk_names));
   graph_.CreateVertexType(
-      BuildCreateVertexTypeConfig("Company", v_props, pk_names));
+      BuildCreateVertexTypeParam("Company", v_props, pk_names));
 
   std::vector<std::tuple<DataType, std::string, Property>> e_props = {
       {DataTypeId::kInt32, "years", Property::from_int32(0)},
       {DataTypeId::kVarchar, "position", Property::from_string_view("string")}};
   auto status = graph_.CreateEdgeType(
-      BuildCreateEdgeTypeConfig("Person", "Company", "WorksAt", e_props));
+      BuildCreateEdgeTypeParam("Person", "Company", "WorksAt", e_props));
   ASSERT_TRUE(status.ok());
 
   label_t src_label = graph_.schema().get_vertex_label_id("Person");
@@ -319,7 +319,7 @@ TEST_F(PropertyGraphLogicalDeleteTest,
 
   // Delete property physically
   std::vector<std::string> delete_props = {"position"};
-  status = graph_.DeleteEdgeProperties(BuildDeleteEdgePropertiesConfig(
+  status = graph_.DeleteEdgeProperties(BuildDeleteEdgePropertiesParam(
       "Person", "Company", "WorksAt", delete_props));
   ASSERT_TRUE(status.ok());
 
@@ -337,15 +337,15 @@ TEST_F(PropertyGraphLogicalDeleteTest,
   std::vector<std::string> pk_names = {"id"};
 
   graph_.CreateVertexType(
-      BuildCreateVertexTypeConfig("Person", v_props, pk_names));
+      BuildCreateVertexTypeParam("Person", v_props, pk_names));
   graph_.CreateVertexType(
-      BuildCreateVertexTypeConfig("Company", v_props, pk_names));
+      BuildCreateVertexTypeParam("Company", v_props, pk_names));
 
   std::vector<std::tuple<DataType, std::string, Property>> e_props = {
       {DataTypeId::kInt32, "years", Property::from_int32(0)},
       {DataTypeId::kVarchar, "position", Property::from_string_view("string")}};
   graph_.CreateEdgeType(
-      BuildCreateEdgeTypeConfig("Person", "Company", "WorksAt", e_props));
+      BuildCreateEdgeTypeParam("Person", "Company", "WorksAt", e_props));
 
   label_t src_label = graph_.schema().get_vertex_label_id("Person");
   label_t dst_label = graph_.schema().get_vertex_label_id("Company");
@@ -370,15 +370,15 @@ TEST_F(PropertyGraphLogicalDeleteTest,
   std::vector<std::string> pk_names = {"id"};
 
   graph_.CreateVertexType(
-      BuildCreateVertexTypeConfig("Person", v_props, pk_names));
+      BuildCreateVertexTypeParam("Person", v_props, pk_names));
   graph_.CreateVertexType(
-      BuildCreateVertexTypeConfig("Company", v_props, pk_names));
+      BuildCreateVertexTypeParam("Company", v_props, pk_names));
 
   std::vector<std::tuple<DataType, std::string, Property>> e_props = {
       {DataTypeId::kInt32, "years", Property::from_int32(0)},
       {DataTypeId::kVarchar, "position", Property::from_string_view("string")}};
   graph_.CreateEdgeType(
-      BuildCreateEdgeTypeConfig("Person", "Company", "WorksAt", e_props));
+      BuildCreateEdgeTypeParam("Person", "Company", "WorksAt", e_props));
 
   label_t src_label = graph_.schema().get_vertex_label_id("Person");
   label_t dst_label = graph_.schema().get_vertex_label_id("Company");
@@ -407,7 +407,7 @@ TEST_F(PropertyGraphLogicalDeleteTest,
   std::vector<std::string> pk_names = {"id"};
 
   graph_.CreateVertexType(
-      BuildCreateVertexTypeConfig("Person", properties, pk_names));
+      BuildCreateVertexTypeParam("Person", properties, pk_names));
   label_t v_label = graph_.schema().get_vertex_label_id("Person");
 
   // Delete age logically
@@ -439,18 +439,18 @@ TEST_F(PropertyGraphLogicalDeleteTest, DeletePrimaryKeyProperty_ShouldFail) {
   std::vector<std::string> pk_names = {"id"};
 
   graph_.CreateVertexType(
-      BuildCreateVertexTypeConfig("Person", properties, pk_names));
+      BuildCreateVertexTypeParam("Person", properties, pk_names));
 
   EXPECT_THROW(
       {
         graph_.DeleteVertexProperties(
-            BuildDeleteVertexPropertiesConfig("Person", {"id"}));
+            BuildDeleteVertexPropertiesParam("Person", {"id"}));
       },
       neug::exception::Exception);
   EXPECT_THROW(
       {
         graph_.DeleteVertexProperties(
-            BuildDeleteVertexPropertiesConfig("Person", {"id"}));
+            BuildDeleteVertexPropertiesParam("Person", {"id"}));
       },
       neug::exception::RuntimeError);
 }
@@ -464,7 +464,7 @@ TEST_F(PropertyGraphLogicalDeleteTest,
       {DataTypeId::kInt32, "age", Property::from_int32(0)}};
   std::vector<std::string> pk_names = {"id"};
   graph_.CreateVertexType(
-      BuildCreateVertexTypeConfig("Person", properties, pk_names));
+      BuildCreateVertexTypeParam("Person", properties, pk_names));
   label_t v_label = graph_.schema().get_vertex_label_id("Person");
   // Logical delete property 'age'
 
@@ -472,7 +472,7 @@ TEST_F(PropertyGraphLogicalDeleteTest,
   EXPECT_FALSE(graph_.schema().vertex_has_property(v_label, "age"));
   // Physical delete should succeed
   auto status = graph_.DeleteVertexProperties(
-      BuildDeleteVertexPropertiesConfig("Person", {"age"}));
+      BuildDeleteVertexPropertiesParam("Person", {"age"}));
   EXPECT_TRUE(status.ok()) << status.ToString();
   // Property 'age' should not exist
   EXPECT_FALSE(graph_.schema().vertex_has_property(v_label, "age"));
@@ -485,14 +485,14 @@ TEST_F(PropertyGraphLogicalDeleteTest,
       {DataTypeId::kInt64, "id", Property::from_int64(0L)}};
   std::vector<std::string> pk_names = {"id"};
   graph_.CreateVertexType(
-      BuildCreateVertexTypeConfig("Person", v_props, pk_names));
+      BuildCreateVertexTypeParam("Person", v_props, pk_names));
   graph_.CreateVertexType(
-      BuildCreateVertexTypeConfig("Company", v_props, pk_names));
+      BuildCreateVertexTypeParam("Company", v_props, pk_names));
   std::vector<std::tuple<DataType, std::string, Property>> e_props = {
       {DataTypeId::kInt32, "years", Property::from_int32(0)},
       {DataTypeId::kVarchar, "position", Property::from_string_view("string")}};
   graph_.CreateEdgeType(
-      BuildCreateEdgeTypeConfig("Person", "Company", "WorksAt", e_props));
+      BuildCreateEdgeTypeParam("Person", "Company", "WorksAt", e_props));
   label_t src_label = graph_.schema().get_vertex_label_id("Person");
   label_t dst_label = graph_.schema().get_vertex_label_id("Company");
   label_t e_label = graph_.schema().get_edge_label_id("WorksAt");
@@ -519,20 +519,20 @@ TEST_F(PropertyGraphLogicalDeleteTest,
       {DataTypeId::kVarchar, "Name", Property::from_string_view("string")}};
   std::vector<std::string> pk_names = {"id"};
   graph_.CreateVertexType(
-      BuildCreateVertexTypeConfig("Person", v_props, pk_names));
+      BuildCreateVertexTypeParam("Person", v_props, pk_names));
   graph_.CreateVertexType(
-      BuildCreateVertexTypeConfig("Company", v_props, pk_names));
+      BuildCreateVertexTypeParam("Company", v_props, pk_names));
   graph_.CreateVertexType(
-      BuildCreateVertexTypeConfig("Location", v_props, pk_names));
+      BuildCreateVertexTypeParam("Location", v_props, pk_names));
   std::vector<std::tuple<DataType, std::string, Property>> e_props_workat = {
       {DataTypeId::kInt32, "years", Property::from_int32(0)},
       {DataTypeId::kVarchar, "position", Property::from_string_view("string")}};
   std::vector<std::tuple<DataType, std::string, Property>> e_props_locatedat = {
       {DataTypeId::kInt32, "since", Property::from_int32(0)},
       {DataTypeId::kVarchar, "city", Property::from_string_view("string")}};
-  graph_.CreateEdgeType(BuildCreateEdgeTypeConfig("Person", "Company",
+  graph_.CreateEdgeType(BuildCreateEdgeTypeParam("Person", "Company",
                                                   "WorksAt", e_props_workat));
-  graph_.CreateEdgeType(BuildCreateEdgeTypeConfig(
+  graph_.CreateEdgeType(BuildCreateEdgeTypeParam(
       "Company", "Location", "LocatedAt", e_props_locatedat));
   // Logical delete vertex label
   graph_.DeleteVertexType("Person", true);
@@ -540,9 +540,9 @@ TEST_F(PropertyGraphLogicalDeleteTest,
   graph_.DeleteEdgeType("Person", "Company", "WorksAt", true);
   // Logical delete vertex property
   graph_.DeleteVertexProperties(
-      BuildDeleteVertexPropertiesConfig("Company", {"Name"}));
+      BuildDeleteVertexPropertiesParam("Company", {"Name"}));
   // Logical delete edge property
-  graph_.DeleteEdgeProperties(BuildDeleteEdgePropertiesConfig(
+  graph_.DeleteEdgeProperties(BuildDeleteEdgePropertiesParam(
       "Person", "Company", "WorksAt", {"years"}));
   // Get statistics json string
   auto schema_json_ =
@@ -570,13 +570,13 @@ TEST_F(PropertyGraphLogicalDeleteTest,
       {DataTypeId::kVarchar, "name", Property::from_string_view("string")}};
   std::vector<std::string> pk_names = {"id"};
   auto status = graph_.CreateVertexType(
-      BuildCreateVertexTypeConfig("Person", properties, pk_names));
+      BuildCreateVertexTypeParam("Person", properties, pk_names));
   ASSERT_TRUE(status.ok());
 
   EXPECT_THROW(
       {
         graph_.DeleteVertexProperties(
-            BuildDeleteVertexPropertiesConfig("Person", {"id"}));
+            BuildDeleteVertexPropertiesParam("Person", {"id"}));
       },
       neug::exception::Exception);
 }
@@ -589,18 +589,18 @@ TEST_F(PropertyGraphLogicalDeleteTest, TestStatistics) {
       {DataTypeId::kVarchar, "Name", Property::from_string_view("string")}};
   std::vector<std::string> pk_names = {"id"};
   graph_.CreateVertexType(
-      BuildCreateVertexTypeConfig("Person", v_props, pk_names));
+      BuildCreateVertexTypeParam("Person", v_props, pk_names));
   graph_.CreateVertexType(
-      BuildCreateVertexTypeConfig("Company", v_props, pk_names));
+      BuildCreateVertexTypeParam("Company", v_props, pk_names));
   graph_.CreateVertexType(
-      BuildCreateVertexTypeConfig("Location", v_props, pk_names));
+      BuildCreateVertexTypeParam("Location", v_props, pk_names));
   std::vector<std::tuple<DataType, std::string, Property>> e_props = {
       {DataTypeId::kInt32, "years", Property::from_int32(0)},
       {DataTypeId::kVarchar, "position", Property::from_string_view("string")}};
   graph_.CreateEdgeType(
-      BuildCreateEdgeTypeConfig("Person", "Company", "WorksAt", e_props));
+      BuildCreateEdgeTypeParam("Person", "Company", "WorksAt", e_props));
   graph_.CreateEdgeType(
-      BuildCreateEdgeTypeConfig("Company", "Location", "LocatedAt", e_props));
+      BuildCreateEdgeTypeParam("Company", "Location", "LocatedAt", e_props));
 
   auto stats = graph_.get_statistics_json();
   LOG(INFO) << "Statistics JSON: " << stats;
@@ -609,8 +609,8 @@ TEST_F(PropertyGraphLogicalDeleteTest, TestStatistics) {
 
   graph_.DeleteVertexType("Person", true);
   graph_.DeleteVertexProperties(
-      BuildDeleteVertexPropertiesConfig("Company", {"Name"}));
-  graph_.DeleteEdgeProperties(BuildDeleteEdgePropertiesConfig(
+      BuildDeleteVertexPropertiesParam("Company", {"Name"}));
+  graph_.DeleteEdgeProperties(BuildDeleteEdgePropertiesParam(
       "Person", "Company", "WorksAt", {"years"}));
   // Get statistics json string
   auto after_delete_stats = graph_.get_statistics_json();

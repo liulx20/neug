@@ -114,42 +114,42 @@ Status StorageAPUpdateInterface::BatchDeleteEdges(
 }
 
 Status StorageAPUpdateInterface::CreateVertexType(
-    const CreateVertexTypeConfig& config, bool error_on_conflict) {
+    const CreateVertexTypeParam& config, bool error_on_conflict) {
   return graph_.CreateVertexType(config, error_on_conflict);
 }
 
 Status StorageAPUpdateInterface::CreateEdgeType(
-    const CreateEdgeTypeConfig& config, bool error_on_conflict) {
+    const CreateEdgeTypeParam& config, bool error_on_conflict) {
   return graph_.CreateEdgeType(config, error_on_conflict);
 }
 
 Status StorageAPUpdateInterface::AddVertexProperties(
-    const AddVertexPropertiesConfig& config, bool error_on_conflict) {
+    const AddVertexPropertiesParam& config, bool error_on_conflict) {
   return graph_.AddVertexProperties(config, error_on_conflict);
 }
 
 Status StorageAPUpdateInterface::AddEdgeProperties(
-    const AddEdgePropertiesConfig& config, bool error_on_conflict) {
+    const AddEdgePropertiesParam& config, bool error_on_conflict) {
   return graph_.AddEdgeProperties(config, error_on_conflict);
 }
 
 Status StorageAPUpdateInterface::RenameVertexProperties(
-    const RenameVertexPropertiesConfig& config, bool error_on_conflict) {
+    const RenameVertexPropertiesParam& config, bool error_on_conflict) {
   return graph_.RenameVertexProperties(config, error_on_conflict);
 }
 
 Status StorageAPUpdateInterface::RenameEdgeProperties(
-    const RenameEdgePropertiesConfig& config, bool error_on_conflict) {
+    const RenameEdgePropertiesParam& config, bool error_on_conflict) {
   return graph_.RenameEdgeProperties(config, error_on_conflict);
 }
 
 Status StorageAPUpdateInterface::DeleteVertexProperties(
-    const DeleteVertexPropertiesConfig& config, bool error_on_conflict) {
+    const DeleteVertexPropertiesParam& config, bool error_on_conflict) {
   return graph_.DeleteVertexProperties(config, error_on_conflict);
 }
 
 Status StorageAPUpdateInterface::DeleteEdgeProperties(
-    const DeleteEdgePropertiesConfig& config, bool error_on_conflict) {
+    const DeleteEdgePropertiesParam& config, bool error_on_conflict) {
   return graph_.DeleteEdgeProperties(config, error_on_conflict);
 }
 

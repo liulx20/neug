@@ -150,9 +150,9 @@ Status PropertyGraph::BatchAddEdges(
   return neug::Status::OK();
 }
 
-Status PropertyGraph::CreateVertexType(const CreateVertexTypeConfig& config,
+Status PropertyGraph::CreateVertexType(const CreateVertexTypeParam& config,
                                        bool error_on_conflict) {
-  if (schema_.contains_vertex_label(config.GetVertexTypeName())) {
+  if (schema_.contains_vertex_label(config.GetVertexLabel())) {
     if (error_on_conflict) {
       return Status(StatusCode::ERR_INVALID_ARGUMENT,
                     "Vertex label already exists.");
@@ -216,7 +216,7 @@ Status PropertyGraph::CreateVertexType(const CreateVertexTypeConfig& config,
   }
 
   std::string description;
-  const auto& vertex_type_name = config.GetVertexTypeName();
+  const auto& vertex_type_name = config.GetVertexLabel();
   schema_.AddVertexLabel(vertex_type_name, property_types, property_names,
                          primary_keys, Schema::MAX_VNUM, description,
                          default_property_values);
@@ -255,7 +255,7 @@ Status PropertyGraph::CreateVertexType(const CreateVertexTypeConfig& config,
   return neug::Status::OK();
 }
 
-Status PropertyGraph::CreateEdgeType(const CreateEdgeTypeConfig& config,
+Status PropertyGraph::CreateEdgeType(const CreateEdgeTypeParam& config,
                                      bool error_on_conflict) {
   const auto& src_vertex_type = config.GetSrcLabel();
   const auto& dst_vertex_type = config.GetDstLabel();
@@ -333,8 +333,8 @@ Status PropertyGraph::CreateEdgeType(const CreateEdgeTypeConfig& config,
 }
 
 Status PropertyGraph::AddVertexProperties(
-    const AddVertexPropertiesConfig& config, bool error_on_conflict) {
-  const auto& vertex_type_name = config.GetVertexTypeName();
+    const AddVertexPropertiesParam& config, bool error_on_conflict) {
+  const auto& vertex_type_name = config.GetVertexLabel();
   const auto& add_properties = config.GetProperties();
   RETURN_IF_NOT_OK_CONFLICT(vertex_label_check(vertex_type_name),
                             error_on_conflict);
@@ -369,11 +369,11 @@ Status PropertyGraph::AddVertexProperties(
   return neug::Status::OK();
 }
 
-Status PropertyGraph::AddEdgeProperties(const AddEdgePropertiesConfig& config,
+Status PropertyGraph::AddEdgeProperties(const AddEdgePropertiesParam& config,
                                         bool error_on_conflict) {
-  const auto& src_type_name = config.GetSrcTypeName();
-  const auto& dst_type_name = config.GetDstTypeName();
-  const auto& edge_type_name = config.GetEdgeTypeName();
+  const auto& src_type_name = config.GetSrcLabel();
+  const auto& dst_type_name = config.GetDstLabel();
+  const auto& edge_type_name = config.GetEdgeLabel();
   const auto& add_properties = config.GetProperties();
   RETURN_IF_NOT_OK_CONFLICT(
       edge_triplet_check(src_type_name, dst_type_name, edge_type_name),
@@ -428,8 +428,8 @@ Status PropertyGraph::AddEdgeProperties(const AddEdgePropertiesConfig& config,
 }
 
 Status PropertyGraph::RenameVertexProperties(
-    const RenameVertexPropertiesConfig& config, bool error_on_conflict) {
-  const auto& vertex_type_name = config.GetVertexTypeName();
+    const RenameVertexPropertiesParam& config, bool error_on_conflict) {
+  const auto& vertex_type_name = config.GetVertexLabel();
   const auto& update_properties = config.GetRenameProperties();
   RETURN_IF_NOT_OK_CONFLICT(vertex_label_check(vertex_type_name),
                             error_on_conflict);
@@ -460,10 +460,10 @@ Status PropertyGraph::RenameVertexProperties(
 }
 
 Status PropertyGraph::RenameEdgeProperties(
-    const RenameEdgePropertiesConfig& config, bool error_on_conflict) {
-  const auto& src_type_name = config.GetSrcTypeName();
-  const auto& dst_type_name = config.GetDstTypeName();
-  const auto& edge_type_name = config.GetEdgeTypeName();
+    const RenameEdgePropertiesParam& config, bool error_on_conflict) {
+  const auto& src_type_name = config.GetSrcLabel();
+  const auto& dst_type_name = config.GetDstLabel();
+  const auto& edge_type_name = config.GetEdgeLabel();
   const auto& update_properties = config.GetRenameProperties();
   RETURN_IF_NOT_OK_CONFLICT(
       edge_triplet_check(src_type_name, dst_type_name, edge_type_name),
@@ -531,8 +531,8 @@ Status PropertyGraph::delete_vertex_properties_check(
 }
 
 Status PropertyGraph::DeleteVertexProperties(
-    const DeleteVertexPropertiesConfig& config, bool error_on_conflict) {
-  const auto& vertex_type_name = config.GetVertexTypeName();
+    const DeleteVertexPropertiesParam& config, bool error_on_conflict) {
+  const auto& vertex_type_name = config.GetVertexLabel();
   const auto& delete_properties = config.GetDeleteProperties();
   std::vector<std::string> delete_property_names;
   auto status =
@@ -578,10 +578,10 @@ Status PropertyGraph::delete_edge_properties_check(
 }
 
 Status PropertyGraph::DeleteEdgeProperties(
-    const DeleteEdgePropertiesConfig& config, bool error_on_conflict) {
-  const auto& src_type_name = config.GetSrcTypeName();
-  const auto& dst_type_name = config.GetDstTypeName();
-  const auto& edge_type_name = config.GetEdgeTypeName();
+    const DeleteEdgePropertiesParam& config, bool error_on_conflict) {
+  const auto& src_type_name = config.GetSrcLabel();
+  const auto& dst_type_name = config.GetDstLabel();
+  const auto& edge_type_name = config.GetEdgeLabel();
   const auto& delete_properties = config.GetDeleteProperties();
   std::vector<std::string> delete_property_names;
   RETURN_IF_NOT_OK_CONFLICT(

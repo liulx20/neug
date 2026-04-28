@@ -40,11 +40,11 @@ class DropEdgePropertySchemaOpr : public IOperator {
                              Context&& ctx, OprTimer* timer) override {
     StorageUpdateInterface& storage =
         dynamic_cast<StorageUpdateInterface&>(graph);
-    DeleteEdgePropertiesConfigBuilder builder;
-    auto config = builder.WithSrcTypeName(src_type_)
-                      .WithDstTypeName(dst_type_)
-                      .WithEdgeTypeName(edge_type_)
-                      .WithDeleteProperties(property_names_)
+    DeleteEdgePropertiesParamBuilder builder;
+    auto config = builder.SrcLabel(src_type_)
+                      .DstLabel(dst_type_)
+                      .EdgeLabel(edge_type_)
+                      .DeleteProperties(property_names_)
                       .Build();
     auto res = storage.DeleteEdgeProperties(config, error_on_conflict_);
     if (!res.ok()) {

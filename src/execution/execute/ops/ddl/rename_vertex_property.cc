@@ -38,9 +38,9 @@ class RenameVertexPropertyOpr : public IOperator {
                              Context&& ctx, OprTimer* timer) override {
     StorageUpdateInterface& storage =
         dynamic_cast<StorageUpdateInterface&>(graph);
-    RenameVertexPropertiesConfigBuilder builder;
-    auto config = builder.WithVertexTypeName(vertex_type_)
-                      .WithRenameProperties(rename_properties_)
+    RenameVertexPropertiesParamBuilder builder;
+    auto config = builder.VertexLabel(vertex_type_)
+                      .RenameProperties(rename_properties_)
                       .Build();
     auto res = storage.RenameVertexProperties(config, error_on_conflict_);
     if (!res.ok()) {

@@ -137,7 +137,7 @@ class UpdateTransactionTest : public ::testing::Test {
                       std::make_tuple(neug::DataTypeId::kInt64, "year",
                                       neug::Property::from_int64(2000))};
     EXPECT_TRUE(interface.CreateEdgeType(
-        BuildCreateEdgeTypeConfig("person", "software", "developed",
+        BuildCreateEdgeTypeParam("person", "software", "developed",
                                   edge_props),
         true));
     std::vector<std::tuple<neug::DataType, std::string, neug::Property>>
@@ -146,9 +146,9 @@ class UpdateTransactionTest : public ::testing::Test {
                    std::make_tuple(neug::DataTypeId::kVarchar, "name",
                                    neug::Property::from_string_view(""))};
     EXPECT_TRUE(interface.CreateVertexType(
-        BuildCreateVertexTypeConfig("company", v_props, {"id"}), true));
+        BuildCreateVertexTypeParam("company", v_props, {"id"}), true));
     EXPECT_TRUE(interface.CreateEdgeType(
-        BuildCreateEdgeTypeConfig("person", "company", "employed_by", {}),
+        BuildCreateEdgeTypeParam("person", "company", "employed_by", {}),
         true));
     employ_label = interface.schema().get_edge_label_id("employed_by");
     cmp_label = interface.schema().get_vertex_label_id("company");
@@ -208,7 +208,7 @@ class UpdateTransactionTest : public ::testing::Test {
             std::make_tuple(neug::DataTypeId::kVarchar, "review",
                             neug::Property::from_string_view("no review"))};
     EXPECT_TRUE(graph.CreateEdgeType(
-        BuildCreateEdgeTypeConfig("person", "software", "reviewed", edge_props),
+        BuildCreateEdgeTypeParam("person", "software", "reviewed", edge_props),
         true));
     neug::label_t review_label = graph.schema().get_edge_label_id("reviewed");
     neug::vid_t p1_vid;
@@ -262,97 +262,97 @@ class UpdateTransactionTest : public ::testing::Test {
     }
   }
 
-  static neug::CreateVertexTypeConfig BuildCreateVertexTypeConfig(
+  static neug::CreateVertexTypeParam BuildCreateVertexTypeParam(
       const std::string& vertex_type,
       const std::vector<
           std::tuple<neug::DataType, std::string, neug::Property>>& properties,
       const std::vector<std::string>& primary_keys) {
-    neug::CreateVertexTypeConfigBuilder builder;
-    return builder.WithVertexTypeName(vertex_type)
-        .WithProperties(properties)
-        .WithPrimaryKeyNames(primary_keys)
+    neug::CreateVertexTypeParamBuilder builder;
+    return builder.VertexLabel(vertex_type)
+        .Properties(properties)
+        .PrimaryKeyNames(primary_keys)
         .Build();
   }
 
-  static neug::CreateEdgeTypeConfig BuildCreateEdgeTypeConfig(
+  static neug::CreateEdgeTypeParam BuildCreateEdgeTypeParam(
       const std::string& src_type, const std::string& dst_type,
       const std::string& edge_type,
       const std::vector<
           std::tuple<neug::DataType, std::string, neug::Property>>& properties,
       neug::EdgeStrategy oe_strategy = neug::EdgeStrategy::kMultiple,
       neug::EdgeStrategy ie_strategy = neug::EdgeStrategy::kMultiple) {
-    neug::CreateEdgeTypeConfigBuilder builder;
-    return builder.WithSrcLabel(src_type)
-        .WithDstLabel(dst_type)
-        .WithEdgeLabel(edge_type)
-        .WithProperties(properties)
-        .WithOEEdgeStrategy(oe_strategy)
-        .WithIEEdgeStrategy(ie_strategy)
+    neug::CreateEdgeTypeParamBuilder builder;
+    return builder.SrcLabel(src_type)
+        .DstLabel(dst_type)
+        .EdgeLabel(edge_type)
+        .Properties(properties)
+        .OEEdgeStrategy(oe_strategy)
+        .IEEdgeStrategy(ie_strategy)
         .Build();
   }
 
-  static neug::AddVertexPropertiesConfig BuildAddVertexPropertiesConfig(
+  static neug::AddVertexPropertiesParam BuildAddVertexPropertiesParam(
       const std::string& vertex_type,
       const std::vector<std::tuple<neug::DataType, std::string,
                                    neug::Property>>& properties) {
-    neug::AddVertexPropertiesConfigBuilder builder;
-    return builder.WithVertexTypeName(vertex_type)
-        .WithProperties(properties)
+    neug::AddVertexPropertiesParamBuilder builder;
+    return builder.VertexLabel(vertex_type)
+        .Properties(properties)
         .Build();
   }
 
-  static neug::AddEdgePropertiesConfig BuildAddEdgePropertiesConfig(
+  static neug::AddEdgePropertiesParam BuildAddEdgePropertiesParam(
       const std::string& src_type, const std::string& dst_type,
       const std::string& edge_type,
       const std::vector<std::tuple<neug::DataType, std::string,
                                    neug::Property>>& properties) {
-    neug::AddEdgePropertiesConfigBuilder builder;
-    return builder.WithSrcTypeName(src_type)
-        .WithDstTypeName(dst_type)
-        .WithEdgeTypeName(edge_type)
-        .WithProperties(properties)
+    neug::AddEdgePropertiesParamBuilder builder;
+    return builder.SrcLabel(src_type)
+        .DstLabel(dst_type)
+        .EdgeLabel(edge_type)
+        .Properties(properties)
         .Build();
   }
 
-  static neug::RenameVertexPropertiesConfig BuildRenameVertexPropertiesConfig(
+  static neug::RenameVertexPropertiesParam BuildRenameVertexPropertiesParam(
       const std::string& vertex_type,
       const std::vector<std::pair<std::string, std::string>>& rename_props) {
-    neug::RenameVertexPropertiesConfigBuilder builder;
-    return builder.WithVertexTypeName(vertex_type)
-        .WithRenameProperties(rename_props)
+    neug::RenameVertexPropertiesParamBuilder builder;
+    return builder.VertexLabel(vertex_type)
+        .RenameProperties(rename_props)
         .Build();
   }
 
-  static neug::RenameEdgePropertiesConfig BuildRenameEdgePropertiesConfig(
+  static neug::RenameEdgePropertiesParam BuildRenameEdgePropertiesParam(
       const std::string& src_type, const std::string& dst_type,
       const std::string& edge_type,
       const std::vector<std::pair<std::string, std::string>>& rename_props) {
-    neug::RenameEdgePropertiesConfigBuilder builder;
-    return builder.WithSrcTypeName(src_type)
-        .WithDstTypeName(dst_type)
-        .WithEdgeTypeName(edge_type)
-        .WithRenameProperties(rename_props)
+    neug::RenameEdgePropertiesParamBuilder builder;
+    return builder.SrcLabel(src_type)
+        .DstLabel(dst_type)
+        .EdgeLabel(edge_type)
+        .RenameProperties(rename_props)
         .Build();
   }
 
-  static neug::DeleteVertexPropertiesConfig BuildDeleteVertexPropertiesConfig(
+  static neug::DeleteVertexPropertiesParam BuildDeleteVertexPropertiesParam(
       const std::string& vertex_type,
       const std::vector<std::string>& delete_props) {
-    neug::DeleteVertexPropertiesConfigBuilder builder;
-    return builder.WithVertexTypeName(vertex_type)
-        .WithDeleteProperties(delete_props)
+    neug::DeleteVertexPropertiesParamBuilder builder;
+    return builder.VertexLabel(vertex_type)
+        .DeleteProperties(delete_props)
         .Build();
   }
 
-  static neug::DeleteEdgePropertiesConfig BuildDeleteEdgePropertiesConfig(
+  static neug::DeleteEdgePropertiesParam BuildDeleteEdgePropertiesParam(
       const std::string& src_type, const std::string& dst_type,
       const std::string& edge_type,
       const std::vector<std::string>& delete_props) {
-    neug::DeleteEdgePropertiesConfigBuilder builder;
-    return builder.WithSrcTypeName(src_type)
-        .WithDstTypeName(dst_type)
-        .WithEdgeTypeName(edge_type)
-        .WithDeleteProperties(delete_props)
+    neug::DeleteEdgePropertiesParamBuilder builder;
+    return builder.SrcLabel(src_type)
+        .DstLabel(dst_type)
+        .EdgeLabel(edge_type)
+        .DeleteProperties(delete_props)
         .Build();
   }
 };
@@ -1321,7 +1321,7 @@ TEST_F(UpdateTransactionTest, AddVertexProperties) {
                      std::make_tuple(neug::DataTypeId::kDouble, "height",
                                      neug::Property::from_double(0.0))};
     EXPECT_TRUE(txn.AddVertexProperties(
-        BuildAddVertexPropertiesConfig("person", new_props), true));
+        BuildAddVertexPropertiesParam("person", new_props), true));
     auto email_accessor = txn.get_vertex_property_column(person_label, "email");
     neug::vid_t vid;
     CHECK(txn.GetVertexIndex(person_label, neug::Property::from_int64(1), vid));
@@ -1340,7 +1340,7 @@ TEST_F(UpdateTransactionTest, AddVertexProperties) {
         new_props = {std::make_tuple(neug::DataTypeId::kVarchar, "address",
                                      neug::Property::from_string_view(""))};
     EXPECT_TRUE(txn.AddVertexProperties(
-        BuildAddVertexPropertiesConfig("person", new_props), true));
+        BuildAddVertexPropertiesParam("person", new_props), true));
     neug::vid_t vid;
     CHECK(txn.GetVertexIndex(person_label, neug::Property::from_int64(2), vid));
     EXPECT_TRUE(txn.UpdateVertexProperty(person_label, vid, 3,
@@ -1386,7 +1386,7 @@ TEST_F(UpdateTransactionTest, AddEdgeProperties) {
                      std::make_tuple(neug::DataTypeId::kVarchar, "license",
                                      neug::Property::from_string_view(""))};
     EXPECT_TRUE(interface.AddEdgeProperties(
-        BuildAddEdgePropertiesConfig("person", "software", "created",
+        BuildAddEdgePropertiesParam("person", "software", "created",
                                      new_props),
         true));
     EXPECT_TRUE(txn.Commit());
@@ -1399,7 +1399,7 @@ TEST_F(UpdateTransactionTest, AddEdgeProperties) {
         new_props = {std::make_tuple(neug::DataTypeId::kDouble, "contributions",
                                      neug::Property::from_double(0.0))};
     EXPECT_TRUE(interface.AddEdgeProperties(
-        BuildAddEdgePropertiesConfig("person", "software", "created",
+        BuildAddEdgePropertiesParam("person", "software", "created",
                                      new_props),
         true));
     txn.Abort();
@@ -1447,7 +1447,7 @@ TEST_F(UpdateTransactionTest, RenameVertexProperty) {
     auto txn = sess->GetUpdateTransaction();
     neug::StorageTPUpdateInterface interface(txn);
     EXPECT_TRUE(interface.RenameVertexProperties(
-        BuildRenameVertexPropertiesConfig("person",
+        BuildRenameVertexPropertiesParam("person",
                                           {std::make_pair("age", "years")}),
         true));
     EXPECT_TRUE(txn.Commit());
@@ -1459,7 +1459,7 @@ TEST_F(UpdateTransactionTest, RenameVertexProperty) {
     std::vector<std::pair<std::string, std::string>> rename_props = {
         std::make_pair("lang", "language")};
     EXPECT_TRUE(interface.RenameVertexProperties(
-        BuildRenameVertexPropertiesConfig("software", rename_props), true));
+        BuildRenameVertexPropertiesParam("software", rename_props), true));
     txn.Abort();
   }
   {
@@ -1488,7 +1488,7 @@ TEST_F(UpdateTransactionTest, RenameEdgeProperty) {
     auto txn = sess->GetUpdateTransaction();
     neug::StorageTPUpdateInterface interface(txn);
     EXPECT_TRUE(interface.RenameEdgeProperties(
-        BuildRenameEdgePropertiesConfig(
+        BuildRenameEdgePropertiesParam(
             "person", "software", "created",
             {std::make_pair("since", "start_year")}),
         true));
@@ -1501,7 +1501,7 @@ TEST_F(UpdateTransactionTest, RenameEdgeProperty) {
     std::vector<std::pair<std::string, std::string>> rename_props = {
         std::make_pair("weight", "importance")};
     EXPECT_TRUE(interface.RenameEdgeProperties(
-        BuildRenameEdgePropertiesConfig("person", "software", "created",
+        BuildRenameEdgePropertiesParam("person", "software", "created",
                                         rename_props),
         true));
     txn.Abort();
@@ -1546,7 +1546,7 @@ TEST_F(UpdateTransactionTest, DeleteEdgeProperties) {
     auto txn = sess->GetUpdateTransaction();
     neug::StorageTPUpdateInterface interface(txn);
     EXPECT_TRUE(txn.DeleteEdgeProperties(
-        BuildDeleteEdgePropertiesConfig("person", "software", "created",
+        BuildDeleteEdgePropertiesParam("person", "software", "created",
                                         {"since"}),
         true));
     std::vector<std::tuple<neug::DataType, std::string, neug::Property>>
@@ -1554,7 +1554,7 @@ TEST_F(UpdateTransactionTest, DeleteEdgeProperties) {
                                      neug::Property::from_double(0.0))};
     LOG(INFO) << "Adding new edge property 'contributions'.";
     EXPECT_TRUE(interface.AddEdgeProperties(
-        BuildAddEdgePropertiesConfig("person", "software", "created",
+        BuildAddEdgePropertiesParam("person", "software", "created",
                                      new_props),
         true));
     LOG(INFO) << "Committing delete edge properties transaction.";
@@ -1566,7 +1566,7 @@ TEST_F(UpdateTransactionTest, DeleteEdgeProperties) {
     auto txn = sess->GetUpdateTransaction();
     neug::StorageTPUpdateInterface interface(txn);
     EXPECT_TRUE(interface.DeleteEdgeProperties(
-        BuildDeleteEdgePropertiesConfig("person", "software", "created",
+        BuildDeleteEdgePropertiesParam("person", "software", "created",
                                         {"weight"}),
         true));
     txn.Abort();
@@ -1624,14 +1624,14 @@ TEST_F(UpdateTransactionTest, DeleteVertexProperties) {
     // auto person_label = txn.schema().get_vertex_label_id("person");
     // auto software_label = txn.schema().get_vertex_label_id("software");
     EXPECT_TRUE(interface.DeleteVertexProperties(
-        BuildDeleteVertexPropertiesConfig("person", {"age"}), true));
+        BuildDeleteVertexPropertiesParam("person", {"age"}), true));
     EXPECT_TRUE(interface.DeleteVertexProperties(
-        BuildDeleteVertexPropertiesConfig("software", {"lang"}), true));
+        BuildDeleteVertexPropertiesParam("software", {"lang"}), true));
     std::vector<std::tuple<neug::DataType, std::string, neug::Property>>
         new_props = {std::make_tuple(neug::DataTypeId::kVarchar, "authors",
                                      neug::Property::from_string_view(""))};
     EXPECT_TRUE(interface.AddVertexProperties(
-        BuildAddVertexPropertiesConfig("software", new_props), true));
+        BuildAddVertexPropertiesParam("software", new_props), true));
     EXPECT_TRUE(txn.Commit());
   }
   {
@@ -1640,9 +1640,9 @@ TEST_F(UpdateTransactionTest, DeleteVertexProperties) {
     neug::StorageTPUpdateInterface interface(txn);
     // auto person_label = txn.schema().get_vertex_label_id("person");
     EXPECT_TRUE(interface.DeleteVertexProperties(
-        BuildDeleteVertexPropertiesConfig("person", {"name"}), true));
+        BuildDeleteVertexPropertiesParam("person", {"name"}), true));
     EXPECT_TRUE(interface.DeleteVertexProperties(
-        BuildDeleteVertexPropertiesConfig("software", {"name", "authors"}),
+        BuildDeleteVertexPropertiesParam("software", {"name", "authors"}),
         true));
     txn.Abort();
   }
@@ -1681,7 +1681,7 @@ TEST_F(UpdateTransactionTest, TestReplayWal) {
                                      neug::Property::from_int64(28)},
                                     vid));
     EXPECT_TRUE(interface.CreateVertexType(
-        BuildCreateVertexTypeConfig(
+        BuildCreateVertexTypeParam(
             "company",
             {std::make_tuple(neug::DataTypeId::kInt64, "id",
                              neug::Property::from_int64(0)),
@@ -1690,7 +1690,7 @@ TEST_F(UpdateTransactionTest, TestReplayWal) {
             {"id"}),
         true));
     EXPECT_TRUE(interface.CreateEdgeType(
-        BuildCreateEdgeTypeConfig("person", "company", "employed_by", {}),
+        BuildCreateEdgeTypeParam("person", "company", "employed_by", {}),
         true));
     EXPECT_TRUE(
         interface.DeleteEdgeType("person", "software", "created", true));
@@ -1818,9 +1818,9 @@ TEST_F(UpdateTransactionTest, TestAPIAfterDeleteVertexLabel) {
     neug::StorageTPUpdateInterface interface(txn);
     auto person_label = interface.schema().get_vertex_label_id("person");
     EXPECT_TRUE(interface.DeleteVertexProperties(
-        BuildDeleteVertexPropertiesConfig("person", {"age"}), true));
+        BuildDeleteVertexPropertiesParam("person", {"age"}), true));
     EXPECT_THROW(interface.RenameVertexProperties(
-                     BuildRenameVertexPropertiesConfig(
+                     BuildRenameVertexPropertiesParam(
                          "person", {std::make_pair("age", "full_name")}),
                      true),
                  neug::exception::Exception);
@@ -1835,7 +1835,7 @@ TEST_F(UpdateTransactionTest, TestAPIAfterDeleteVertexLabel) {
         new_props = {std::make_tuple(neug::DataTypeId::kInt32, "age",
                                      neug::Property::from_int32(0))};
     EXPECT_NO_THROW(interface.AddVertexProperties(
-        BuildAddVertexPropertiesConfig("person", new_props), true));
+        BuildAddVertexPropertiesParam("person", new_props), true));
     EXPECT_NO_THROW(txn.get_vertex_property_column(person_label, "age"));
 
     txn.Abort();
@@ -1885,11 +1885,11 @@ TEST_F(UpdateTransactionTest, TestAPIAfterDeleteEdgeLabel) {
     auto person_label = txn.schema().get_vertex_label_id("person");
     auto knows_label = txn.schema().get_edge_label_id("knows");
     EXPECT_TRUE(txn.DeleteEdgeProperties(
-        BuildDeleteEdgePropertiesConfig("person", "person", "knows",
+        BuildDeleteEdgePropertiesParam("person", "person", "knows",
                                         {"closeness"}),
         true));
     EXPECT_THROW(txn.RenameEdgeProperties(
-                     BuildRenameEdgePropertiesConfig(
+                     BuildRenameEdgePropertiesParam(
                          "person", "person", "knows",
                          {std::make_pair("closeness", "importance")}),
                      true),
@@ -2103,7 +2103,7 @@ TEST_F(UpdateTransactionTest, DeleteVertexWithMultipleEdgeTypes) {
         edge_props = {std::make_tuple(neug::DataTypeId::kInt64, "since",
                                       neug::Property::from_int64(2020))};
     EXPECT_TRUE(txn.CreateEdgeType(
-        BuildCreateEdgeTypeConfig("person", "person", "follows", edge_props),
+        BuildCreateEdgeTypeParam("person", "person", "follows", edge_props),
         true));
 
     neug::vid_t p1_vid, p2_vid;

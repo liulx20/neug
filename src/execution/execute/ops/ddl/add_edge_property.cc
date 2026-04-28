@@ -45,11 +45,11 @@ class AddEdgePropertySchemaOpr : public IOperator {
       property_tuples.emplace_back(prop_value.type(), prop_name,
                                    value_to_property(prop_value));
     }
-    AddEdgePropertiesConfigBuilder builder;
-    auto config = builder.WithSrcTypeName(src_type_)
-                      .WithDstTypeName(dst_type_)
-                      .WithEdgeTypeName(edge_type_)
-                      .WithProperties(property_tuples)
+    AddEdgePropertiesParamBuilder builder;
+    auto config = builder.SrcLabel(src_type_)
+                      .DstLabel(dst_type_)
+                      .EdgeLabel(edge_type_)
+                      .Properties(property_tuples)
                       .Build();
     auto res = storage.AddEdgeProperties(config, error_on_conflict_);
     if (!res.ok()) {

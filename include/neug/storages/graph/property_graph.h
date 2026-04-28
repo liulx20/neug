@@ -29,7 +29,7 @@
 #include "neug/storages/allocators.h"
 #include "neug/storages/csr/generic_view.h"
 #include "neug/storages/graph/edge_table.h"
-#include "neug/storages/graph/operation_configs.h"
+#include "neug/storages/graph/operation_params.h"
 #include "neug/storages/graph/schema.h"
 #include "neug/storages/graph/vertex_table.h"
 #include "neug/utils/exception/exception.h"
@@ -183,12 +183,12 @@ class PropertyGraph {
    *
    * **Usage Example:**
    * @code{.cpp}
-   * CreateVertexTypeConfigBuilder builder;
-   * auto config = builder.WithVertexTypeName("Person")
-   *                   .WithProperty(DataType::kInt64, "id", Property())
-   *                   .WithProperty(DataType::kVarchar, "name", Property())
-   *                   .WithProperty(DataType::kInt32, "age", Property())
-   *                   .WithPrimaryKeyName("id")
+   * CreateVertexTypeParamBuilder builder;
+   * auto config = builder.VertexLabel("Person")
+   *                   .AddProperty(DataType::kInt64, "id", Property())
+   *                   .AddProperty(DataType::kVarchar, "name", Property())
+   *                   .AddProperty(DataType::kInt32, "age", Property())
+   *                   .AddPrimaryKeyName("id")
    *                   .Build();
    * graph.CreateVertexType(config, true);
    * @endcode
@@ -202,7 +202,7 @@ class PropertyGraph {
    *
    * @since v0.1.0
    */
-  Status CreateVertexType(const CreateVertexTypeConfig& config,
+  Status CreateVertexType(const CreateVertexTypeParam& config,
                           bool error_on_conflict = true);
 
   /**
@@ -212,14 +212,14 @@ class PropertyGraph {
    *
    * **Usage Example:**
    * @code{.cpp}
-   * CreateEdgeTypeConfigBuilder builder;
-   * auto config = builder.WithSrcLabel("Person")
-   *                   .WithDstLabel("Person")
-   *                   .WithEdgeLabel("KNOWS")
-   *                   .WithProperty(DataType::kInt64, "since", Property())
-   *                   .WithProperty(DataType::kDouble, "weight", Property())
-   *                   .WithOEEdgeStrategy(EdgeStrategy::kMultiple)
-   *                   .WithIEEdgeStrategy(EdgeStrategy::kMultiple)
+   * CreateEdgeTypeParamBuilder builder;
+   * auto config = builder.SrcLabel("Person")
+   *                   .DstLabel("Person")
+   *                   .EdgeLabel("KNOWS")
+   *                   .AddProperty(DataType::kInt64, "since", Property())
+   *                   .AddProperty(DataType::kDouble, "weight", Property())
+   *                   .OEEdgeStrategy(EdgeStrategy::kMultiple)
+   *                   .IEEdgeStrategy(EdgeStrategy::kMultiple)
    *                   .Build();
    * graph.CreateEdgeType(config, true);
    * @endcode
@@ -232,7 +232,7 @@ class PropertyGraph {
    *
    * @since v0.1.0
    */
-  Status CreateEdgeType(const CreateEdgeTypeConfig& config,
+  Status CreateEdgeType(const CreateEdgeTypeParam& config,
                         bool error_on_conflict = true);
 
   /**
@@ -254,22 +254,22 @@ class PropertyGraph {
   Status DeleteEdgeType(label_t src_label, label_t dst_label,
                         label_t edge_label, bool error_on_conflict = true);
 
-  Status AddVertexProperties(const AddVertexPropertiesConfig& config,
+  Status AddVertexProperties(const AddVertexPropertiesParam& config,
                              bool error_on_conflict = true);
 
-  Status AddEdgeProperties(const AddEdgePropertiesConfig& config,
+  Status AddEdgeProperties(const AddEdgePropertiesParam& config,
                            bool error_on_conflict = true);
 
-  Status RenameVertexProperties(const RenameVertexPropertiesConfig& config,
+  Status RenameVertexProperties(const RenameVertexPropertiesParam& config,
                                 bool error_on_conflict = true);
 
-  Status RenameEdgeProperties(const RenameEdgePropertiesConfig& config,
+  Status RenameEdgeProperties(const RenameEdgePropertiesParam& config,
                               bool error_on_conflict = true);
 
-  Status DeleteVertexProperties(const DeleteVertexPropertiesConfig& config,
+  Status DeleteVertexProperties(const DeleteVertexPropertiesParam& config,
                                 bool error_on_conflict = true);
 
-  Status DeleteEdgeProperties(const DeleteEdgePropertiesConfig& config,
+  Status DeleteEdgeProperties(const DeleteEdgePropertiesParam& config,
                               bool error_on_conflict = true);
 
   Status EnsureCapacity(label_t v_label, size_t capacity);

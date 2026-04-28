@@ -46,13 +46,13 @@ class CreateEdgeTypeOpr : public IOperator {
         property_tuples.emplace_back(prop_value.type(), prop_name,
                                      value_to_property(prop_value));
       }
-      CreateEdgeTypeConfigBuilder config_builder;
-      config_builder.WithSrcLabel(std::get<0>(create_edge_def))
-          .WithDstLabel(std::get<1>(create_edge_def))
-          .WithEdgeLabel(std::get<2>(create_edge_def))
-          .WithProperties(property_tuples)
-          .WithOEEdgeStrategy(std::get<5>(create_edge_def))
-          .WithIEEdgeStrategy(std::get<6>(create_edge_def));
+      CreateEdgeTypeParamBuilder config_builder;
+      config_builder.SrcLabel(std::get<0>(create_edge_def))
+          .DstLabel(std::get<1>(create_edge_def))
+          .EdgeLabel(std::get<2>(create_edge_def))
+          .Properties(property_tuples)
+          .OEEdgeStrategy(std::get<5>(create_edge_def))
+          .IEEdgeStrategy(std::get<6>(create_edge_def));
       status = storage.CreateEdgeType(config_builder.Build(),
                                       std::get<4>(create_edge_def));
       if (!status.ok()) {

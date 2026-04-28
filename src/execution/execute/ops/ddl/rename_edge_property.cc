@@ -40,11 +40,11 @@ class RenameEdgePropertySchemaOpr : public IOperator {
                              Context&& ctx, OprTimer* timer) override {
     StorageUpdateInterface& storage =
         dynamic_cast<StorageUpdateInterface&>(graph);
-    RenameEdgePropertiesConfigBuilder builder;
-    auto config = builder.WithSrcTypeName(src_type_)
-                      .WithDstTypeName(dst_type_)
-                      .WithEdgeTypeName(edge_type_)
-                      .WithRenameProperties(rename_properties_)
+    RenameEdgePropertiesParamBuilder builder;
+    auto config = builder.SrcLabel(src_type_)
+                      .DstLabel(dst_type_)
+                      .EdgeLabel(edge_type_)
+                      .RenameProperties(rename_properties_)
                       .Build();
     auto res = storage.RenameEdgeProperties(config, error_on_conflict_);
     if (!res.ok()) {

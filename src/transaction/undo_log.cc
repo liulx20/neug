@@ -72,9 +72,9 @@ void AddVertexPropUndo::Undo(PropertyGraph& graph, timestamp_t ts) const {
                              std::to_string(label));
   }
   auto label_name = graph.schema().get_vertex_label_name(label);
-  DeleteVertexPropertiesConfigBuilder builder;
-  auto config = builder.WithVertexTypeName(label_name)
-                    .WithDeleteProperties(prop_names)
+  DeleteVertexPropertiesParamBuilder builder;
+  auto config = builder.VertexLabel(label_name)
+                    .DeleteProperties(prop_names)
                     .Build();
   auto status = graph.DeleteVertexProperties(config);
   if (!status.ok()) {
@@ -92,11 +92,11 @@ void AddEdgePropUndo::Undo(PropertyGraph& graph, timestamp_t ts) const {
   auto src_label_name = graph.schema().get_vertex_label_name(src_label);
   auto dst_label_name = graph.schema().get_vertex_label_name(dst_label);
   auto edge_label_name = graph.schema().get_edge_label_name(edge_label);
-  DeleteEdgePropertiesConfigBuilder builder;
-  auto config = builder.WithSrcTypeName(src_label_name)
-                    .WithDstTypeName(dst_label_name)
-                    .WithEdgeTypeName(edge_label_name)
-                    .WithDeleteProperties(prop_names)
+  DeleteEdgePropertiesParamBuilder builder;
+  auto config = builder.SrcLabel(src_label_name)
+                    .DstLabel(dst_label_name)
+                    .EdgeLabel(edge_label_name)
+                    .DeleteProperties(prop_names)
                     .Build();
   auto status = graph.DeleteEdgeProperties(config);
   if (!status.ok()) {
@@ -116,9 +116,9 @@ void RenameVertexPropUndo::Undo(PropertyGraph& graph, timestamp_t ts) const {
   for (const auto& pair : old_names_to_new_names) {
     new_names_to_old_names.emplace_back(pair.second, pair.first);
   }
-  RenameVertexPropertiesConfigBuilder builder;
-  auto config = builder.WithVertexTypeName(label_name)
-                    .WithRenameProperties(new_names_to_old_names)
+  RenameVertexPropertiesParamBuilder builder;
+  auto config = builder.VertexLabel(label_name)
+                    .RenameProperties(new_names_to_old_names)
                     .Build();
   auto status = graph.RenameVertexProperties(config);
   if (!status.ok()) {
@@ -140,11 +140,11 @@ void RenameEdgePropUndo::Undo(PropertyGraph& graph, timestamp_t ts) const {
   for (const auto& pair : old_names_to_new_names) {
     new_names_to_old_names.emplace_back(pair.second, pair.first);
   }
-  RenameEdgePropertiesConfigBuilder builder;
-  auto config = builder.WithSrcTypeName(src_label_name)
-                    .WithDstTypeName(dst_label_name)
-                    .WithEdgeTypeName(edge_label_name)
-                    .WithRenameProperties(new_names_to_old_names)
+  RenameEdgePropertiesParamBuilder builder;
+  auto config = builder.SrcLabel(src_label_name)
+                    .DstLabel(dst_label_name)
+                    .EdgeLabel(edge_label_name)
+                    .RenameProperties(new_names_to_old_names)
                     .Build();
   auto status = graph.RenameEdgeProperties(config);
   if (!status.ok()) {
