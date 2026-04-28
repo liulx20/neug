@@ -272,8 +272,7 @@ class AddEdgePropertiesParamBuilder {
     return *this;
   }
 
-  AddEdgePropertiesParamBuilder& EdgeLabel(
-      const std::string& edge_label_name) {
+  AddEdgePropertiesParamBuilder& EdgeLabel(const std::string& edge_label_name) {
     config.edge_label_name = edge_label_name;
     return *this;
   }
