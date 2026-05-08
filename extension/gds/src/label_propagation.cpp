@@ -15,10 +15,8 @@
  */
 
 #include "label_propagation.h"
-
 #include <string>
-#include <unordered_map>
-#include <unordered_set>
+#include "parallel_utils.h"
 
 #include "neug/execution/common/columns/value_columns.h"
 #include "neug/execution/common/columns/vertex_columns.h"
@@ -28,173 +26,271 @@
 
 namespace neug {
 namespace gds {
+struct LabelPropagationInput : public function::CallFuncInputBase {
+  ~LabelPropagationInput() = default;
 
-namespace {
-
-size_t GetMaxIterations(const function::options_t& options) {
-  constexpr size_t kDefaultMaxIterations = 10;
-  auto it = options.find("maxIterations");
-  if (it == options.end() || it->second.empty()) {
-    return kDefaultMaxIterations;
-  }
-  try {
-    auto value = std::stoll(it->second);
-    if (value <= 0) {
-      THROW_INVALID_ARGUMENT_EXCEPTION(
-          "label_propagation maxIterations must be greater than 0.");
+  void parse_subgraph(const ::physical::Subgraph& subgraph,
+                      const execution::ContextMeta& ctx_meta) {
+    if (subgraph.vertex_entries_size() < 1) {
+      throw std::runtime_error(
+          "LabelPropagation requires exactly one vertex label.");
     }
-    return static_cast<size_t>(value);
-  } catch (const std::invalid_argument&) {
-    THROW_INVALID_ARGUMENT_EXCEPTION(
-        "label_propagation maxIterations must be an integer.");
-  } catch (const std::out_of_range&) {
-    THROW_INVALID_ARGUMENT_EXCEPTION(
-        "label_propagation maxIterations is out of range.");
+    const auto& vertex_entry = subgraph.vertex_entries(0);
+    if (vertex_entry.label_id() < 0) {
+      throw std::runtime_error("Vertex label ID must be non-negative.");
+    }
+    vertex_label = static_cast<label_t>(vertex_entry.label_id());
+    if (vertex_entry.has_predicate()) {
+      vertex_pred = execution::parse_expression(
+          vertex_entry.predicate(), ctx_meta, execution::VarType::kVertex);
+    } else {
+      vertex_pred = nullptr;
+    }
+
+    if (subgraph.edge_entries_size() < 1) {
+      throw std::runtime_error(
+          "LabelPropagation requires exactly one edge label.");
+    }
+    const auto& edge_entry = subgraph.edge_entries(0);
+    if (edge_entry.src_label_id() < 0 || edge_entry.dst_label_id() < 0 ||
+        edge_entry.edge_label_id() < 0) {
+      throw std::runtime_error(
+          "Source vertex label ID, destination vertex label ID and edge "
+          "label ID must be non-negative.");
+    }
+    edge_triplet = execution::LabelTriplet(edge_entry.src_label_id(),
+                                           edge_entry.dst_label_id(),
+                                           edge_entry.edge_label_id());
+    if (edge_entry.has_predicate()) {
+      edge_pred = execution::parse_expression(edge_entry.predicate(), ctx_meta,
+                                              execution::VarType::kEdge);
+    } else {
+      edge_pred = nullptr;
+    }
   }
+
+  label_t vertex_label;
+  std::unique_ptr<execution::ExprBase> vertex_pred;
+  execution::LabelTriplet edge_triplet;
+  std::unique_ptr<execution::ExprBase> edge_pred;
+  int32_t max_iterations;
+  int32_t node_alias, label_alias;
+  int32_t concurrency;
+};
+
+std::unique_ptr<function::CallFuncInputBase> LabelPropagationFunction::bind(
+    const Schema& schema, const execution::ContextMeta& ctx_meta,
+    const ::physical::PhysicalPlan& plan, int op_idx) {
+  const auto& opr = plan.plan(op_idx).opr();
+  const auto& subgraph = opr.gds_algo().sub_graph();
+  const auto& options = opr.gds_algo().options();
+  auto input = std::make_unique<LabelPropagationInput>();
+  input->parse_subgraph(subgraph, ctx_meta);
+  const auto& max_iterations_it = options.find("max_iterations");
+  if (max_iterations_it != options.end()) {
+    try {
+      input->max_iterations = std::stoi(max_iterations_it->second);
+    } catch (const std::exception& e) {
+      throw std::runtime_error("Invalid value for max_iterations: " +
+                               max_iterations_it->second);
+    }
+  } else {
+    input->max_iterations = 5;
+  }
+  const auto& concurrency = options.find("concurrency");
+  if (concurrency != options.end()) {
+    try {
+      input->concurrency = std::stoi(concurrency->second);
+    } catch (const std::exception& e) {
+      throw std::runtime_error("Invalid value for concurrency: " +
+                               concurrency->second);
+    }
+  } else {
+    input->concurrency = 1;
+  }
+
+  input->node_alias = plan.plan(op_idx).meta_data(0).alias();
+  input->label_alias = plan.plan(op_idx).meta_data(1).alias();
+  LOG(INFO) << "LabelPropagationFunction bind with max_iterations = "
+            << input->max_iterations;
+  return input;
 }
 
-}  // namespace
-
-execution::Context LabelPropagationFunction::LabelPropagationExec(
-    execution::Context& ctx, const ::physical::Subgraph& subgraph,
-    const function::options_t& options, IStorageInterface& g) {
-  const auto& graph = dynamic_cast<const StorageReadInterface&>(g);
-  const auto max_iterations = GetMaxIterations(options);
-
-  std::vector<std::vector<vid_t>> vertices_by_label;
-  std::unordered_set<label_t> vertex_labels;
-  std::unordered_map<execution::VertexRecord, size_t> vertex_record_to_label_id;
-  size_t next_label_id = 0;
-  for (int i = 0; i < subgraph.vertex_entries_size(); ++i) {
-    const auto& vertex_entry = subgraph.vertex_entries(i);
-    std::vector<vid_t> vertex_ids;
-    label_t label = static_cast<label_t>(vertex_entry.label_id());
-    auto vertex_set = graph.GetVertexSet(label);
-
-    execution::ContextMeta ctx_meta;
-    auto expr = execution::parse_expression(vertex_entry.predicate(), ctx_meta,
-                                            execution::VarType::kVertex);
-    auto binded_expr = expr->bind(&graph, {});
-    execution::GeneralPred general_pred(std::move(binded_expr));
+struct LabelPropagation {
+  LabelPropagation(const StorageReadInterface& graph, label_t vertex_label,
+                   const execution::LabelTriplet& edge_triplet,
+                   int max_iterations, int concurrency)
+      : graph(graph),
+        vertex_label(vertex_label),
+        edge_triplet(edge_triplet),
+        max_iterations(max_iterations),
+        concurrency_(concurrency) {}
+  template <typename PRED_T>
+  void init_communities(const PRED_T& vertex_pred_fn) {
+    auto vertex_set = graph.GetVertexSet(vertex_label);
+    auto begin = std::chrono::high_resolution_clock::now();
+    community.resize(vertex_set.size(), std::numeric_limits<vid_t>::max());
+    next_community.resize(vertex_set.size(), std::numeric_limits<vid_t>::max());
+    vertices.reserve(vertex_set.size());
     for (vid_t v : vertex_set) {
-      if (general_pred(label, v)) {
-        vertex_ids.push_back(v);
-        vertex_record_to_label_id.emplace(execution::VertexRecord(label, v),
-                                          next_label_id++);
+      if (vertex_pred_fn(vertex_label, v)) {
+        community[v] = v;
+        next_community[v] = v;
+        vertices.push_back(v);
       }
     }
-    if (vertex_ids.empty()) {
-      continue;
-    }
-    if (label >= vertices_by_label.size()) {
-      vertices_by_label.resize(label + 1);
-    }
-    vertex_labels.insert(label);
-
-    vertices_by_label[label] = std::move(vertex_ids);
+    LOG(INFO) << "Initialized communities for " << vertices.size()
+              << " vertices in "
+              << std::chrono::duration_cast<std::chrono::milliseconds>(
+                     std::chrono::high_resolution_clock::now() - begin)
+                     .count()
+              << " ms.";
   }
-  std::vector<execution::LabelTriplet> edge_triplets;
-  std::vector<execution::GeneralPred> edge_preds;
 
-  for (int i = 0; i < subgraph.edge_entries_size(); ++i) {
-    const auto& edge_entry = subgraph.edge_entries(i);
-    label_t src_label = static_cast<label_t>(edge_entry.src_label_id());
-    label_t dst_label = static_cast<label_t>(edge_entry.dst_label_id());
-    if (vertex_labels.find(src_label) == vertex_labels.end() ||
-        vertex_labels.find(dst_label) == vertex_labels.end()) {
-      continue;
-    }
-    label_t edge_label = static_cast<label_t>(edge_entry.edge_label_id());
-    edge_triplets.emplace_back(src_label, dst_label, edge_label);
-
-    execution::ContextMeta ctx_meta;
-
-    auto expr = execution::parse_expression(edge_entry.predicate(), ctx_meta,
-                                            execution::VarType::kEdge);
-    auto binded_expr = expr->bind(&graph, {});
-    edge_preds.emplace_back(std::move(binded_expr));
-  }
-  for (size_t iteration = 0; iteration < max_iterations; ++iteration) {
-    bool updated = false;
-    for (label_t dst_label = 0; dst_label < vertices_by_label.size();
-         ++dst_label) {
-      if (vertices_by_label[dst_label].empty()) {
-        continue;
-      }
-      std::map<vid_t, std::vector<size_t>> neighbor_labels;
-      for (size_t edge_id = 0; edge_id < edge_triplets.size(); ++edge_id) {
-        const auto& triplet = edge_triplets[edge_id];
-        if (triplet.dst_label != dst_label) {
-          continue;
-        }
-        const auto& edge_pred = edge_preds[edge_id];
-        const auto& ie_view = graph.GetGenericIncomingGraphView(
-            triplet.dst_label, triplet.src_label, triplet.edge_label);
-        for (vid_t dst_vid : vertices_by_label[dst_label]) {
-          auto edges = ie_view.get_edges(dst_vid);
-          for (auto it = edges.begin(); it != edges.end(); ++it) {
-            const auto src_vid = it.get_vertex();
-            if (edge_pred(triplet, src_vid, dst_vid, it.get_data_ptr())) {
-              auto found = vertex_record_to_label_id.find(
-                  execution::VertexRecord(triplet.src_label, src_vid));
-              if (found != vertex_record_to_label_id.end()) {
-                neighbor_labels[dst_vid].push_back(found->second);
+  template <typename EDGE_PRED_T>
+  void propagate_labels(const EDGE_PRED_T& edge_pred_fn) {
+    const auto& ie_view = graph.GetGenericIncomingGraphView(
+        edge_triplet.dst_label, edge_triplet.src_label,
+        edge_triplet.edge_label);
+    const auto& oe_view = graph.GetGenericOutgoingGraphView(
+        edge_triplet.src_label, edge_triplet.dst_label,
+        edge_triplet.edge_label);
+    for (int iteration = 0; iteration < max_iterations; ++iteration) {
+      std::atomic<bool> updated(false);
+      auto begin = std::chrono::high_resolution_clock::now();
+      ParallelUtils::parallel_for(
+          vertices.data(), vertices.size(),
+          [&](vid_t i) {
+            vid_t dst_vid = vertices[i];
+            auto edges = ie_view.get_edges(dst_vid);
+            std::unordered_map<vid_t, int32_t> neighbor_communities;
+            for (auto it = edges.begin(); it != edges.end(); ++it) {
+              const vid_t src_vid = it.get_vertex();
+              if (community[src_vid] != std::numeric_limits<vid_t>::max() &&
+                  edge_pred_fn(edge_triplet, src_vid, dst_vid,
+                               it.get_data_ptr())) {
+                neighbor_communities[community[src_vid]]++;
               }
             }
-          }
-        }
-      }
-      for (vid_t dst_vid : vertices_by_label[dst_label]) {
-        if (!neighbor_labels[dst_vid].empty()) {
-          size_t most_frequent_label_id = 0;
-          std::unordered_map<size_t, size_t> label_count;
-          for (size_t label_id : neighbor_labels[dst_vid]) {
-            ++label_count[label_id];
-            if (label_count[label_id] > label_count[most_frequent_label_id]) {
-              most_frequent_label_id = label_id;
-            } else if (label_count[label_id] ==
-                           label_count[most_frequent_label_id] &&
-                       label_id < most_frequent_label_id) {
-              most_frequent_label_id = label_id;
+            auto oe_edges = oe_view.get_edges(dst_vid);
+            for (auto it = oe_edges.begin(); it != oe_edges.end(); ++it) {
+              const vid_t src_vid = it.get_vertex();
+              if (community[src_vid] != std::numeric_limits<vid_t>::max() &&
+                  edge_pred_fn(edge_triplet, src_vid, dst_vid,
+                               it.get_data_ptr())) {
+                neighbor_communities[community[src_vid]]++;
+              }
             }
-          }
-          if (most_frequent_label_id !=
-              vertex_record_to_label_id[execution::VertexRecord(dst_label,
-                                                                dst_vid)]) {
-            vertex_record_to_label_id[execution::VertexRecord(
-                dst_label, dst_vid)] = most_frequent_label_id;
-            updated = true;
-          }
-        }
+            if (neighbor_communities.empty()) {
+              return;
+            }
+            // Find the most frequent community among neighbors
+            int32_t max_count = 0;
+            vid_t max_community = community[dst_vid];
+            for (const auto& pair : neighbor_communities) {
+              if (pair.second > max_count) {
+                max_count = pair.second;
+                max_community = pair.first;
+              } else if (pair.second == max_count &&
+                         pair.first < max_community) {
+                // Tie-breaking by smaller community ID
+                max_community = pair.first;
+              }
+            }
+            next_community[dst_vid] = max_community;
+            if (max_community != community[dst_vid]) {
+              updated.store(true, std::memory_order_relaxed);
+            }
+          },
+          concurrency_);
+      if (!updated.load(std::memory_order_relaxed)) {
+        break;
       }
-    }
-    if (!updated) {
-      break;
+      community.swap(next_community);
+      LOG(INFO) << "Iteration " << iteration + 1 << " completed in "
+                << std::chrono::duration_cast<std::chrono::milliseconds>(
+                       std::chrono::high_resolution_clock::now() - begin)
+                       .count()
+                << " ms.";
     }
   }
 
-  ctx.clear();
-  execution::MSVertexColumnBuilder node_builder(*vertex_labels.begin());
-  execution::ValueColumnBuilder<int64_t> label_builder;
-  node_builder.reserve(next_label_id);
-  label_builder.reserve(next_label_id);
+  void sink(execution::Context& ctx, int32_t node_alias, int32_t label_alias) {
+    execution::MSVertexColumnBuilder node_builder(vertex_label);
+    execution::ValueColumnBuilder<int64_t> label_builder;
+    node_builder.reserve(vertices.size());
+    label_builder.reserve(vertices.size());
 
-  for (label_t label = 0; label < vertices_by_label.size(); ++label) {
-    if (vertices_by_label[label].empty()) {
-      continue;
-    }
-    node_builder.start_label(label);
-    for (vid_t vid : vertices_by_label[label]) {
+    for (vid_t vid : vertices) {
       node_builder.push_back_opt(vid);
-      label_builder.push_back_opt(static_cast<int64_t>(
-          vertex_record_to_label_id.at(execution::VertexRecord(label, vid))));
+      label_builder.push_back_opt(static_cast<int64_t>(community[vid]));
     }
+
+    ctx.set(node_alias, node_builder.finish());
+    ctx.set(label_alias, label_builder.finish());
   }
 
-  ctx.set(0, node_builder.finish());
-  ctx.set(1, label_builder.finish());
-  ctx.tag_ids = {0, 1};
+  const StorageReadInterface& graph;
+  label_t vertex_label;
+  execution::LabelTriplet edge_triplet;
+  int max_iterations;
+  std::vector<vid_t> community;
+  std::vector<vid_t> next_community;
+  std::vector<vid_t> vertices;
+  int concurrency_;
+};
+execution::Context LabelPropagationFunction::exec(
+    const function::CallFuncInputBase& input, neug::IStorageInterface& g,
+    neug::execution::Context& ctx) {
+  const auto& lp_input = dynamic_cast<const LabelPropagationInput&>(input);
+  const auto& graph = dynamic_cast<const StorageReadInterface&>(g);
+
+  const label_t vertex_label = lp_input.vertex_label;
+  const execution::LabelTriplet& edge_triplet = lp_input.edge_triplet;
+  const int max_iterations = lp_input.max_iterations;
+
+  LabelPropagation label_propagation(graph, vertex_label, edge_triplet,
+                                     max_iterations, lp_input.concurrency);
+  if (lp_input.vertex_pred) {
+    auto expr = lp_input.vertex_pred->bind(&graph, {});
+    execution::GeneralPred vertex_pred(std::move(expr));
+    label_propagation.init_communities(vertex_pred);
+  } else {
+    execution::DummyPred vertex_pred;
+    label_propagation.init_communities(vertex_pred);
+  }
+  if (lp_input.edge_pred) {
+    auto expr = lp_input.edge_pred->bind(&graph, {});
+    execution::GeneralPred edge_pred(std::move(expr));
+    label_propagation.propagate_labels(edge_pred);
+  } else {
+    execution::DummyPred edge_pred;
+    label_propagation.propagate_labels(edge_pred);
+  }
+  label_propagation.sink(ctx, lp_input.node_alias, lp_input.label_alias);
   return ctx;
+}
+
+function::function_set LabelPropagationFunction::getFunctionSet() {
+  function::function_set funcSet;
+  // two input params:
+  // 1. subgraph name in string
+  // 2. options in map
+  std::vector<common::LogicalTypeID> inputTypes = {
+      common::LogicalTypeID::STRING, common::LogicalTypeID::ANY};
+  // two output columns:
+  // 1. node type
+  // 2. label id in int64
+  function::call_output_columns outputColumns = {
+      {"node", common::LogicalTypeID::NODE},
+      {"label", common::LogicalTypeID::INT64}};
+  auto function = std::make_unique<function::GDSAlgoFunction>(name, inputTypes,
+                                                              outputColumns);
+  function->bindFunc = bind;
+  function->execFunc = exec;
+
+  funcSet.emplace_back(std::move(function));
+  return funcSet;
 }
 }  // namespace gds
 }  // namespace neug

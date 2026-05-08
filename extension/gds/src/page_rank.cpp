@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include "personalized_pagerank.h"
+#include "pagerank.h"
 
 #include "neug/execution/common/columns/value_columns.h"
 #include "neug/execution/common/columns/vertex_columns.h"
@@ -25,94 +25,106 @@
 namespace neug {
 namespace gds {
 
-class PersonalizedPageRank {
+class UndirectedPageRank {
  public:
-  PersonalizedPageRank(const StorageReadInterface& graph, label_t vertex_label,
-                       label_t edge_label, const std::string& edge_weight_prop,
-                       const std::string& node_weight_prop, int max_iterations,
-                       double damping_factor, int concurrency)
+  UndirectedPageRank(const StorageReadInterface& graph, label_t vertex_label,
+                     label_t edge_label, int max_iterations,
+                     double damping_factor, int concurrency)
       : graph_(graph),
         vertex_label_(vertex_label),
         edge_label_(edge_label),
         max_iterations_(max_iterations),
         damping_factor_(damping_factor),
         concurrency_(concurrency) {
-    edge_weight_accessor_ = graph.GetEdgeDataAccessor(
-        vertex_label, vertex_label, edge_label, edge_weight_prop);
-    node_weight_column_ = std::dynamic_pointer_cast<TypedRefColumn<double>>(
-        graph.GetVertexPropColumn(vertex_label, node_weight_prop));
-
     size_t vertex_count = graph.GetVertexSet(vertex_label).size();
-    normalized_node_weights_ = std::make_unique<double[]>(vertex_count);
-    sum_of_outgoing_weights_ = std::make_unique<double[]>(vertex_count);
-    double sum_of_node_weights = 0.0;
+    pr_ = std::make_unique<double[]>(vertex_count);
+    out_degree_ = std::make_unique<uint32_t[]>(vertex_count);
     auto oe_view = graph.GetGenericOutgoingGraphView(vertex_label, vertex_label,
                                                      edge_label);
-    auto dangling_flag = std::make_unique<bool[]>(vertex_count);
-
+    auto ie_view = graph.GetGenericIncomingGraphView(vertex_label, vertex_label,
+                                                     edge_label);
+    std::atomic<uint32_t> dangling_count = 0;
+    double p = 1.0 / vertex_count;
     ParallelUtils::parallel_for(
         0, vertex_count,
         [&](vid_t v) {
-          normalized_node_weights_[v] = node_weight_column_->get_view(v);
-          sum_of_node_weights += normalized_node_weights_[v];
-          double sum_weights = 0.0;
-          auto oes = oe_view.get_edges(v);
-          for (auto it = oes.begin(); it != oes.end(); ++it) {
-            double weight = edge_weight_accessor_.get_typed_data<double>(it);
-            sum_weights += weight;
+          uint32_t degree = 0;
+          auto oe_edges = oe_view.get_edges(v);
+          for ([[maybe_unused]] auto it = oe_edges.begin();
+               it != oe_edges.end(); ++it) {
+            degree++;
           }
-          if (sum_weights < 1e-9) {
-            dangling_flag[v] = true;
+          auto ie_edges = ie_view.get_edges(v);
+          for ([[maybe_unused]] auto it = ie_edges.begin();
+               it != ie_edges.end(); ++it) {
+            degree++;
+          }
+          out_degree_[v] = degree;
+          if (degree == 0) {
+            dangling_count.fetch_add(1);
+            pr_[v] = p;
           } else {
-            dangling_flag[v] = false;
+            pr_[v] = p / degree;
           }
-          sum_of_outgoing_weights_[v] = sum_weights;
-          pr_[v] = normalized_node_weights_[v];
         },
         concurrency_);
-    for (vid_t v = 0; v < vertex_count; ++v) {
-      if (dangling_flag[v]) {
-        dangling_vertices_.push_back(v);
-      }
-    }
-    ParallelUtils::parallel_for(
-        0, vertex_count,
-        [&](vid_t v) { normalized_node_weights_[v] /= sum_of_node_weights; },
-        concurrency_);
+    dangling_count_ = dangling_count.load();
+    dangling_sum_ = p * dangling_count_;
   }
 
-  void computePersonalizedPageRank() {
+  void computePageRank() {
     size_t vertex_count = graph_.GetVertexSet(vertex_label_).size();
     std::unique_ptr<double[]> new_pr = std::make_unique<double[]>(vertex_count);
     auto ie_view = graph_.GetGenericIncomingGraphView(
         vertex_label_, vertex_label_, edge_label_);
-    for (int iter = 0; iter < max_iterations_; ++iter) {
-      double dangling_sum = 0.0;
-      for (vid_t v : dangling_vertices_) {
-        dangling_sum += pr_[v];
-      }
+    auto oe_view = graph_.GetGenericOutgoingGraphView(
+        vertex_label_, vertex_label_, edge_label_);
+    for (int iter = 0; iter <= max_iterations_; ++iter) {
+      double base = (1.0 - damping_factor_) / vertex_count +
+                    damping_factor_ * dangling_sum_ / vertex_count;
+      dangling_sum_ = base * dangling_count_;
       ParallelUtils::parallel_for(
           0, vertex_count,
           [&](vid_t v) {
             double rank_sum = 0.0;
-            auto ies = ie_view.get_edges(v);
-            for (auto it = ies.begin(); it != ies.end(); ++it) {
+            auto ie_edges = ie_view.get_edges(v);
+            for (auto it = ie_edges.begin(); it != ie_edges.end(); ++it) {
               vid_t src = it.get_vertex();
-              double weight = edge_weight_accessor_.get_typed_data<double>(it);
-              double sum_of_outgoing_weights_src =
-                  sum_of_outgoing_weights_[src];
-              if (sum_of_outgoing_weights_src > 1e-9) {
-                rank_sum += pr_[src] * weight / sum_of_outgoing_weights_src;
-              }
+              rank_sum += pr_[src];
             }
-            new_pr[v] =
-                damping_factor_ * rank_sum +
-                damping_factor_ * dangling_sum * normalized_node_weights_[v] +
-                (1 - damping_factor_) * normalized_node_weights_[v];
+            new_pr[v] = rank_sum;
           },
           concurrency_);
+
+      ParallelUtils::parallel_for(
+          0, vertex_count,
+          [&](vid_t v) {
+            double rank_sum = 0.0;
+            auto oe_edges = oe_view.get_edges(v);
+            for (auto it = oe_edges.begin(); it != oe_edges.end(); ++it) {
+              vid_t src = it.get_vertex();
+              rank_sum += pr_[src];
+            }
+
+            uint32_t degree = out_degree_[v];
+            rank_sum += new_pr[v];  // add contribution from incoming edges
+            new_pr[v] = degree > 0
+                            ? (base + damping_factor_ * rank_sum) / degree
+                            : base;
+          },
+          concurrency_);
+
       std::swap(pr_, new_pr);
     }
+
+    ParallelUtils::parallel_for(
+        0, vertex_count,
+        [&](vid_t v) {
+          if (out_degree_[v] != 0) {
+            pr_[v] = pr_[v] * out_degree_[v];
+          }
+        },
+        concurrency_);
   }
 
   void sink(execution::Context& ctx, int node_alias, int pr_alias) {
@@ -133,43 +145,41 @@ class PersonalizedPageRank {
   const StorageReadInterface& graph_;
   label_t vertex_label_;
   label_t edge_label_;
-  EdgeDataAccessor edge_weight_accessor_;
-  std::shared_ptr<TypedRefColumn<double>> node_weight_column_;
-  std::unique_ptr<double[]> normalized_node_weights_;
-  std::unique_ptr<double[]> sum_of_outgoing_weights_;
   std::unique_ptr<double[]> pr_;
+
+  std::unique_ptr<uint32_t[]> out_degree_;
   std::vector<vid_t> dangling_vertices_;
   int max_iterations_;
   double damping_factor_;
   int concurrency_;
+  uint32_t dangling_count_;
+  double dangling_sum_;
 };
 
-struct PersonalizedPageRankInput : public function::CallFuncInputBase {
-  ~PersonalizedPageRankInput() = default;
+struct PageRankInput : public function::CallFuncInputBase {
+  ~PageRankInput() = default;
   bool parse_subgraph(const ::physical::Subgraph& subgraph,
                       label_t& vertex_label, label_t& edge_label) {
     if (subgraph.vertex_entries().size() != 1) {
-      LOG(ERROR) << "Personalized PageRank currently only supports subgraphs "
+      LOG(ERROR) << "PageRank currently only supports subgraphs "
                     "with exactly one vertex label.";
       return false;
     }
     const auto& vertex_entry = subgraph.vertex_entries(0);
     if (vertex_entry.has_predicate()) {
-      LOG(ERROR)
-          << "Vertex predicates are not supported in Personalized PageRank.";
+      LOG(ERROR) << "Vertex predicates are not supported in PageRank.";
       return false;
     }
     vertex_label = vertex_entry.label_id();
     if (subgraph.edge_entries().size() != 1) {
-      LOG(ERROR) << "Personalized PageRank currently only supports subgraphs "
+      LOG(ERROR) << "PageRank currently only supports subgraphs "
                     "with exactly one edge label.";
       return false;
     }
 
     const auto& edge_entry = subgraph.edge_entries(0);
     if (edge_entry.has_predicate()) {
-      LOG(ERROR)
-          << "Edge predicates are not supported in Personalized PageRank.";
+      LOG(ERROR) << "Edge predicates are not supported in PageRank.";
       return false;
     }
     edge_label = edge_entry.edge_label_id();
@@ -177,7 +187,7 @@ struct PersonalizedPageRankInput : public function::CallFuncInputBase {
         edge_entry.dst_label_id() != vertex_label) {
       LOG(ERROR)
           << "Source and destination vertex labels of the edge must match "
-             "the vertex label in Personalized PageRank.";
+             "the vertex label in PageRank.";
       return false;
     }
     return true;
@@ -185,12 +195,11 @@ struct PersonalizedPageRankInput : public function::CallFuncInputBase {
 
   label_t vertex_label;
   label_t edge_label;
-  std::string edge_weight;
-  std::string node_weight;
   int max_iterations;
   double damping_factor;
+  int concurrency;
   int32_t node_alias, pr_alias;
-  int32_t concurrency;
+  bool directed;
 };
 
 template <typename T>
@@ -222,65 +231,17 @@ T get_option_value(
   return default_value;
 }
 
-void check_property_valid(const Schema& schema, label_t vertex_label,
-                          label_t edge_label,
-                          const std::string& edge_weight_prop,
-                          const std::string& node_weight_prop) {
-  const auto& vertex_prop_names =
-      schema.get_vertex_property_names(vertex_label);
-  const auto& vertex_prop_types = schema.get_vertex_properties(vertex_label);
-  bool node_weight_found = false;
-  for (size_t i = 0; i < vertex_prop_names.size(); ++i) {
-    if (vertex_prop_names[i] == node_weight_prop) {
-      if (vertex_prop_types[i].id() != DataTypeId::kDouble) {
-        LOG(ERROR) << "Node weight property must be of type DOUBLE.";
-        THROW_NOT_SUPPORTED_EXCEPTION(
-            "Node weight property must be of type DOUBLE");
-      } else {
-        node_weight_found = true;
-      }
-      break;
-    }
-  }
-  if (!node_weight_found) {
-    LOG(ERROR) << "Node weight property not found in vertex properties.";
-    THROW_NOT_SUPPORTED_EXCEPTION("Node weight property not found");
-  }
-
-  const auto& edge_prop_names =
-      schema.get_edge_property_names(vertex_label, vertex_label, edge_label);
-  const auto& edge_prop_types =
-      schema.get_edge_properties(vertex_label, vertex_label, edge_label);
-  bool edge_weight_found = false;
-  for (size_t i = 0; i < edge_prop_names.size(); ++i) {
-    if (edge_prop_names[i] == edge_weight_prop) {
-      if (edge_prop_types[i].id() != DataTypeId::kDouble) {
-        LOG(ERROR) << "Edge weight property must be of type DOUBLE.";
-        THROW_NOT_SUPPORTED_EXCEPTION(
-            "Edge weight property must be of type DOUBLE");
-      } else {
-        edge_weight_found = true;
-      }
-      break;
-    }
-  }
-  if (!edge_weight_found) {
-    LOG(ERROR) << "Edge weight property not found in edge properties.";
-    THROW_NOT_SUPPORTED_EXCEPTION("Edge weight property not found");
-  }
-}
-
-std::unique_ptr<function::CallFuncInputBase> PersonalizedPageRankFunction::bind(
+std::unique_ptr<function::CallFuncInputBase> PageRankFunction::bind(
     const Schema& schema, const execution::ContextMeta& ctx_meta,
     const ::physical::PhysicalPlan& plan, int op_idx) {
   const auto& opr = plan.plan(op_idx).opr();
   const auto& subgraph = opr.gds_algo().sub_graph();
   const auto& options = opr.gds_algo().options();
   label_t vertex_label, edge_label;
-  auto input = std::make_unique<PersonalizedPageRankInput>();
+  auto input = std::make_unique<PageRankInput>();
   if (!input->parse_subgraph(subgraph, vertex_label, edge_label)) {
-    LOG(ERROR) << "Failed to parse subgraph for Personalized PageRank.";
-    THROW_NOT_SUPPORTED_EXCEPTION("Invalid subgraph for Personalized PageRank");
+    LOG(ERROR) << "Failed to parse subgraph for PageRank.";
+    THROW_NOT_SUPPORTED_EXCEPTION("Invalid subgraph for PageRank");
   }
   input->vertex_label = vertex_label;
   input->edge_label = edge_label;
@@ -290,34 +251,47 @@ std::unique_ptr<function::CallFuncInputBase> PersonalizedPageRankFunction::bind(
       get_option_value<double>(options, "damping_factor", 0.85);
   input->max_iterations =
       get_option_value<int32_t>(options, "max_iterations", 20);
-  input->edge_weight =
-      get_option_value<std::string>(options, "edge_weight", "");
-  input->node_weight =
-      get_option_value<std::string>(options, "node_weight", "");
-  check_property_valid(schema, input->vertex_label, input->edge_label,
-                       input->edge_weight, input->node_weight);
-  input->concurrency = get_option_value<int32_t>(options, "concurrency", 1);
+  input->concurrency = get_option_value<int32_t>(
+      options, "concurrency", std::thread::hardware_concurrency());
+  input->directed =
+      get_option_value<std::string>(options, "directed", "false") == "true";
   return input;
 }
 
-execution::Context PersonalizedPageRankFunction::exec(
+execution::Context PageRankFunction::exec(
     const function::CallFuncInputBase& input, neug::IStorageInterface& g,
     neug::execution::Context& ctx) {
   const auto& graph = dynamic_cast<const StorageReadInterface&>(g);
-  const auto& func_input =
-      dynamic_cast<const PersonalizedPageRankInput&>(input);
+  const auto& func_input = dynamic_cast<const PageRankInput&>(input);
+  auto start = std::chrono::high_resolution_clock::now();
+  UndirectedPageRank pagerank(graph, func_input.vertex_label,
+                              func_input.edge_label, func_input.max_iterations,
+                              func_input.damping_factor,
+                              func_input.concurrency);
+  LOG(INFO) << "PageRank initialization took "
+            << std::chrono::duration_cast<std::chrono::milliseconds>(
+                   std::chrono::high_resolution_clock::now() - start)
+                   .count()
+            << " ms";
+  start = std::chrono::high_resolution_clock::now();
 
-  PersonalizedPageRank pagerank(
-      graph, func_input.vertex_label, func_input.edge_label,
-      func_input.edge_weight, func_input.node_weight, func_input.max_iterations,
-      func_input.damping_factor, func_input.concurrency);
-
-  pagerank.computePersonalizedPageRank();
+  pagerank.computePageRank();
+  LOG(INFO) << "PageRank computation took "
+            << std::chrono::duration_cast<std::chrono::milliseconds>(
+                   std::chrono::high_resolution_clock::now() - start)
+                   .count()
+            << " ms";
+  start = std::chrono::high_resolution_clock::now();
   pagerank.sink(ctx, func_input.node_alias, func_input.pr_alias);
+  LOG(INFO) << "PageRank sink took "
+            << std::chrono::duration_cast<std::chrono::milliseconds>(
+                   std::chrono::high_resolution_clock::now() - start)
+                   .count()
+            << " ms";
   return ctx;
 }
 
-function::function_set PersonalizedPageRankFunction::getFunctionSet() {
+function::function_set PageRankFunction::getFunctionSet() {
   function::function_set funcSet;
   // two input params:
   // 1. subgraph name in string
@@ -329,7 +303,7 @@ function::function_set PersonalizedPageRankFunction::getFunctionSet() {
   // 2. personalized page rank value in double
   function::call_output_columns outputColumns = {
       {"node", common::LogicalTypeID::NODE},
-      {"personalized_page_rank", common::LogicalTypeID::DOUBLE}};
+      {"page_rank", common::LogicalTypeID::DOUBLE}};
   auto function = std::make_unique<function::GDSAlgoFunction>(name, inputTypes,
                                                               outputColumns);
   function->bindFunc = bind;

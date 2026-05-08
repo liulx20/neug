@@ -20,10 +20,11 @@
 
 #include "label_propagation.h"
 #include "neug/compiler/function/gds/gds_algo_function.h"
+#include "pagerank.h"
 
 namespace neug {
 namespace gds {
-struct NEUG_API LabelPropagationFunction {
+/**struct NEUG_API LabelPropagationFunction {
   static constexpr const char* name = "LABEL_PROPAGATION";
   static function::function_set getFunctionSet() {
     function::function_set funcSet;
@@ -45,6 +46,6 @@ struct NEUG_API LabelPropagationFunction {
         name, inputTypes, outputColumns));
     return funcSet;
   }
-};
+};*/
 }  // namespace gds
 }  // namespace neug

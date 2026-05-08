@@ -28,6 +28,9 @@ void Init() {
     neug::extension::ExtensionAPI::registerFunction<
         neug::gds::LabelPropagationFunction>(
         neug::catalog::CatalogEntryType::TABLE_FUNCTION_ENTRY);
+    neug::extension::ExtensionAPI::registerFunction<
+        neug::gds::PageRankFunction>(
+        neug::catalog::CatalogEntryType::TABLE_FUNCTION_ENTRY);
 
     neug::extension::ExtensionAPI::registerExtension(
         neug::extension::ExtensionInfo{

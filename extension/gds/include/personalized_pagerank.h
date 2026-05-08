@@ -17,34 +17,21 @@
 #pragma once
 
 #include "neug/compiler/function/gds/gds_algo_function.h"
+#include "neug/compiler/function/neug_call_function.h"
 
 namespace neug {
 namespace gds {
 struct NEUG_API PersonalizedPageRankFunction {
   static constexpr const char* name = "PERSONALIZED_PAGE_RANK";
-  static execution::Context PersonalizedPageRankExec(
-      execution::Context& ctx, const ::physical::Subgraph& subgraph,
-      const function::options_t& options, IStorageInterface& g);
+  static neug::execution::Context exec(const function::CallFuncInputBase& input,
+                                       neug::IStorageInterface& graph,
+                                       neug::execution::Context& ctx);
 
-  static function::function_set getFunctionSet() {
-    function::function_set funcSet;
-    // two input params:
-    // 1. subgraph name in string
-    // 2. options in map
-    std::vector<common::LogicalTypeID> inputTypes = {
-        common::LogicalTypeID::STRING, common::LogicalTypeID::ANY};
-    // two output columns:
-    // 1. node type
-    // 2. page rank value in double
-    function::call_output_columns outputColumns = {
-        {"node", common::LogicalTypeID::NODE},
-        {"page_rank", common::LogicalTypeID::DOUBLE}};
-    auto function = std::make_unique<function::GDSAlgoFunction>(
-        name, inputTypes, outputColumns);
-    function->algoExec = PersonalizedPageRankExec;
-    funcSet.emplace_back(std::move(function));
-    return funcSet;
-  }
+  static std::unique_ptr<function::CallFuncInputBase> bind(
+      const Schema& schema, const execution::ContextMeta& ctx_meta,
+      const ::physical::PhysicalPlan& plan, int op_idx);
+
+  static function::function_set getFunctionSet();
 };
 }  // namespace gds
 }  // namespace neug
