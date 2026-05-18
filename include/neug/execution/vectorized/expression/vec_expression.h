@@ -11,6 +11,9 @@
 
 namespace neug {
 class StorageReadInterface;
+namespace execution {
+class OprTimer;
+}
 }
 
 namespace neug::execution::vec {
@@ -22,6 +25,7 @@ enum class StringFuncOp : uint8_t { kStartsWith, kEndsWith, kContains };
 struct VecExecContext {
 	const execution::ParamsMap* params = nullptr;
 	const StorageReadInterface* graph = nullptr;
+	execution::OprTimer* timer = nullptr;
 };
 
 // ============================================================

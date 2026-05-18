@@ -14,9 +14,13 @@
  */
 
 #include "neug/main/query_processor.h"
+
+#include <sstream>
+
 #include "neug/execution/common/context.h"
 #include "neug/execution/common/operators/retrieve/sink.h"
 #include "neug/execution/execute/plan_parser.h"
+#include "neug/execution/utils/opr_timer.h"
 #include "neug/execution/vectorized/compiler/vec_pipeline_compiler.h"
 #include "neug/execution/vectorized/compiler/vec_result_collector.h"
 #include "neug/execution/vectorized/pipeline/pipeline_executor.h"
@@ -128,9 +132,15 @@ result<QueryResult> QueryProcessor::execute_internal(
       auto& output_info = cache_value->vec_pipeline->output_info;
       execution::vec::VecResultCollector collector(
           output_info.tags, output_info.types);
-      execution::vec::VecExecContext ctx{&parameters, &gri};
+      auto vec_timer = std::make_unique<execution::OprTimer>();
+      execution::vec::VecExecContext ctx{&parameters, &gri, vec_timer.get()};
       execution::vec::PipelineExecutor executor;
       executor.Execute(*cache_value->vec_pipeline, &collector, ctx);
+      {
+        std::ostringstream oss;
+        vec_timer->output("  ", oss);
+        LOG(INFO) << "Vec pipeline profiling:\n" << oss.str();
+      }
       collector.SerializeToResponse(response);
       response->mutable_schema()->CopyFrom(cache_value->result_schema);
       return QueryResult::From(response->SerializeAsString());

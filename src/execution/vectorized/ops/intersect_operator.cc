@@ -159,6 +159,13 @@ OperatorResultType IntersectOperator::Execute(GraphDataChunk& input,
 			}
 		}
 
+		// Already computed and fully emitted for this row — advance
+		if (!state.result_vertices.empty()) {
+			state.result_vertices.clear();
+			state.emit_idx = 0;
+			continue;
+		}
+
 		// Compute intersection for current row
 		state.result_vertices.clear();
 		state.emit_idx = 0;
@@ -255,6 +262,11 @@ OperatorResultType IntersectOperator::Execute(GraphDataChunk& input,
 				return OperatorResultType::kHaveMoreOutput;
 			}
 		}
+
+		// All results for this row emitted normally — clear so next
+		// iteration's check knows this row is done
+		state.result_vertices.clear();
+		state.emit_idx = 0;
 	}
 
 	// Emit remaining

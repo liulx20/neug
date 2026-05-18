@@ -312,6 +312,29 @@ OperatorResultType EdgeExpandOperator::Execute(GraphDataChunk& input,
 				state.data_ptrs.push_back(nullptr);
 				state.view_indices.push_back(0);
 			}
+
+			if (state.offsets.size() >= STANDARD_VECTOR_SIZE) {
+				if (has_pred) {
+					flush_with_filter();
+				}
+				if (!state.offsets.empty()) {
+					BuildOutputFromOffsets(
+					    *src, output, output_alias_,
+					    state.offsets, state.nbr_vids,
+					    state.nbr_labels, state.offsets.size(),
+					    state.null_positions);
+					state.offsets.clear();
+					state.nbr_vids.clear();
+					state.nbr_labels.clear();
+					state.null_positions.clear();
+					state.data_ptrs.clear();
+					state.view_indices.clear();
+					state.row_idx++;
+					state.view_idx = 0;
+					state.iter_active = false;
+					return OperatorResultType::kHaveMoreOutput;
+				}
+			}
 		}
 
 		state.view_idx = 0;

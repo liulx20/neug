@@ -14,8 +14,21 @@ class GraphDataChunk {
 	GraphDataChunk() : count_(0) {}
 	~GraphDataChunk() = default;
 
-	GraphDataChunk(GraphDataChunk&& other) noexcept = default;
-	GraphDataChunk& operator=(GraphDataChunk&& other) noexcept = default;
+	GraphDataChunk(GraphDataChunk&& other) noexcept
+	    : vectors_(std::move(other.vectors_)),
+	      tags_(std::move(other.tags_)),
+	      count_(other.count_) {
+		other.count_ = 0;
+	}
+	GraphDataChunk& operator=(GraphDataChunk&& other) noexcept {
+		if (this != &other) {
+			vectors_ = std::move(other.vectors_);
+			tags_ = std::move(other.tags_);
+			count_ = other.count_;
+			other.count_ = 0;
+		}
+		return *this;
+	}
 
 	void Initialize(const std::vector<std::pair<int, DataType>>& columns,
 	                size_t capacity = STANDARD_VECTOR_SIZE);

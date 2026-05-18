@@ -2680,3 +2680,304 @@ TEST_F(VectorizedAllShortestPathTest, ThreeHopsTwoPaths) {
 	EXPECT_EQ(resp.arrays(0).int64_array().values(0), 2);
 	EXPECT_EQ(resp.arrays(0).int64_array().values(1), 2);
 }
+
+// ============================================================
+// Real LSQB Data Test
+// ============================================================
+
+class RealLSQBTest : public ::testing::Test {
+ protected:
+	std::unique_ptr<neug::NeugDB> db_;
+	std::shared_ptr<neug::Connection> conn_;
+	std::string work_dir_;
+	std::string data_dir_;
+	bool use_sf01_ = false;
+
+	void SetUp() override {
+		data_dir_ = "../../lsqb/data/social-network-sf0.1-projected-fk";
+		if (!std::filesystem::exists(data_dir_)) {
+			data_dir_ = "../../lsqb/data/social-network-sf0.003-projected-fk";
+		}
+		if (!std::filesystem::exists(data_dir_)) {
+			GTEST_SKIP() << "LSQB data not found";
+		}
+		use_sf01_ = data_dir_.find("sf0.1") != std::string::npos;
+
+		work_dir_ = "/tmp/test_real_lsqb";
+		if (std::filesystem::exists(work_dir_)) {
+			std::filesystem::remove_all(work_dir_);
+		}
+		std::filesystem::create_directories(work_dir_);
+
+		db_ = std::make_unique<neug::NeugDB>();
+		db_->Open(work_dir_, 1);
+		conn_ = db_->Connect();
+
+		CreateSchema();
+		LoadData();
+	}
+
+	void TearDown() override {
+		if (conn_) conn_->Close();
+		conn_.reset();
+		if (db_) db_->Close();
+		db_.reset();
+		if (std::filesystem::exists(work_dir_)) {
+			std::filesystem::remove_all(work_dir_);
+		}
+	}
+
+	void CreateSchema() {
+		auto stmts = {
+		    "CREATE NODE TABLE Company (CompanyId INT64, PRIMARY KEY(CompanyId));",
+		    "CREATE NODE TABLE University (UniversityId INT64, PRIMARY KEY(UniversityId));",
+		    "CREATE NODE TABLE Continent (ContinentId INT64, PRIMARY KEY(ContinentId));",
+		    "CREATE NODE TABLE Country (CountryId INT64, PRIMARY KEY(CountryId));",
+		    "CREATE NODE TABLE City (CityId INT64, PRIMARY KEY(CityId));",
+		    "CREATE NODE TABLE Tag (TagId INT64, PRIMARY KEY(TagId));",
+		    "CREATE NODE TABLE TagClass (TagClassId INT64, PRIMARY KEY(TagClassId));",
+		    "CREATE NODE TABLE Forum (ForumId INT64, PRIMARY KEY(ForumId));",
+		    "CREATE NODE TABLE Comment (CommentId INT64, PRIMARY KEY(CommentId));",
+		    "CREATE NODE TABLE Post (PostId INT64, PRIMARY KEY(PostId));",
+		    "CREATE NODE TABLE Person (PersonId INT64, PRIMARY KEY(PersonId));",
+		    "CREATE REL TABLE City_isPartOf_Country(FROM City TO Country);",
+		    "CREATE REL TABLE Comment_hasCreator_Person(FROM Comment TO Person);",
+		    "CREATE REL TABLE Comment_hasTag_Tag(FROM Comment TO Tag);",
+		    "CREATE REL TABLE Comment_isLocatedIn_Country(FROM Comment TO Country);",
+		    "CREATE REL TABLE Comment_replyOf_Comment(FROM Comment TO Comment);",
+		    "CREATE REL TABLE Comment_replyOf_Post(FROM Comment TO Post);",
+		    "CREATE REL TABLE Company_isLocatedIn_Country(FROM Company TO Country);",
+		    "CREATE REL TABLE Country_isPartOf_Continent(FROM Country TO Continent);",
+		    "CREATE REL TABLE Forum_containerOf_Post(FROM Forum TO Post);",
+		    "CREATE REL TABLE Forum_hasMember_Person(FROM Forum TO Person);",
+		    "CREATE REL TABLE Forum_hasModerator_Person(FROM Forum TO Person);",
+		    "CREATE REL TABLE Forum_hasTag_Tag(FROM Forum TO Tag);",
+		    "CREATE REL TABLE Person_hasInterest_Tag(FROM Person TO Tag);",
+		    "CREATE REL TABLE Person_isLocatedIn_City(FROM Person TO City);",
+		    "CREATE REL TABLE Person_knows_Person(FROM Person TO Person);",
+		    "CREATE REL TABLE Person_likes_Comment(FROM Person TO Comment);",
+		    "CREATE REL TABLE Person_likes_Post(FROM Person TO Post);",
+		    "CREATE REL TABLE Person_studyAt_University(FROM Person TO University);",
+		    "CREATE REL TABLE Person_workAt_Company(FROM Person TO Company);",
+		    "CREATE REL TABLE Post_hasCreator_Person(FROM Post TO Person);",
+		    "CREATE REL TABLE Post_hasTag_Tag(FROM Post TO Tag);",
+		    "CREATE REL TABLE Post_isLocatedIn_Country(FROM Post TO Country);",
+		    "CREATE REL TABLE TagClass_isSubclassOf_TagClass(FROM TagClass TO TagClass);",
+		    "CREATE REL TABLE Tag_hasType_TagClass(FROM Tag TO TagClass);",
+		    "CREATE REL TABLE University_isLocatedIn_City(FROM University TO City);",
+		};
+		for (auto& s : stmts) {
+			auto r = conn_->Query(s);
+			ASSERT_TRUE(r.has_value()) << "Failed: " << s << " - " << r.error().error_message();
+		}
+	}
+
+	void CopyTable(const std::string& table, const std::string& csv,
+	               const std::string& from = "", const std::string& to = "") {
+		std::string q = "COPY " + table + " FROM \"" + data_dir_ + "/" + csv + "\"";
+		if (!from.empty()) {
+			q += " (from=\"" + from + "\", to=\"" + to + "\", DELIM=\"|\")";
+		} else {
+			q += " (DELIM=\"|\")";
+		}
+		q += ";";
+		auto r = conn_->Query(q);
+		ASSERT_TRUE(r.has_value()) << "Failed: " << q << " - " << r.error().error_message();
+	}
+
+	void LoadData() {
+		CopyTable("City", "City.csv");
+		CopyTable("Comment", "Comment.csv");
+		CopyTable("Company", "Company.csv");
+		CopyTable("Continent", "Continent.csv");
+		CopyTable("Country", "Country.csv");
+		CopyTable("Forum", "Forum.csv");
+		CopyTable("Person", "Person.csv");
+		CopyTable("Post", "Post.csv");
+		CopyTable("Tag", "Tag.csv");
+		CopyTable("TagClass", "TagClass.csv");
+		CopyTable("University", "University.csv");
+
+		CopyTable("City_isPartOf_Country", "City_isPartOf_Country.csv", "City", "Country");
+		CopyTable("Comment_hasCreator_Person", "Comment_hasCreator_Person.csv", "Comment", "Person");
+		CopyTable("Comment_hasTag_Tag", "Comment_hasTag_Tag.csv", "Comment", "Tag");
+		CopyTable("Comment_isLocatedIn_Country", "Comment_isLocatedIn_Country.csv", "Comment", "Country");
+		CopyTable("Comment_replyOf_Comment", "Comment_replyOf_Comment.csv", "Comment", "Comment");
+		CopyTable("Comment_replyOf_Post", "Comment_replyOf_Post.csv", "Comment", "Post");
+		CopyTable("Company_isLocatedIn_Country", "Company_isLocatedIn_Country.csv", "Company", "Country");
+		CopyTable("Country_isPartOf_Continent", "Country_isPartOf_Continent.csv", "Country", "Continent");
+		CopyTable("Forum_containerOf_Post", "Forum_containerOf_Post.csv", "Forum", "Post");
+		CopyTable("Forum_hasMember_Person", "Forum_hasMember_Person.csv", "Forum", "Person");
+		CopyTable("Forum_hasModerator_Person", "Forum_hasModerator_Person.csv", "Forum", "Person");
+		CopyTable("Forum_hasTag_Tag", "Forum_hasTag_Tag.csv", "Forum", "Tag");
+		CopyTable("Person_hasInterest_Tag", "Person_hasInterest_Tag.csv", "Person", "Tag");
+		CopyTable("Person_isLocatedIn_City", "Person_isLocatedIn_City.csv", "Person", "City");
+		CopyTable("Person_knows_Person", "Person_knows_Person.csv", "Person", "Person");
+		CopyTable("Person_likes_Comment", "Person_likes_Comment.csv", "Person", "Comment");
+		CopyTable("Person_likes_Post", "Person_likes_Post.csv", "Person", "Post");
+		CopyTable("Person_studyAt_University", "Person_studyAt_University.csv", "Person", "University");
+		CopyTable("Person_workAt_Company", "Person_workAt_Company.csv", "Person", "Company");
+		CopyTable("Post_hasCreator_Person", "Post_hasCreator_Person.csv", "Post", "Person");
+		CopyTable("Post_hasTag_Tag", "Post_hasTag_Tag.csv", "Post", "Tag");
+		CopyTable("Post_isLocatedIn_Country", "Post_isLocatedIn_Country.csv", "Post", "Country");
+		CopyTable("TagClass_isSubclassOf_TagClass", "TagClass_isSubclassOf_TagClass.csv", "TagClass", "TagClass");
+		CopyTable("Tag_hasType_TagClass", "Tag_hasType_TagClass.csv", "Tag", "TagClass");
+		CopyTable("University_isLocatedIn_City", "University_isLocatedIn_City.csv", "University", "City");
+	}
+};
+
+TEST_F(RealLSQBTest, DebugEdgeCounts) {
+	auto count_q = [&](const char* q) -> int64_t {
+		auto r = conn_->Query(q, "read");
+		if (!r.has_value()) return -1;
+		auto& resp = r.value().response();
+		if (resp.arrays_size() > 0 && resp.arrays(0).has_int64_array())
+			return resp.arrays(0).int64_array().values(0);
+		return 0;
+	};
+	// Q2 variants: check if overcounting is from join semantics
+	LOG(INFO) << "Q2 comma-join (our test): " << count_q(
+	    "MATCH (person1:Person)-[:Person_knows_Person]-(person2:Person), "
+	    "(person1)<-[:Comment_hasCreator_Person]-(comment:Comment)"
+	    "-[:Comment_replyOf_Post]->(post:Post)"
+	    "-[:Post_hasCreator_Person]->(person2) "
+	    "RETURN count(*) AS count");
+	LOG(INFO) << "Q2 single-path: " << count_q(
+	    "MATCH (person1:Person)-[:Person_knows_Person]-(person2:Person)"
+	    "<-[:Post_hasCreator_Person]-(post:Post)"
+	    "<-[:Comment_replyOf_Post]-(comment:Comment)"
+	    "-[:Comment_hasCreator_Person]->(person1) "
+	    "RETURN count(*) AS count");
+
+	// Individual edge counts
+	LOG(INFO) << "Country count: " << count_q("MATCH (n:Country) RETURN count(*)");
+	LOG(INFO) << "City_isPartOf_Country: " << count_q("MATCH (:City)-[:City_isPartOf_Country]->(:Country) RETURN count(*)");
+	LOG(INFO) << "Person_isLocatedIn_City: " << count_q("MATCH (:Person)-[:Person_isLocatedIn_City]->(:City) RETURN count(*)");
+	LOG(INFO) << "Forum_hasMember_Person: " << count_q("MATCH (:Forum)-[:Forum_hasMember_Person]->(:Person) RETURN count(*)");
+	LOG(INFO) << "Forum_containerOf_Post: " << count_q("MATCH (:Forum)-[:Forum_containerOf_Post]->(:Post) RETURN count(*)");
+	LOG(INFO) << "Comment_replyOf_Post: " << count_q("MATCH (:Comment)-[:Comment_replyOf_Post]->(:Post) RETURN count(*)");
+	LOG(INFO) << "Comment_hasTag_Tag: " << count_q("MATCH (:Comment)-[:Comment_hasTag_Tag]->(:Tag) RETURN count(*)");
+	LOG(INFO) << "Tag_hasType_TagClass: " << count_q("MATCH (:Tag)-[:Tag_hasType_TagClass]->(:TagClass) RETURN count(*)");
+
+	// Q1 progressive chain
+	LOG(INFO) << "Step1 Country<-City: " << count_q(
+	    "MATCH (:Country)<-[:City_isPartOf_Country]-(:City) RETURN count(*)");
+	LOG(INFO) << "Step2 Country<-City<-Person: " << count_q(
+	    "MATCH (:Country)<-[:City_isPartOf_Country]-(:City)<-[:Person_isLocatedIn_City]-(:Person) RETURN count(*)");
+	LOG(INFO) << "Step3 ...<-Forum: " << count_q(
+	    "MATCH (:Country)<-[:City_isPartOf_Country]-(:City)<-[:Person_isLocatedIn_City]-(:Person)<-[:Forum_hasMember_Person]-(:Forum) RETURN count(*)");
+	LOG(INFO) << "Step4 ...->Post: " << count_q(
+	    "MATCH (:Country)<-[:City_isPartOf_Country]-(:City)<-[:Person_isLocatedIn_City]-(:Person)<-[:Forum_hasMember_Person]-(:Forum)-[:Forum_containerOf_Post]->(:Post) RETURN count(*)");
+	LOG(INFO) << "Step5 ...<-Comment: " << count_q(
+	    "MATCH (:Country)<-[:City_isPartOf_Country]-(:City)<-[:Person_isLocatedIn_City]-(:Person)<-[:Forum_hasMember_Person]-(:Forum)-[:Forum_containerOf_Post]->(:Post)<-[:Comment_replyOf_Post]-(:Comment) RETURN count(*)");
+	LOG(INFO) << "Step6 ...->Tag: " << count_q(
+	    "MATCH (:Country)<-[:City_isPartOf_Country]-(:City)<-[:Person_isLocatedIn_City]-(:Person)<-[:Forum_hasMember_Person]-(:Forum)-[:Forum_containerOf_Post]->(:Post)<-[:Comment_replyOf_Post]-(:Comment)-[:Comment_hasTag_Tag]->(:Tag) RETURN count(*)");
+	// Debug: Forum->Post fan-out
+	LOG(INFO) << "Forum count: " << count_q("MATCH (f:Forum) RETURN count(*)");
+	LOG(INFO) << "Forum->Post direct: " << count_q(
+	    "MATCH (:Forum)-[:Forum_containerOf_Post]->(:Post) RETURN count(*)");
+	LOG(INFO) << "Forum<-Person->Post: " << count_q(
+	    "MATCH (:Forum)-[:Forum_hasMember_Person]->(:Person) RETURN count(*)");
+	LOG(INFO) << "IMPORTANT Forum_member then container: " << count_q(
+	    "MATCH (:Person)<-[:Forum_hasMember_Person]-(:Forum)-[:Forum_containerOf_Post]->(:Post) RETURN count(*)");
+
+	LOG(INFO) << "Step7 Q1 full: " << count_q(
+	    "MATCH (:Country)<-[:City_isPartOf_Country]-(:City)<-[:Person_isLocatedIn_City]-(:Person)<-[:Forum_hasMember_Person]-(:Forum)-[:Forum_containerOf_Post]->(:Post)<-[:Comment_replyOf_Post]-(:Comment)-[:Comment_hasTag_Tag]->(:Tag)-[:Tag_hasType_TagClass]->(:TagClass) RETURN count(*)");
+}
+
+TEST_F(RealLSQBTest, AllQueriesVecVsNonVec) {
+	struct QDef { const char* name; const char* cypher; int64_t expected_sf01; };
+	QDef queries[] = {
+	    {"Q1",
+	     "MATCH (:Country)<-[:City_isPartOf_Country]-(:City)"
+	     "<-[:Person_isLocatedIn_City]-(:Person)"
+	     "<-[:Forum_hasMember_Person]-(:Forum)"
+	     "-[:Forum_containerOf_Post]->(:Post)"
+	     "<-[:Comment_replyOf_Post]-(:Comment)"
+	     "-[:Comment_hasTag_Tag]->(:Tag)"
+	     "-[:Tag_hasType_TagClass]->(:TagClass)"
+	     " RETURN count(*) AS count",
+	     8773828},
+	    {"Q2",
+	     "MATCH (person1:Person)-[:Person_knows_Person]-(person2:Person), "
+	     "(person1)<-[:Comment_hasCreator_Person]-(comment:Comment)"
+	     "-[:Comment_replyOf_Post]->(post:Post)"
+	     "-[:Post_hasCreator_Person]->(person2) "
+	     "RETURN count(*) AS count",
+	     82990},
+	    {"Q3",
+	     "MATCH (person1:Person)-[:Person_isLocatedIn_City]->(city1:City)"
+	     "-[:City_isPartOf_Country]->(country:Country), "
+	     "(person2:Person)-[:Person_isLocatedIn_City]->(city2:City)"
+	     "-[:City_isPartOf_Country]->(country), "
+	     "(person3:Person)-[:Person_isLocatedIn_City]->(city3:City)"
+	     "-[:City_isPartOf_Country]->(country), "
+	     "(person1)-[:Person_knows_Person]-(person2)"
+	     "-[:Person_knows_Person]-(person3), "
+	     "(person3)-[:Person_knows_Person]-(person1) "
+	     "RETURN count(*) AS count",
+	     30456},
+	    {"Q4",
+	     "MATCH (:Tag)<-[:Post_hasTag_Tag|:Comment_hasTag_Tag]-(message:Post:Comment)"
+	     "-[:Post_hasCreator_Person|:Comment_hasCreator_Person]->(creator:Person), "
+	     "(message)<-[:Person_likes_Comment|:Person_likes_Post]-(liker:Person), "
+	     "(message)<-[:Comment_replyOf_Comment|:Comment_replyOf_Post]-(comment:Comment) "
+	     "RETURN count(*) AS count",
+	     784511},
+	    {"Q5",
+	     "MATCH (tag1:Tag)<-[:Post_hasTag_Tag|:Comment_hasTag_Tag]-(message:Comment:Post)"
+	     "<-[:Comment_replyOf_Post|:Comment_replyOf_Comment]-(comment:Comment)"
+	     "-[:Comment_hasTag_Tag]->(tag2:Tag) "
+	     "WHERE id(tag1) <> id(tag2) "
+	     "RETURN count(*) AS count",
+	     1079722},
+	    {"Q6",
+	     "MATCH (person1:Person)-[:Person_knows_Person]-(person2:Person)"
+	     "-[:Person_knows_Person]-(person3:Person)"
+	     "-[:Person_hasInterest_Tag]->(tag:Tag) "
+	     "WHERE id(person1) <> id(person3) "
+	     "RETURN count(*) AS count",
+	     55607896},
+	    {"Q7",
+	     "MATCH (:Tag)<-[:Post_hasTag_Tag|:Comment_hasTag_Tag]-(message:Post:Comment)"
+	     "-[:Post_hasCreator_Person|:Comment_hasCreator_Person]->(creator:Person) "
+	     "OPTIONAL MATCH (message)<-[:Person_likes_Post|:Person_likes_Comment]-(liker:Person) "
+	     "OPTIONAL MATCH (message)<-[:Comment_replyOf_Post|:Comment_replyOf_Comment]-(comment:Comment) "
+	     "RETURN count(*) AS count",
+	     1628132},
+	};
+
+	for (auto& qd : queries) {
+		// "read" mode → vec path; "" mode → planner decides, same result via non-vec fallback
+		auto vec_result = conn_->Query(qd.cypher, "read");
+		ASSERT_TRUE(vec_result.has_value())
+		    << qd.name << " vec failed: " << vec_result.error().error_message();
+		int64_t vec_count = 0;
+		const auto& vr = vec_result.value().response();
+		if (vr.row_count() > 0 && vr.arrays_size() > 0 &&
+		    vr.arrays(0).has_int64_array()) {
+			vec_count = vr.arrays(0).int64_array().values(0);
+		}
+
+		// Run with empty mode string — planner will decide (also kRead for these)
+		// Both paths should give same result
+		auto nv_result = conn_->Query(qd.cypher, "");
+		ASSERT_TRUE(nv_result.has_value())
+		    << qd.name << " non-vec failed: " << nv_result.error().error_message();
+		int64_t nv_count = 0;
+		const auto& nr = nv_result.value().response();
+		if (nr.row_count() > 0 && nr.arrays_size() > 0 &&
+		    nr.arrays(0).has_int64_array()) {
+			nv_count = nr.arrays(0).int64_array().values(0);
+		}
+
+		LOG(INFO) << qd.name << ": vec=" << vec_count << " auto=" << nv_count
+		          << (use_sf01_ ? " expected=" + std::to_string(qd.expected_sf01) : "");
+		EXPECT_EQ(vec_count, nv_count)
+		    << qd.name << " vec/auto mismatch";
+		if (use_sf01_) {
+			EXPECT_EQ(vec_count, qd.expected_sf01)
+			    << qd.name << " does not match sf0.1 expected value";
+		}
+	}
+}

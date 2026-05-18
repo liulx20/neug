@@ -69,7 +69,7 @@ class VecPipelineCompiler {
 	void CompileTCFuse(int start_idx);
 
 	std::unique_ptr<VecExpression> CompileExpression(
-	    const common::Expression& expr);
+	    const ::common::Expression& expr);
 
 	void EnsurePropertyMaterialized(int vertex_tag,
 	                                const std::string& prop_name);
@@ -79,7 +79,7 @@ class VecPipelineCompiler {
 		std::string prop_name;
 	};
 	std::vector<PropRef> ExtractReferencedProperties(
-	    const common::Expression& expr);
+	    const ::common::Expression& expr);
 
 	int GetPropTag(int vertex_tag, const std::string& prop_name) const;
 	int AllocatePropTag(int vertex_tag, const std::string& prop_name);
