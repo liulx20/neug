@@ -186,14 +186,18 @@ neug::result<std::string> NeugDBSession::Eval(const std::string& req) {
           auto read_txn = GetReadTransaction();
           neug::StorageReadInterface gri(read_txn.graph(),
                                          read_txn.timestamp());
-          execution::vec::VecPipelineCompiler compiler(gri, plan);
+          auto params_type =
+              execution::PlanParser::parse_params_type(plan);
+          auto params_map = ParamsParser::ParseFromJsonObj(
+              params_type, param_json_obj);
+          execution::vec::VecPipelineCompiler compiler(schema(), plan);
           auto pipeline = compiler.Compile();
-          auto output_info = compiler.GetOutputInfo();
+          auto& output_info = pipeline.output_info;
           execution::vec::VecResultCollector collector(
-              std::move(output_info.tags), std::move(output_info.types));
-          pipeline.sink = &collector;
+              output_info.tags, output_info.types);
+          execution::vec::VecExecContext ctx{&params_map, &gri};
           execution::vec::PipelineExecutor executor;
-          executor.Execute(pipeline);
+          executor.Execute(pipeline, &collector, ctx);
           collector.SerializeToResponse(response);
           const auto& rt_names =
               parse_result_schema_column_names(schema_str);
