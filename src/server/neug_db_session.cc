@@ -35,6 +35,9 @@
 #include "neug/execution/common/params_map.h"
 #include "neug/execution/execute/plan_parser.h"
 #include "neug/execution/utils/opr_timer.h"
+#include "neug/execution/vectorized/compiler/vec_pipeline_compiler.h"
+#include "neug/execution/vectorized/compiler/vec_result_collector.h"
+#include "neug/execution/vectorized/pipeline/pipeline_executor.h"
 #include "neug/generated/proto/plan/common.pb.h"
 #include "neug/generated/proto/plan/physical.pb.h"
 #include "neug/generated/proto/plan/stored_procedure.pb.h"
@@ -174,14 +177,47 @@ neug::result<std::string> NeugDBSession::Eval(const std::string& req) {
 
   neug::MetaDatas result_schema;
   if (mode == neug::AccessMode::kRead) {
-    auto read_txn = GetReadTransaction();
-    neug::StorageReadInterface gri(read_txn.graph(), read_txn.timestamp());
-    GS_AUTO(ctx, ExecutePipelineInTransaction(pipeline_cache_, schema(), query,
-                                              mode, db_config_, param_json_obj,
-                                              timer.get(), result_schema,
-                                              read_txn, gri));
-    response->mutable_schema()->CopyFrom(result_schema);
-    neug::execution::Sink::sink_results(ctx, gri, response);
+    bool vec_done = false;
+    try {
+      auto plan_res = planner_->compilePlan(query);
+      if (plan_res.has_value()) {
+        auto& [plan, schema_str] = plan_res.value();
+        if (execution::vec::VecPipelineCompiler::CanVectorize(plan)) {
+          auto read_txn = GetReadTransaction();
+          neug::StorageReadInterface gri(read_txn.graph(),
+                                         read_txn.timestamp());
+          execution::vec::VecPipelineCompiler compiler(gri, plan);
+          auto pipeline = compiler.Compile();
+          auto output_info = compiler.GetOutputInfo();
+          execution::vec::VecResultCollector collector(
+              std::move(output_info.tags), std::move(output_info.types));
+          pipeline.sink = &collector;
+          execution::vec::PipelineExecutor executor;
+          executor.Execute(pipeline);
+          collector.SerializeToResponse(response);
+          const auto& rt_names =
+              parse_result_schema_column_names(schema_str);
+          for (auto& name : rt_names) {
+            response->mutable_schema()->add_name(name);
+          }
+          read_txn.Commit();
+          vec_done = true;
+        }
+      }
+    } catch (...) {
+      // Vectorized compilation failed — fall back
+    }
+    if (!vec_done) {
+      auto read_txn = GetReadTransaction();
+      neug::StorageReadInterface gri(read_txn.graph(), read_txn.timestamp());
+      GS_AUTO(ctx,
+              ExecutePipelineInTransaction(pipeline_cache_, schema(), query,
+                                          mode, db_config_, param_json_obj,
+                                          timer.get(), result_schema,
+                                          read_txn, gri));
+      response->mutable_schema()->CopyFrom(result_schema);
+      neug::execution::Sink::sink_results(ctx, gri, response);
+    }
   } else if (mode == AccessMode::kInsert) {
     auto insert_txn = GetInsertTransaction();
     neug::StorageTPInsertInterface gii(insert_txn);

@@ -18,6 +18,7 @@
 #include "neug/execution/common/params_map.h"
 #include "neug/execution/execute/pipeline.h"
 #include "neug/execution/execute/plan_parser.h"
+#include "neug/execution/vectorized/compiler/vec_pipeline_compiler.h"
 #include "neug/generated/proto/response/response.pb.h"
 #include "neug/utils/access_mode.h"
 
@@ -29,9 +30,11 @@ struct CacheValue {
   ParamsMetaMap params_type;
   neug::MetaDatas result_schema;
   physical::ExecutionFlag flags;
+  bool is_vectorizable = false;
+  std::shared_ptr<vec::CompiledVecPipeline> vec_pipeline;
 
   CacheValue(Pipeline pipeline, ParamsMetaMap params_type,
-             const neug::MetaDatas& result_schema,  // ← 注意：const&
+             const neug::MetaDatas& result_schema,
              physical::ExecutionFlag flags)
       : pipeline(std::move(pipeline)),
         params_type(std::move(params_type)),
@@ -87,10 +90,21 @@ class GlobalQueryCache {
       if (iter != cache_.end()) {
         return iter->second;
       }
-      cache_.emplace(query,
-                     std::make_shared<CacheValue>(std::move(pipeline_result),
-                                                  std::move(params_type), sch,
-                                                  plan_result.first.flag()));
+      auto cv = std::make_shared<CacheValue>(std::move(pipeline_result),
+                                             std::move(params_type), sch,
+                                             plan_result.first.flag());
+      cv->is_vectorizable =
+          execution::vec::VecPipelineCompiler::CanVectorize(plan_result.first);
+      if (cv->is_vectorizable) {
+        try {
+          execution::vec::VecPipelineCompiler compiler(schema, plan_result.first);
+          cv->vec_pipeline = std::make_shared<vec::CompiledVecPipeline>(
+              compiler.Compile());
+        } catch (...) {
+          cv->is_vectorizable = false;
+        }
+      }
+      cache_.emplace(query, cv);
       return cache_.at(query);
     }
   }

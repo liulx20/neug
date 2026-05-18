@@ -17,6 +17,9 @@
 #include "neug/execution/common/context.h"
 #include "neug/execution/common/operators/retrieve/sink.h"
 #include "neug/execution/execute/plan_parser.h"
+#include "neug/execution/vectorized/compiler/vec_pipeline_compiler.h"
+#include "neug/execution/vectorized/compiler/vec_result_collector.h"
+#include "neug/execution/vectorized/pipeline/pipeline_executor.h"
 #include "neug/main/neug_db.h"
 #include "neug/storages/graph/property_graph.h"
 #include "neug/utils/pb_utils.h"
@@ -114,6 +117,27 @@ result<QueryResult> QueryProcessor::execute_internal(
     const std::string& query_string,
     std::shared_ptr<execution::CacheValue> cache_value, AccessMode access_mode,
     const execution::ParamsMap& parameters, int32_t num_threads) {
+  google::protobuf::Arena arena;
+  neug::QueryResponse* response =
+      google::protobuf::Arena::CreateMessage<neug::QueryResponse>(&arena);
+
+  if (cache_value->is_vectorizable && cache_value->vec_pipeline &&
+      access_mode == AccessMode::kRead) {
+    try {
+      StorageReadInterface gri(g_, 0);
+      auto& output_info = cache_value->vec_pipeline->output_info;
+      execution::vec::VecResultCollector collector(
+          output_info.tags, output_info.types);
+      execution::vec::VecExecContext ctx{&parameters, &gri};
+      execution::vec::PipelineExecutor executor;
+      executor.Execute(*cache_value->vec_pipeline, &collector, ctx);
+      collector.SerializeToResponse(response);
+      response->mutable_schema()->CopyFrom(cache_value->result_schema);
+      return QueryResult::From(response->SerializeAsString());
+    } catch (...) {
+    }
+  }
+
   StorageAPUpdateInterface graph(g_, 0, allocator_);
   std::unique_ptr<execution::OprTimer> timer_ptr = nullptr;
   auto ctx_res = cache_value->pipeline.Execute(graph, execution::Context(),
@@ -125,10 +149,6 @@ result<QueryResult> QueryProcessor::execute_internal(
     RETURN_ERROR(ctx_res.error());
   }
 
-  google::protobuf::Arena arena;
-  // Create a QueryResponse message on the arena to hold the results.
-  neug::QueryResponse* response =
-      google::protobuf::Arena::CreateMessage<neug::QueryResponse>(&arena);
   neug::execution::Sink::sink_results(ctx_res.value(), graph, response);
   response->mutable_schema()->CopyFrom(cache_value->result_schema);
   QueryResult ret = QueryResult::From(response->SerializeAsString());
