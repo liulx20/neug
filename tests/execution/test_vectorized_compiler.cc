@@ -2826,63 +2826,73 @@ class RealLSQBTest : public ::testing::Test {
 	}
 };
 
-TEST_F(RealLSQBTest, DebugEdgeCounts) {
-	auto count_q = [&](const char* q) -> int64_t {
-		auto r = conn_->Query(q, "read");
-		if (!r.has_value()) return -1;
-		auto& resp = r.value().response();
-		if (resp.arrays_size() > 0 && resp.arrays(0).has_int64_array())
-			return resp.arrays(0).int64_array().values(0);
-		return 0;
+// Stress test: queries that exercise specific operator boundary conditions.
+// Each query is designed to produce large intermediate results that force
+// multiple kHaveMoreOutput iterations even at STANDARD_VECTOR_SIZE=2048.
+TEST_F(RealLSQBTest, ChunkBoundaryStress) {
+	auto run_and_compare = [&](const char* name, const char* cypher) {
+		auto vec_r = conn_->Query(cypher, "read");
+		ASSERT_TRUE(vec_r.has_value()) << name << " vec: " << vec_r.error().error_message();
+		auto nv_r = conn_->Query(cypher, "");
+		ASSERT_TRUE(nv_r.has_value()) << name << " nv: " << nv_r.error().error_message();
+
+		int64_t vec_count = 0, nv_count = 0;
+		auto& vr = vec_r.value().response();
+		if (vr.arrays_size() > 0 && vr.arrays(0).has_int64_array())
+			vec_count = vr.arrays(0).int64_array().values(0);
+		auto& nr = nv_r.value().response();
+		if (nr.arrays_size() > 0 && nr.arrays(0).has_int64_array())
+			nv_count = nr.arrays(0).int64_array().values(0);
+
+		LOG(INFO) << name << ": vec=" << vec_count << " nv=" << nv_count;
+		EXPECT_EQ(vec_count, nv_count) << name << " mismatch";
+		EXPECT_GT(vec_count, 0) << name << " should produce results";
 	};
-	// Q2 variants: check if overcounting is from join semantics
-	LOG(INFO) << "Q2 comma-join (our test): " << count_q(
-	    "MATCH (person1:Person)-[:Person_knows_Person]-(person2:Person), "
-	    "(person1)<-[:Comment_hasCreator_Person]-(comment:Comment)"
-	    "-[:Comment_replyOf_Post]->(post:Post)"
-	    "-[:Post_hasCreator_Person]->(person2) "
+
+	// High fan-out EdgeExpand: Person->knows->Person->knows->Person (many neighbors)
+	run_and_compare("HighFanOut_3hop",
+	    "MATCH (:Person)-[:Person_knows_Person]-(:Person)"
+	    "-[:Person_knows_Person]-(:Person) RETURN count(*) AS count");
+
+	// Intersect with large intermediate sets (triangle)
+	run_and_compare("Intersect_Triangle",
+	    "MATCH (a:Person)-[:Person_knows_Person]-(b:Person)"
+	    "-[:Person_knows_Person]-(c:Person), "
+	    "(c)-[:Person_knows_Person]-(a) "
 	    "RETURN count(*) AS count");
-	LOG(INFO) << "Q2 single-path: " << count_q(
-	    "MATCH (person1:Person)-[:Person_knows_Person]-(person2:Person)"
-	    "<-[:Post_hasCreator_Person]-(post:Post)"
-	    "<-[:Comment_replyOf_Post]-(comment:Comment)"
-	    "-[:Comment_hasCreator_Person]->(person1) "
+
+	// Hash join with many matches (comma-join, high cardinality both sides)
+	run_and_compare("HashJoin_HighCard",
+	    "MATCH (p:Person)-[:Person_knows_Person]-(friend:Person), "
+	    "(p)<-[:Comment_hasCreator_Person]-(c:Comment) "
 	    "RETURN count(*) AS count");
 
-	// Individual edge counts
-	LOG(INFO) << "Country count: " << count_q("MATCH (n:Country) RETURN count(*)");
-	LOG(INFO) << "City_isPartOf_Country: " << count_q("MATCH (:City)-[:City_isPartOf_Country]->(:Country) RETURN count(*)");
-	LOG(INFO) << "Person_isLocatedIn_City: " << count_q("MATCH (:Person)-[:Person_isLocatedIn_City]->(:City) RETURN count(*)");
-	LOG(INFO) << "Forum_hasMember_Person: " << count_q("MATCH (:Forum)-[:Forum_hasMember_Person]->(:Person) RETURN count(*)");
-	LOG(INFO) << "Forum_containerOf_Post: " << count_q("MATCH (:Forum)-[:Forum_containerOf_Post]->(:Post) RETURN count(*)");
-	LOG(INFO) << "Comment_replyOf_Post: " << count_q("MATCH (:Comment)-[:Comment_replyOf_Post]->(:Post) RETURN count(*)");
-	LOG(INFO) << "Comment_hasTag_Tag: " << count_q("MATCH (:Comment)-[:Comment_hasTag_Tag]->(:Tag) RETURN count(*)");
-	LOG(INFO) << "Tag_hasType_TagClass: " << count_q("MATCH (:Tag)-[:Tag_hasType_TagClass]->(:TagClass) RETURN count(*)");
+	// Optional match sparse (most messages have no likes)
+	run_and_compare("Optional_Sparse",
+	    "MATCH (m:Post)-[:Post_hasCreator_Person]->(p:Person) "
+	    "OPTIONAL MATCH (m)<-[:Person_likes_Post]-(liker:Person) "
+	    "RETURN count(*) AS count");
 
-	// Q1 progressive chain
-	LOG(INFO) << "Step1 Country<-City: " << count_q(
-	    "MATCH (:Country)<-[:City_isPartOf_Country]-(:City) RETURN count(*)");
-	LOG(INFO) << "Step2 Country<-City<-Person: " << count_q(
-	    "MATCH (:Country)<-[:City_isPartOf_Country]-(:City)<-[:Person_isLocatedIn_City]-(:Person) RETURN count(*)");
-	LOG(INFO) << "Step3 ...<-Forum: " << count_q(
-	    "MATCH (:Country)<-[:City_isPartOf_Country]-(:City)<-[:Person_isLocatedIn_City]-(:Person)<-[:Forum_hasMember_Person]-(:Forum) RETURN count(*)");
-	LOG(INFO) << "Step4 ...->Post: " << count_q(
-	    "MATCH (:Country)<-[:City_isPartOf_Country]-(:City)<-[:Person_isLocatedIn_City]-(:Person)<-[:Forum_hasMember_Person]-(:Forum)-[:Forum_containerOf_Post]->(:Post) RETURN count(*)");
-	LOG(INFO) << "Step5 ...<-Comment: " << count_q(
-	    "MATCH (:Country)<-[:City_isPartOf_Country]-(:City)<-[:Person_isLocatedIn_City]-(:Person)<-[:Forum_hasMember_Person]-(:Forum)-[:Forum_containerOf_Post]->(:Post)<-[:Comment_replyOf_Post]-(:Comment) RETURN count(*)");
-	LOG(INFO) << "Step6 ...->Tag: " << count_q(
-	    "MATCH (:Country)<-[:City_isPartOf_Country]-(:City)<-[:Person_isLocatedIn_City]-(:Person)<-[:Forum_hasMember_Person]-(:Forum)-[:Forum_containerOf_Post]->(:Post)<-[:Comment_replyOf_Post]-(:Comment)-[:Comment_hasTag_Tag]->(:Tag) RETURN count(*)");
-	// Debug: Forum->Post fan-out
-	LOG(INFO) << "Forum count: " << count_q("MATCH (f:Forum) RETURN count(*)");
-	LOG(INFO) << "Forum->Post direct: " << count_q(
-	    "MATCH (:Forum)-[:Forum_containerOf_Post]->(:Post) RETURN count(*)");
-	LOG(INFO) << "Forum<-Person->Post: " << count_q(
-	    "MATCH (:Forum)-[:Forum_hasMember_Person]->(:Person) RETURN count(*)");
-	LOG(INFO) << "IMPORTANT Forum_member then container: " << count_q(
-	    "MATCH (:Person)<-[:Forum_hasMember_Person]-(:Forum)-[:Forum_containerOf_Post]->(:Post) RETURN count(*)");
+	// Optional match double sparse
+	run_and_compare("Optional_DoubleSparse",
+	    "MATCH (m:Comment)-[:Comment_hasCreator_Person]->(p:Person) "
+	    "OPTIONAL MATCH (m)<-[:Person_likes_Comment]-(liker:Person) "
+	    "OPTIONAL MATCH (m)<-[:Comment_replyOf_Comment]-(reply:Comment) "
+	    "RETURN count(*) AS count");
 
-	LOG(INFO) << "Step7 Q1 full: " << count_q(
-	    "MATCH (:Country)<-[:City_isPartOf_Country]-(:City)<-[:Person_isLocatedIn_City]-(:Person)<-[:Forum_hasMember_Person]-(:Forum)-[:Forum_containerOf_Post]->(:Post)<-[:Comment_replyOf_Post]-(:Comment)-[:Comment_hasTag_Tag]->(:Tag)-[:Tag_hasType_TagClass]->(:TagClass) RETURN count(*)");
+	// Anti-join (exercises semi/anti path)
+	run_and_compare("AntiJoin",
+	    "MATCH (p1:Person)-[:Person_knows_Person]-(p2:Person)"
+	    "-[:Person_knows_Person]-(p3:Person) "
+	    "WHERE NOT (p1)-[:Person_knows_Person]-(p3) "
+	    "AND id(p1) <> id(p3) "
+	    "RETURN count(*) AS count");
+
+	// Multi-label expand with high volume
+	run_and_compare("MultiLabel_Expand",
+	    "MATCH (:Tag)<-[:Post_hasTag_Tag|:Comment_hasTag_Tag]-(m:Post:Comment)"
+	    "-[:Post_hasCreator_Person|:Comment_hasCreator_Person]->(p:Person) "
+	    "RETURN count(*) AS count");
 }
 
 TEST_F(RealLSQBTest, AllQueriesVecVsNonVec) {
@@ -2945,6 +2955,22 @@ TEST_F(RealLSQBTest, AllQueriesVecVsNonVec) {
 	     "OPTIONAL MATCH (message)<-[:Comment_replyOf_Post|:Comment_replyOf_Comment]-(comment:Comment) "
 	     "RETURN count(*) AS count",
 	     1628132},
+	    {"Q8",
+	     "MATCH (tag1:Tag)<-[:Post_hasTag_Tag|:Comment_hasTag_Tag]-(message:Post:Comment)"
+	     "<-[:Comment_replyOf_Post|:Comment_replyOf_Comment]-(comment:Comment)"
+	     "-[:Comment_hasTag_Tag]->(tag2:Tag) "
+	     "WHERE NOT (comment)-[:Comment_hasTag_Tag]->(tag1) "
+	     "AND id(tag1) <> id(tag2) "
+	     "RETURN count(*) AS count",
+	     537142},
+	    {"Q9",
+	     "MATCH (person1:Person)-[:Person_knows_Person]-(person2:Person)"
+	     "-[:Person_knows_Person]-(person3:Person)"
+	     "-[:Person_hasInterest_Tag]->(tag:Tag) "
+	     "WHERE NOT (person1)-[:Person_knows_Person]-(person3) "
+	     "AND id(person1) <> id(person3) "
+	     "RETURN count(*) AS count",
+	     51009398},
 	};
 
 	for (auto& qd : queries) {

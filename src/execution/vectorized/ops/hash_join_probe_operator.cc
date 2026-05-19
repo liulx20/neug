@@ -4,6 +4,13 @@
 
 namespace neug::execution::vec {
 
+static bool NeedsFlatten(const GraphDataChunk& chunk) {
+	for (size_t i = 0; i < chunk.ColumnCount(); i++) {
+		if (chunk.GetVector(i).IsDictionary()) return true;
+	}
+	return false;
+}
+
 struct HashJoinProbeState : public OperatorState {
 	bool has_pending = false;
 	GraphDataChunk pending_input;
@@ -55,7 +62,7 @@ OperatorResultType HashJoinProbeOperator::ExecuteInner(
 			return OperatorResultType::kNeedMoreInput;
 		}
 
-		input.Flatten();
+		if (NeedsFlatten(input)) input.Flatten();
 
 		state.build_matches.clear();
 		state.probe_matches.clear();
@@ -123,7 +130,7 @@ OperatorResultType HashJoinProbeOperator::ExecuteSemi(
 		return OperatorResultType::kNeedMoreInput;
 	}
 
-	input.Flatten();
+	if (NeedsFlatten(input)) input.Flatten();
 
 	std::vector<bool> has_match;
 	hash_table_->ProbeExists(input, probe_key_tags_, count, has_match);
@@ -156,7 +163,7 @@ OperatorResultType HashJoinProbeOperator::ExecuteAnti(
 		return OperatorResultType::kNeedMoreInput;
 	}
 
-	input.Flatten();
+	if (NeedsFlatten(input)) input.Flatten();
 
 	std::vector<bool> has_match;
 	hash_table_->ProbeExists(input, probe_key_tags_, count, has_match);
@@ -191,7 +198,7 @@ OperatorResultType HashJoinProbeOperator::ExecuteLeftOuter(
 			return OperatorResultType::kNeedMoreInput;
 		}
 
-		input.Flatten();
+		if (NeedsFlatten(input)) input.Flatten();
 		size_t count = input.size();
 
 		state.build_matches.clear();

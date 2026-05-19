@@ -49,7 +49,11 @@ EdgeExpandOperator::EdgeExpandOperator(
       edge_props_(std::move(edge_props)) {}
 
 std::unique_ptr<OperatorState> EdgeExpandOperator::GetOperatorState() const {
-	return std::make_unique<EdgeExpandState>();
+	auto s = std::make_unique<EdgeExpandState>();
+	s->offsets.reserve(STANDARD_VECTOR_SIZE);
+	s->nbr_vids.reserve(STANDARD_VECTOR_SIZE);
+	s->nbr_labels.reserve(STANDARD_VECTOR_SIZE);
+	return s;
 }
 
 static void BuildOutputFromOffsets(const GraphDataChunk& input,
