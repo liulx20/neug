@@ -4,6 +4,8 @@
 
 To compile NeuG from source, certain dependencies and tools must be installed.
 
+NeuG currently requires **CMake 3.14 or newer**.
+
 
 As nearlly all dependencies are also included as third-party libraries in the NeuG repository, you could build NeuG locally by installing only a few essential packages.
 

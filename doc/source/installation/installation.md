@@ -40,6 +40,8 @@ print("✅ NeuG is ready!")
 
 See the [Developer Guide](../../development/dev_guide) for detailed build instructions. Quick overview:
 
+NeuG currently requires **CMake 3.14 or newer**.
+
 ```bash
 git clone https://github.com/alibaba/neug.git
 cd neug
@@ -54,7 +56,7 @@ make install
 In your cmake project, find and link NeuG libraries with the following command:
 
 ```cmake
-cmake_minimum_required (VERSION 3.10)
+cmake_minimum_required (VERSION 3.14)
 project (
   NeuGTest
   VERSION 0.1
