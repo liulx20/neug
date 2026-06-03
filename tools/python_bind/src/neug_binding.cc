@@ -27,7 +27,7 @@
 #ifdef NEUG_BACKTRACE
 #include <cpptrace/cpptrace.hpp>
 #endif
-#ifdef WITH_MIMALLOC
+#ifdef NEUG_WITH_MIMALLOC
 #include <mimalloc.h>
 #include "neug/utils/mi_allocator.h"
 #endif
@@ -39,7 +39,7 @@ namespace py = pybind11;
 
 namespace neug {
 
-#ifdef WITH_MIMALLOC
+#ifdef NEUG_WITH_MIMALLOC
 // Tune mimalloc to minimize page faults under the explicit-allocator approach
 // used in the Python binding (no global override / no LD_PRELOAD).
 //
@@ -85,7 +85,7 @@ static void tune_mimalloc_for_pybind() {
   }
 }
 
-#endif  // WITH_MIMALLOC
+#endif  // NEUG_WITH_MIMALLOC
 
 void setup_logging() {
   google::InitGoogleLogging("neug");
@@ -123,7 +123,7 @@ PYBIND11_MODULE(neug_py_bind, m) {
 
   m.attr("__version__") = MACRO_STRINGIFY(NEUG_VERSION);
 
-#ifdef WITH_MIMALLOC
+#ifdef NEUG_WITH_MIMALLOC
   // Configure mimalloc *before* any neug type is registered so the first
   // container allocations already see the tuned options.
   neug::tune_mimalloc_for_pybind();

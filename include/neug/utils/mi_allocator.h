@@ -5,14 +5,14 @@
 
 #include "parallel_hashmap/phmap.h"
 
-#ifdef WITH_MIMALLOC
+#ifdef NEUG_WITH_MIMALLOC
 #include <mimalloc.h>
 #endif
 
 namespace neug {
 
 template <typename T>
-#ifdef WITH_MIMALLOC
+#ifdef NEUG_WITH_MIMALLOC
 using neug_allocator = mi_stl_allocator<T>;
 #else
 using neug_allocator = std::allocator<T>;

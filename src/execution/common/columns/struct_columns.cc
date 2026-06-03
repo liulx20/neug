@@ -40,7 +40,9 @@ std::shared_ptr<IContextColumn> StructColumn::shuffle(
 std::shared_ptr<IContextColumn> StructColumn::optional_shuffle(
     const sel_vec_t& offsets) const {
   vector_t<std::shared_ptr<IContextColumn>> shuffled_children;
-
+  for (const auto& child : children_) {
+    shuffled_children.emplace_back(child->optional_shuffle(offsets));
+  }
   auto shuffled_col = std::make_shared<StructColumn>();
   shuffled_col->children_ = std::move(shuffled_children);
   shuffled_col->is_optional_ = true;
