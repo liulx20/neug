@@ -593,6 +593,17 @@ struct CsrView {
     }
   }
 
+  __attribute__((always_inline)) void prefetch(vid_t v) const {
+    if (degrees_ == nullptr) {
+      const char* start_ptr = adjlists_ + v * cfg_.stride;
+      __builtin_prefetch(start_ptr, 0, 1);
+    } else {
+      const char* start_ptr = reinterpret_cast<const char*>(
+          reinterpret_cast<const int64_t*>(adjlists_)[v]);
+      __builtin_prefetch(start_ptr, 0, 1);
+    }
+  }
+
   /**
    * @brief Get edges (neighbors) for a specific vertex.
    *
@@ -613,6 +624,7 @@ struct CsrView {
       ret.start_ptr = start_ptr;
       ret.end_ptr = start_ptr + cfg_.stride;
     } else {
+      int deg = degrees_[v];
       const char* start_ptr = reinterpret_cast<const char*>(
           reinterpret_cast<const int64_t*>(adjlists_)[v]);
       if (start_ptr == nullptr) {
@@ -620,7 +632,7 @@ struct CsrView {
         ret.end_ptr = nullptr;
       } else {
         ret.start_ptr = start_ptr;
-        ret.end_ptr = start_ptr + degrees_[v] * cfg_.stride;
+        ret.end_ptr = start_ptr + deg * cfg_.stride;
       }
     }
     ret.cfg = cfg_;

@@ -253,7 +253,13 @@ class EdgeExpand {
       auto typed_csr0 =
           csr0.template get_typed_view<T1, CsrViewType::kMultipleMutable>();
       if (LT) {
-        for (auto v : casted_input_vertex_list->vertices()) {
+        const auto& vertices = casted_input_vertex_list->vertices();
+        sel_t vertex_num = vertices.size();
+        for (sel_t i = 0; i < vertex_num; ++i) {
+          vid_t v = vertices[i];
+          if (i + 8 < vertex_num) {
+            csr0.prefetch(vertices[i + 8]);
+          }
           typed_csr0.foreach_nbr_lt(
               v, param, [&](vid_t u, const T1& data) { d0_set.emplace(u); });
           if (d0_set.empty()) {
@@ -276,7 +282,13 @@ class EdgeExpand {
           ++idx;
         }
       } else {
-        for (auto v : casted_input_vertex_list->vertices()) {
+        const auto vertices = casted_input_vertex_list->vertices();
+        sel_t vertex_num = vertices.size();
+        for (sel_t i = 0; i < vertex_num; ++i) {
+          vid_t v = vertices[i];
+          if (i + 8 < vertex_num) {
+            csr0.prefetch(vertices[i + 8]);
+          }
           typed_csr0.foreach_nbr_gt(
               v, param, [&](vid_t u, const T1& data) { d0_set.emplace(u); });
           if (d0_set.empty()) {

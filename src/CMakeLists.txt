@@ -45,7 +45,7 @@ target_link_libraries(neug PUBLIC ${GLOG_LIBRARIES})
 # downstream shared libraries (e.g. neug_py_bind.so) also load libneug.dylib.
 # Executables that use protobuf-generated headers (e.g. examples) must link
 # ${Protobuf_LIBRARIES} themselves.
-target_link_libraries(neug PRIVATE ${Protobuf_LIBRARIES})
+target_link_libraries(neug PUBLIC ${Protobuf_LIBRARIES})
 if (BUILD_HTTP_SERVER)
     target_link_libraries(neug PRIVATE ${BRPC_LIB} ${LEVELDB_LIB})
     target_link_libraries(neug PUBLIC ${CRYPTO_LIB}) #${PROTOC_LIB}
@@ -65,7 +65,7 @@ target_include_directories(neug PUBLIC
     $<INSTALL_INTERFACE:include>)
 
 neug_apply_symbol_visibility(neug)
-
+neug_apply_lib_visibility(neug)
 install_neug_target(neug)
 if (ENABLE_BACKTRACES)
     target_link_libraries(neug PUBLIC cpptrace::cpptrace)
