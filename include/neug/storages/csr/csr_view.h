@@ -422,8 +422,10 @@ struct TypedCsrView<T, CsrViewType::kMultipleMutable> {
 
   template <typename FUNC_T>
   void foreach_nbr_gt(vid_t v, const T& threshold, const FUNC_T& func) const {
-    const nbr_t* ptr = adjlists[v] + degrees[v] - 1;
-    const nbr_t* end = adjlists[v] - 1;
+    int deg = degrees[v];
+    const nbr_t* tmp = adjlists[v];
+    const nbr_t* ptr = tmp + deg - 1;
+    const nbr_t* end = tmp - 1;
     while (ptr != end) {
       if (ptr->timestamp > timestamp) {
         --ptr;
@@ -449,8 +451,10 @@ struct TypedCsrView<T, CsrViewType::kMultipleMutable> {
 
   template <typename FUNC_T>
   void foreach_nbr_lt(vid_t v, const T& threshold, const FUNC_T& func) const {
-    const nbr_t* ptr = adjlists[v] + degrees[v] - 1;
-    const nbr_t* end = adjlists[v] - 1;
+    int deg = degrees[v];
+    const nbr_t* tmp = adjlists[v];
+    const nbr_t* ptr = tmp + deg - 1;
+    const nbr_t* end = tmp - 1;
     while (ptr != end) {
       if (ptr->timestamp > timestamp) {
         --ptr;
@@ -468,7 +472,7 @@ struct TypedCsrView<T, CsrViewType::kMultipleMutable> {
       return;
     }
     ptr = std::lower_bound(
-              adjlists[v], ptr + 1, threshold,
+              tmp, ptr + 1, threshold,
               [](const nbr_t& b, const T& a) { return b.data < a; }) -
           1;
     while (ptr != end) {
