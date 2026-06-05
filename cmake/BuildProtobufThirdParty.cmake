@@ -26,7 +26,7 @@ function (build_protobuf_as_third_party)
     endif()
     set(BUILD_SHARED_LIBS OFF CACHE BOOL "Build shared libraries" FORCE)
 
-    set(protobuf_BUILD_SHARED_LIBS OFF CACHE BOOL "Build protobuf shared libraries" FORCE)
+    set(protobuf_BUILD_SHARED_LIBS ON CACHE BOOL "Build protobuf shared libraries" FORCE)
     set(protobuf_BUILD_TESTS OFF CACHE BOOL "Build protobuf tests" FORCE)
     set(protobuf_BUILD_CONFORMANCE OFF CACHE BOOL "Build protobuf conformance tests")
     set(protobuf_BUILD_EXAMPLES OFF CACHE BOOL "Build protobuf examples")

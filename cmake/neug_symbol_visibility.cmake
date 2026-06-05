@@ -42,3 +42,27 @@ macro(neug_apply_symbol_visibility target)
             "${CMAKE_SOURCE_DIR}/cmake/neug_exports.ld")
     endif()
 endmacro()
+
+
+macro(neug_apply_lib_visibility target)
+    if(WIN32)
+        message(FATAL_ERROR "neug_apply_lib_visibility: symbol visibility control is not supported on Windows.")
+    elseif(APPLE)
+        # On macOS we still rely on the full unexported list; protobuf/absl in
+        # libneug.dylib will be hidden which is acceptable because macOS isn't
+        # the platform where benchmark/rt_server are typically run.
+        target_link_options(${target} PRIVATE
+            "LINKER:-unexported_symbols_list,${CMAKE_SOURCE_DIR}/cmake/neug_unexported.sym")
+        set_target_properties(${target} PROPERTIES LINK_DEPENDS
+            "${CMAKE_SOURCE_DIR}/cmake/neug_unexported.sym")
+    else()
+        # Hide ONLY Arrow/parquet symbols.  No version script, no protobuf hiding.
+        target_link_options(${target} PRIVATE
+            "LINKER:--exclude-libs,libarrow.a"
+            "LINKER:--exclude-libs,libarrow_acero.a"
+            "LINKER:--exclude-libs,libarrow_dataset.a"
+            "LINKER:--exclude-libs,libarrow_bundled_dependencies.a"
+            "LINKER:--exclude-libs,libparquet.a"
+        )
+    endif()
+endmacro()
