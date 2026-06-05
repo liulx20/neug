@@ -396,6 +396,7 @@ struct TypedView {
 
 template <typename T>
 struct TypedView<T, CsrViewType::kMultipleMutable> {
+  using nbr_t = MutableNbr<T>;
   TypedView(const MutableNbr<T>** adjlists, const int* degrees,
             timestamp_t timestamp, timestamp_t unsorted_since)
       : adjlists(adjlists),
@@ -406,8 +407,10 @@ struct TypedView<T, CsrViewType::kMultipleMutable> {
 
   template <typename FUNC_T>
   void foreach_nbr_gt(vid_t v, const T& threshold, const FUNC_T& func) const {
-    const MutableNbr<T>* ptr = adjlists[v] + degrees[v] - 1;
-    const MutableNbr<T>* end = adjlists[v] - 1;
+    int deg = degrees[v];
+    const nbr_t* tmp = adjlists[v];
+    const nbr_t* ptr = tmp + deg - 1;
+    const nbr_t* end = tmp - 1;
     while (ptr != end) {
       if (ptr->timestamp > timestamp) {
         --ptr;
@@ -433,8 +436,10 @@ struct TypedView<T, CsrViewType::kMultipleMutable> {
 
   template <typename FUNC_T>
   void foreach_nbr_lt(vid_t v, const T& threshold, const FUNC_T& func) const {
-    const MutableNbr<T>* ptr = adjlists[v] + degrees[v] - 1;
-    const MutableNbr<T>* end = adjlists[v] - 1;
+    int deg = degrees[v];
+    const nbr_t* tmp = adjlists[v];
+    const nbr_t* ptr = tmp + deg - 1;
+    const nbr_t* end = tmp - 1;
     while (ptr != end) {
       if (ptr->timestamp > timestamp) {
         --ptr;
@@ -452,8 +457,8 @@ struct TypedView<T, CsrViewType::kMultipleMutable> {
       return;
     }
     ptr = std::lower_bound(
-              adjlists[v], ptr + 1, threshold,
-              [](const MutableNbr<T>& b, const T& a) { return b.data < a; }) -
+              tmp, ptr + 1, threshold,
+              [](const nbr_t& b, const T& a) { return b.data < a; }) -
           1;
     while (ptr != end) {
       func(ptr->neighbor, ptr->data);
@@ -577,6 +582,17 @@ struct GenericView {
       } else {
         return CsrViewType::kMultipleImmutable;
       }
+    }
+  }
+
+  __attribute__((always_inline)) void prefetch(vid_t v) const {
+    if (degrees_ == nullptr) {
+      const char* start_ptr = adjlists_ + v * cfg_.stride;
+      __builtin_prefetch(start_ptr, 0, 1);
+    } else {
+      const char* start_ptr = reinterpret_cast<const char*>(
+          reinterpret_cast<const int64_t*>(adjlists_)[v]);
+      __builtin_prefetch(start_ptr, 0, 1);
     }
   }
 

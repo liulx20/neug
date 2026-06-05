@@ -20,6 +20,7 @@
 #include "neug/execution/common/types/graph_types.h"
 #include "neug/execution/expression/special_predicates.h"
 #include "neug/execution/utils/params.h"
+#include "neug/utils/mi_allocator.h"
 #include "neug/utils/result.h"
 
 namespace neug {
@@ -238,66 +239,75 @@ class EdgeExpand {
 
     MSVertexColumnBuilder builder1(d1_nbr_label);
     MSVertexColumnBuilder builder2(d2_nbr_label);
-    std::vector<size_t> offsets;
+    sel_vec_t offsets;
 
-    static thread_local StorageReadInterface::vertex_array_t<bool> d0_set;
-    static thread_local std::vector<vid_t> d0_vec;
+    flat_hash_set_t<vid_t> d0_set;
 
-    d0_set.Init(graph.GetVertexSet(d0_nbr_label), false);
+    // static thread_local StorageReadInterface::vertex_array_t<bool> d0_set;
+    // static thread_local vector_t<vid_t> d0_vec;
+    // d0_set.Init(graph.GetVertexSet(d0_nbr_label), false);
 
-    size_t idx = 0;
+    sel_t idx = 0;
     if (csr0.type() == CsrViewType::kMultipleMutable &&
         ed_accessor0.is_bundled()) {
       auto typed_csr0 =
           csr0.template get_typed_view<T1, CsrViewType::kMultipleMutable>();
       if (LT) {
-        for (auto v : casted_input_vertex_list->vertices()) {
-          typed_csr0.foreach_nbr_lt(v, param, [&](vid_t u, const T1& data) {
-            d0_set[u] = true;
-            d0_vec.push_back(u);
-          });
+        const auto& vertices = casted_input_vertex_list->vertices();
+        sel_t vertex_num = vertices.size();
+        for (sel_t i = 0; i < vertex_num; ++i) {
+          vid_t v = vertices[i];
+          if (i + 8 < vertex_num) {
+            csr0.prefetch(vertices[i + 8]);
+          }
+          typed_csr0.foreach_nbr_lt(
+              v, param, [&](vid_t u, const T1& data) { d0_set.emplace(u); });
+          if (d0_set.empty()) {
+            continue;
+          }
           auto es1 = csr1.get_edges(v);
           for (auto it1 = es1.begin(); it1 != es1.end(); ++it1) {
             auto nbr1 = it1.get_vertex();
             auto es2 = csr2.get_edges(nbr1);
             for (auto it2 = es2.begin(); it2 != es2.end(); ++it2) {
               auto nbr2 = it2.get_vertex();
-              if (d0_set[nbr2]) {
+              if (d0_set.find(nbr2) != d0_set.end()) {
                 builder1.push_back_opt(nbr1);
                 builder2.push_back_opt(nbr2);
                 offsets.push_back(idx);
               }
             }
           }
-          for (auto u : d0_vec) {
-            d0_set[u] = false;
-          }
-          d0_vec.clear();
+          d0_set.clear();
           ++idx;
         }
       } else {
-        for (auto v : casted_input_vertex_list->vertices()) {
-          typed_csr0.foreach_nbr_gt(v, param, [&](vid_t u, const T1& data) {
-            d0_set[u] = true;
-            d0_vec.push_back(u);
-          });
+        const auto vertices = casted_input_vertex_list->vertices();
+        sel_t vertex_num = vertices.size();
+        for (sel_t i = 0; i < vertex_num; ++i) {
+          vid_t v = vertices[i];
+          if (i + 8 < vertex_num) {
+            csr0.prefetch(vertices[i + 8]);
+          }
+          typed_csr0.foreach_nbr_gt(
+              v, param, [&](vid_t u, const T1& data) { d0_set.emplace(u); });
+          if (d0_set.empty()) {
+            continue;
+          }
           auto es1 = csr1.get_edges(v);
           for (auto it1 = es1.begin(); it1 != es1.end(); ++it1) {
             auto nbr1 = it1.get_vertex();
             auto es2 = csr2.get_edges(nbr1);
             for (auto it2 = es2.begin(); it2 != es2.end(); ++it2) {
               auto nbr2 = it2.get_vertex();
-              if (d0_set[nbr2]) {
+              if (d0_set.find(nbr2) != d0_set.end()) {
                 builder1.push_back_opt(nbr1);
                 builder2.push_back_opt(nbr2);
                 offsets.push_back(idx);
               }
             }
           }
-          for (auto u : d0_vec) {
-            d0_set[u] = false;
-          }
-          d0_vec.clear();
+          d0_set.clear();
           ++idx;
         }
       }
@@ -309,8 +319,7 @@ class EdgeExpand {
             auto ed0 = ed_accessor0.get_typed_data<T1>(it0);
             if (ed0 < param) {
               auto nbr0 = it0.get_vertex();
-              d0_set[nbr0] = true;
-              d0_vec.push_back(nbr0);
+              d0_set.emplace(nbr0);
             }
           }
           auto es1 = csr1.get_edges(v);
@@ -319,17 +328,15 @@ class EdgeExpand {
             auto es2 = csr2.get_edges(nbr1);
             for (auto it2 = es2.begin(); it2 != es2.end(); ++it2) {
               auto nbr2 = it2.get_vertex();
-              if (d0_set[nbr2]) {
+              if (d0_set.find(nbr2) != d0_set.end()) {
                 builder1.push_back_opt(nbr1);
                 builder2.push_back_opt(nbr2);
                 offsets.push_back(idx);
               }
             }
           }
-          for (auto u : d0_vec) {
-            d0_set[u] = false;
-          }
-          d0_vec.clear();
+
+          d0_set.clear();
           ++idx;
         }
       } else {
@@ -339,8 +346,7 @@ class EdgeExpand {
             auto ed0 = ed_accessor0.get_typed_data<T1>(it0);
             if (param < ed0) {
               auto nbr0 = it0.get_vertex();
-              d0_set[nbr0] = true;
-              d0_vec.push_back(nbr0);
+              d0_set.emplace(nbr0);
             }
           }
           auto es1 = csr1.get_edges(v);
@@ -349,19 +355,20 @@ class EdgeExpand {
             auto es2 = csr2.get_edges(nbr1);
             for (auto it2 = es2.begin(); it2 != es2.end(); ++it2) {
               auto nbr2 = it2.get_vertex();
-              if (d0_set[nbr2]) {
+              if (d0_set.find(nbr2) != d0_set.end()) {
                 builder1.push_back_opt(nbr1);
                 builder2.push_back_opt(nbr2);
                 offsets.push_back(idx);
               }
             }
           }
+          d0_set.clear();
         }
       }
     }
 
-    std::shared_ptr<IContextColumn> col1 = builder1.finish();
-    std::shared_ptr<IContextColumn> col2 = builder2.finish();
+    auto col1 = builder1.finish();
+    auto col2 = builder2.finish();
     ctx.set_with_reshuffle(alias1, col1, offsets);
     ctx.set(alias2, col2);
     return ctx;
