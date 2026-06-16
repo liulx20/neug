@@ -22,6 +22,8 @@
 namespace neug {
 namespace execution {
 
+constexpr int PREFETCH_STRIDE = 32;
+
 #define expand_sv_np_ms(v, v_idx, view, builder, offsets) \
   {                                                       \
     auto es = view.get_edges(v);                          \
@@ -176,6 +178,9 @@ std::pair<std::shared_ptr<IContextColumn>, sel_vec_t> expand_vertex_impl(
             }
           }
         } else {
+          if(idx + PREFETCH_STRIDE < vertices.size()) {
+            view.prefetch(vertices[idx + PREFETCH_STRIDE]);
+          }
           expand_sv_np_ms(v, idx, view, builder, offsets);
         }
       }
@@ -198,6 +203,9 @@ std::pair<std::shared_ptr<IContextColumn>, sel_vec_t> expand_vertex_impl(
             }
           }
         } else {
+          if(idx + PREFETCH_STRIDE < vertices.size()) {
+            view.prefetch(vertices[idx + PREFETCH_STRIDE]);
+          }
           expand_sv_p_ms(input_label, v, idx, nbr_label, edge_label, dir, view,
                          gpred, builder, offsets);
         }
@@ -263,7 +271,9 @@ std::pair<std::shared_ptr<IContextColumn>, sel_vec_t> expand_vertex_impl(
                             input_label, nbr_label, edge_label));
       builder.start_label(nbr_label);
       if constexpr (GPRED_T::is_dummy) {
-        input.foreach_vertex([&](size_t idx, label_t l, vid_t v) {
+        for (size_t idx = 0; idx < input.size(); ++idx) {
+          auto vertex = input.get_vertex(idx);
+          vid_t v = vertex.vid;
           if constexpr (is_optional) {
             if (v != std::numeric_limits<vid_t>::max()) {
               size_t old_size = builder.cur_size();
@@ -279,11 +289,16 @@ std::pair<std::shared_ptr<IContextColumn>, sel_vec_t> expand_vertex_impl(
               }
             }
           } else {
+            if(idx + PREFETCH_STRIDE < input.size()) {
+              view.prefetch(input.get_vertex(idx + PREFETCH_STRIDE).vid);
+            }
             expand_sv_np_ms(v, idx, view, builder, offsets);
           }
-        });
+        }
       } else {
-        input.foreach_vertex([&](size_t idx, label_t l, vid_t v) {
+          for (size_t idx = 0; idx < input.size(); ++idx) {
+              auto vertex = input.get_vertex(idx);
+              auto v = vertex.vid;
           if constexpr (is_optional) {
             if (v != std::numeric_limits<vid_t>::max()) {
               size_t old_size = builder.cur_size();
@@ -300,10 +315,13 @@ std::pair<std::shared_ptr<IContextColumn>, sel_vec_t> expand_vertex_impl(
               }
             }
           } else {
+            if(idx + PREFETCH_STRIDE < input.size()) {
+              view.prefetch(input.get_vertex(idx + PREFETCH_STRIDE).vid);
+            }
             expand_sv_p_ms(input_label, v, idx, nbr_label, edge_label, dir,
                            view, gpred, builder, offsets);
           }
-        });
+        }
       }
     }
     if constexpr (is_optional) {
@@ -680,7 +698,8 @@ std::pair<std::shared_ptr<IContextColumn>, sel_vec_t> expand_vertex_impl(
       builder.start_label(nbr_label);
       size_t vertex_idx = seg_start_idx;
       if constexpr (GPRED_T::is_dummy) {
-        for (auto vid : vertices) {
+       for (size_t i = 0; i < vertices.size(); ++i) {
+          auto vid = vertices[i];
           size_t old_size = builder.cur_size();
           if constexpr (is_optional) {
             if (vid != std::numeric_limits<vid_t>::max()) {
@@ -690,6 +709,9 @@ std::pair<std::shared_ptr<IContextColumn>, sel_vec_t> expand_vertex_impl(
               edges_found[vertex_idx] = true;
             }
           } else {
+            if(i + PREFETCH_STRIDE < vertices.size()) {
+              view.prefetch(vertices[i + PREFETCH_STRIDE]);
+            }
             expand_sv_np_ms(vid, vertex_idx, view, builder, offsets);
           }
           ++vertex_idx;
@@ -698,7 +720,8 @@ std::pair<std::shared_ptr<IContextColumn>, sel_vec_t> expand_vertex_impl(
         label_t edge_label = std::get<1>(label_dirs[input_label][csr_idx]);
         Direction dir = std::get<2>(label_dirs[input_label][csr_idx]);
 
-        for (auto vid : vertices) {
+        for (size_t i = 0; i < vertices.size(); ++i) {
+          auto vid = vertices[i];
           size_t old_size = builder.cur_size();
           if constexpr (is_optional) {
             if (vid != std::numeric_limits<vid_t>::max()) {
@@ -709,6 +732,9 @@ std::pair<std::shared_ptr<IContextColumn>, sel_vec_t> expand_vertex_impl(
               edges_found[vertex_idx] = true;
             }
           } else {
+            if(i + PREFETCH_STRIDE < vertices.size()) {
+              view.prefetch(vertices[i + PREFETCH_STRIDE]);
+            }
             expand_sv_p_ms(input_label, vid, vertex_idx, nbr_label, edge_label,
                            dir, view, gpred, builder, offsets);
           }

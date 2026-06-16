@@ -296,16 +296,19 @@ void sssp_both_dir_with_order_by_length_limit(
         for (auto u : cur) {
           if (pred(v_label, u)) {
             dest_col_builder.push_back_opt(u);
-
             path_len_builder.push_back_opt(depth);
             offsets.push_back(idx);
           }
         }
       } else {
-        for (auto u : cur) {
+        for (size_t i = 0; i < cur.size(); ++i) {
+          if(i + 8 < cur.size()) {
+            view0.prefetch(cur[i + 8]);
+            view1.prefetch(cur[i + 8]);
+          }
+          auto u = cur[i];
           if (pred(v_label, u)) {
             dest_col_builder.push_back_opt(u);
-
             path_len_builder.push_back_opt(depth);
             offsets.push_back(idx);
           }
@@ -328,7 +331,12 @@ void sssp_both_dir_with_order_by_length_limit(
         }
       }
     } else {
-      for (auto u : cur) {
+      for (size_t i = 0; i < cur.size(); ++i) {
+        if(i + 8 < cur.size()) {
+          view0.prefetch(cur[i + 8]);
+          view1.prefetch(cur[i + 8]);
+        }
+        auto u = cur[i];
         auto es0 = view0.get_edges(u);
         for (auto it = es0.begin(); it != es0.end(); ++it) {
           auto nbr = it.get_vertex();
