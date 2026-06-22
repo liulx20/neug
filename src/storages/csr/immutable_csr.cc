@@ -63,6 +63,7 @@ void ImmutableCsr<EDATA_T>::Open(Checkpoint& ckp, const ModuleDescriptor& desc,
     }
     cur_nbr_list_ptr += deg;
   }
+  refresh_prefetch_policy();
 }
 
 template <typename EDATA_T>
@@ -138,6 +139,7 @@ void ImmutableCsr<EDATA_T>::resize(vid_t vnum) {
     adj_list_buffer_->Resize(vnum * sizeof(nbr_t*));
     degree_list_buffer_->Resize(vnum * sizeof(int));
   }
+  refresh_prefetch_policy();
 }
 
 template <typename EDATA_T>
@@ -218,6 +220,7 @@ void ImmutableCsr<EDATA_T>::batch_delete_vertices(
     ptr += deg_arr[i];
   }
   unsorted_since_ = 0;
+  refresh_prefetch_policy();
 }
 
 template <typename EDATA_T>
@@ -255,6 +258,7 @@ void ImmutableCsr<EDATA_T>::batch_delete_edges(
     }
   }
   unsorted_since_ = 0;
+  refresh_prefetch_policy();
 }
 
 template <typename EDATA_T>
@@ -285,6 +289,7 @@ void ImmutableCsr<EDATA_T>::batch_delete_edges(
     }
   }
   unsorted_since_ = 0;
+  refresh_prefetch_policy();
 }
 
 template <typename EDATA_T>
@@ -362,6 +367,7 @@ void ImmutableCsr<EDATA_T>::batch_put_edges(
   if (ts < unsorted_since_) {
     unsorted_since_ = 0;
   }
+  refresh_prefetch_policy();
 }
 
 template <typename EDATA_T>
@@ -372,6 +378,7 @@ void SingleImmutableCsr<EDATA_T>::Open(Checkpoint& ckp,
       descriptor.get_path(ModuleDescriptor::kNbrListPath).value_or(""),
       memory_level);
   edge_num_.store(std::stoull(descriptor.get("edge_num").value_or("0")));
+  refresh_prefetch_policy();
 }
 
 template <typename EDATA_T>
