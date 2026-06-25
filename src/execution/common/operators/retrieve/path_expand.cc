@@ -1170,16 +1170,6 @@ PathExpand::all_shortest_paths_with_given_source_and_dest(
   return chunk;
 }
 
-struct SSSPSPOp {
-  template <typename PRED_T>
-  static neug::result<ContextChunk> eval_with_predicate(
-      const PRED_T& pred, const StorageReadInterface& graph,
-      ContextChunk&& chunk, const ShortestPathParams& params) {
-    return PathExpand::single_source_shortest_path<PRED_T>(
-        graph, std::move(chunk), params, pred);
-  }
-};
-
 neug::result<ContextChunk>
 PathExpand::single_source_shortest_path_with_special_vertex_predicate(
     const StorageReadInterface& graph, ContextChunk&& chunk,
@@ -1190,9 +1180,9 @@ PathExpand::single_source_shortest_path_with_special_vertex_predicate(
     expected_labels.insert(label_triplet.dst_label);
     expected_labels.insert(label_triplet.src_label);
   }
-  return dispatch_vertex_predicate<SSSPSPOp>(graph, expected_labels, config,
-                                             query_params, graph,
-                                             std::move(chunk), params);
+  return dispatch_vertex_predicate(
+      graph, expected_labels, config, query_params, std::move(chunk),
+      {SpecialVertexOpKind::kShortestPath, &params});
 }
 
 }  // namespace execution

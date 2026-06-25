@@ -15,11 +15,11 @@
  */
 #pragma once
 
-#include "neug/execution/common/types/value.h"
-#include "neug/execution/utils/pb_parse_utils.h"
+#include <cstdint>
 
-#include "neug/execution/common/context.h"
+#include "neug/execution/common/context_chunk.h"
 #include "neug/execution/common/params_map.h"
+#include "neug/execution/common/types/value.h"
 #include "neug/storages/graph/graph_interface.h"
 #include "neug/utils/property/types.h"
 
@@ -326,119 +326,23 @@ bool is_special_vertex_predicate(const Schema& schema,
                                  const common::Expression& expr,
                                  SpecialPredicateConfig& config);
 
-template <typename OP_T, typename CMP_T, typename... Args>
-static neug::result<ContextChunk> dispatch_vertex_predicate_impl_cmp_type(
-    const IStorageInterface& graph, const std::set<label_t>& expected_labels,
-    const SpecialPredicateConfig& config, const ParamsMap& params,
-    const CMP_T& cmp_val, Args&&... args) {
-  if (expected_labels.size() == 1) {
-    // single label
-    label_t label = *expected_labels.begin();
-    using GETTER_T = SLVertexPropertyGetter<typename CMP_T::data_t>;
-    GETTER_T getter(graph, label, config.property_name);
-    using PRED_T =
-        VertexPropertyCmpPredicate<typename CMP_T::data_t, GETTER_T, CMP_T>;
-    auto pred = PRED_T(getter, cmp_val);
-    return OP_T::template eval_with_predicate<PRED_T>(
-        pred, std::forward<Args>(args)...);
-  } else {
-    // multi labels
-    using GETTER_T = MLVertexPropertyGetter<typename CMP_T::data_t>;
-    GETTER_T getter(graph, config.property_name);
-    using PRED_T =
-        VertexPropertyCmpPredicate<typename CMP_T::data_t, GETTER_T, CMP_T>;
-    auto pred = PRED_T(getter, cmp_val);
-    return OP_T::template eval_with_predicate<PRED_T>(
-        pred, std::forward<Args>(args)...);
-  }
-}
+enum class SpecialVertexOpKind {
+  kScan,
+  kEdgeExpand,
+  kShortestPath,
+  kShortestPathOrderByLimit,
+};
 
-template <typename OP_T, typename T, typename... Args>
-static neug::result<ContextChunk> dispatch_vertex_predicate_impl_typed(
-    const IStorageInterface& graph, const std::set<label_t>& expected_labels,
-    const SpecialPredicateConfig& config, const ParamsMap& params,
-    Args&&... args) {
-  auto get_value = [&](const std::string& param_name) -> T {
-    if constexpr (std::is_same<T, std::string_view>::value) {
-      std::string_view sw = StringValue::Get(params.at(param_name));
-      return sw;
-    } else {
-      return params.at(param_name).template GetValue<T>();
-    }
-  };
-  if (config.ptype == SPPredicateType::kPropertyLT) {
-    using CMP_T = LTCmp<T>;
-    auto cmp_val = CMP_T(get_value(config.param_names[0]));
-    return dispatch_vertex_predicate_impl_cmp_type<OP_T, CMP_T>(
-        graph, expected_labels, config, params, cmp_val,
-        std::forward<Args>(args)...);
-  } else if (config.ptype == SPPredicateType::kPropertyGT) {
-    using CMP_T = GTCmp<T>;
-    auto cmp_val = CMP_T(get_value(config.param_names[0]));
-    return dispatch_vertex_predicate_impl_cmp_type<OP_T, CMP_T>(
-        graph, expected_labels, config, params, cmp_val,
-        std::forward<Args>(args)...);
-  } else if (config.ptype == SPPredicateType::kPropertyEQ) {
-    using CMP_T = EQCmp<T>;
-    auto cmp_val = CMP_T(get_value(config.param_names[0]));
-    return dispatch_vertex_predicate_impl_cmp_type<OP_T, CMP_T>(
-        graph, expected_labels, config, params, cmp_val,
-        std::forward<Args>(args)...);
-  } else if (config.ptype == SPPredicateType::kPropertyLE) {
-    using CMP_T = LECmp<T>;
-    auto cmp_val = CMP_T(get_value(config.param_names[0]));
-    return dispatch_vertex_predicate_impl_cmp_type<OP_T, CMP_T>(
-        graph, expected_labels, config, params, cmp_val,
-        std::forward<Args>(args)...);
-  } else if (config.ptype == SPPredicateType::kPropertyGE) {
-    using CMP_T = GECmp<T>;
-    auto cmp_val = CMP_T(get_value(config.param_names[0]));
-    return dispatch_vertex_predicate_impl_cmp_type<OP_T, CMP_T>(
-        graph, expected_labels, config, params, cmp_val,
-        std::forward<Args>(args)...);
-  } else if (config.ptype == SPPredicateType::kPropertyNE) {
-    using CMP_T = NECmp<T>;
-    auto cmp_val = CMP_T(get_value(config.param_names[0]));
-    return dispatch_vertex_predicate_impl_cmp_type<OP_T, CMP_T>(
-        graph, expected_labels, config, params, cmp_val,
-        std::forward<Args>(args)...);
-  } else if (config.ptype == SPPredicateType::kPropertyBetween) {
-    using CMP_T = BetweenCmp<T>;
-    auto cmp_val = CMP_T(get_value(config.param_names[0]),
-                         get_value(config.param_names[1]));
-    return dispatch_vertex_predicate_impl_cmp_type<OP_T, CMP_T>(
-        graph, expected_labels, config, params, cmp_val,
-        std::forward<Args>(args)...);
-  }
-  LOG(ERROR) << "Unsupported predicate type for special vertex predicate: "
-             << static_cast<int>(config.ptype);
-  RETURN_UNSUPPORTED_ERROR(
-      "Unsupported predicate type for special vertex predicate");
-}
+struct SpecialVertexOpParams {
+  SpecialVertexOpKind kind;
+  const void* params = nullptr;
+  int32_t limit = 0;
+};
 
-template <typename OP_T, typename... Args>
 neug::result<ContextChunk> dispatch_vertex_predicate(
     const IStorageInterface& graph, const std::set<label_t>& expected_labels,
-    const SpecialPredicateConfig& config, const ParamsMap& params,
-    Args&&... args) {
-  switch (config.param_type) {
-#define TYPE_DISPATCHER(enum_val, type)                      \
-  case DataTypeId::enum_val:                                 \
-    return dispatch_vertex_predicate_impl_typed<OP_T, type>( \
-        graph, expected_labels, config, params, std::forward<Args>(args)...);
-    TYPE_DISPATCHER(kInt32, int32_t)
-    TYPE_DISPATCHER(kInt64, int64_t)
-    TYPE_DISPATCHER(kTimestampMs, DateTime)
-    TYPE_DISPATCHER(kVarchar, std::string_view)
-#undef TYPE_DISPATCHER
-  default:
-    break;
-  }
-  LOG(ERROR) << "Unsupported param type for special vertex predicate: "
-             << static_cast<int>(config.param_type);
-  RETURN_UNSUPPORTED_ERROR(
-      "Unsupported param type for special vertex predicate");
-}
+    const SpecialPredicateConfig& config, const ParamsMap& query_params,
+    ContextChunk&& chunk, const SpecialVertexOpParams& op);
 
 }  // namespace execution
 

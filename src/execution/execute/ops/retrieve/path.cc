@@ -208,19 +208,6 @@ static bool is_shortest_path(const physical::PhysicalPlan& plan, int i) {
   return false;
 }
 
-struct OrderByLimitSPOp {
-  template <typename PRED_T>
-  static neug::result<ContextChunk> eval_with_predicate(
-      const PRED_T& pred, const IStorageInterface& graph_interface,
-      ContextChunk&& chunk, const ShortestPathParams& spp, int limit) {
-    const auto& graph =
-        dynamic_cast<const StorageReadInterface&>(graph_interface);
-
-    return PathExpand::single_source_shortest_path_with_order_by_length_limit(
-        graph, std::move(chunk), spp, pred, limit);
-  }
-};
-
 class SPOrderByLimitOpr : public IOperator {
  public:
   SPOrderByLimitOpr(const ShortestPathParams& spp, int limit,
@@ -242,9 +229,9 @@ class SPOrderByLimitOpr : public IOperator {
     }
     return ctx.apply_chunks(
         [&](ContextChunk&& chunk) -> neug::result<ContextChunk> {
-          return dispatch_vertex_predicate<OrderByLimitSPOp>(
-              graph, expected_labels, config_, params, graph, std::move(chunk),
-              spp_, limit_);
+          return dispatch_vertex_predicate(
+              graph, expected_labels, config_, params, std::move(chunk),
+              {SpecialVertexOpKind::kShortestPathOrderByLimit, &spp_, limit_});
         });
   }
 

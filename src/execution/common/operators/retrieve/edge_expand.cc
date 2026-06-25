@@ -441,16 +441,6 @@ neug::result<ContextChunk> EdgeExpand::expand_vertex_ep_cmp(
   }
 }
 
-struct ExpandVertexSPOp {
-  template <typename PRED_T>
-  static neug::result<ContextChunk> eval_with_predicate(
-      const PRED_T& pred, const StorageReadInterface& graph,
-      ContextChunk&& chunk, const EdgeExpandParams& params) {
-    return EdgeExpand::expand_vertex<EdgeNbrPredicate<PRED_T>>(
-        graph, std::move(chunk), params, EdgeNbrPredicate(pred));
-  }
-};
-
 neug::result<ContextChunk>
 EdgeExpand::expand_vertex_with_special_vertex_predicate(
     const StorageReadInterface& graph, ContextChunk&& chunk,
@@ -470,9 +460,9 @@ EdgeExpand::expand_vertex_with_special_vertex_predicate(
       expected_labels.insert(triplet.src_label);
     }
   }
-  return dispatch_vertex_predicate<ExpandVertexSPOp>(
-      graph, expected_labels, config, query_params, graph, std::move(chunk),
-      params);
+  return dispatch_vertex_predicate(
+      graph, expected_labels, config, query_params, std::move(chunk),
+      {SpecialVertexOpKind::kEdgeExpand, &params});
 }
 
 }  // namespace execution
