@@ -16,6 +16,7 @@
 #include "py_query_request.h"
 
 #include <sstream>
+#include <cstdio>
 #include <string>
 #include "neug/execution/common/types/value.h"
 #include "neug/main/query_request.h"
@@ -69,7 +70,16 @@ rapidjson::Document pyobject_to_rapidjson_document(
       doc.SetString(date_str.c_str(), date_str.length(), allocator);
       return doc;
     } else if (pybind11::isinstance(obj, datetime.attr("datetime"))) {
-      std::string datetime_str = obj.attr("isoformat").cast<std::string>();
+      std::string datetime_str =
+          pybind11::str(obj.attr("strftime")("%Y-%m-%d %H:%M:%S"))
+              .cast<std::string>();
+      const int microsecond = obj.attr("microsecond").cast<int>();
+      if (microsecond != 0) {
+        char fractional[8];
+        std::snprintf(fractional, sizeof(fractional), ".%03d",
+                      microsecond / 1000);
+        datetime_str += fractional;
+      }
       doc.SetString(datetime_str.c_str(), datetime_str.length(), allocator);
       return doc;
     } else {

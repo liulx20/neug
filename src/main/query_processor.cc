@@ -47,8 +47,7 @@ QueryProcessor::check_and_retrieve_pipeline(const PropertyGraph& pg,
   const auto& flags = cache_value->flags;
   if (is_read_only_) {
     if (flags.insert() || flags.update() || flags.schema() || flags.batch() ||
-        flags.create_temp_table() || flags.checkpoint() ||
-        flags.procedure_call()) {
+        flags.create_temp_table() || flags.checkpoint()) {
       RETURN_ERROR(
           neug::Status(neug::StatusCode::ERR_INVALID_ARGUMENT,
                        "Write queries are not supported in read-only mode"));

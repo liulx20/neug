@@ -81,8 +81,7 @@ neug::UpdateTransaction NeugDBSession::GetUpdateTransaction() {
 
 inline bool is_read_only(const physical::ExecutionFlag flags) {
   return !(flags.insert() || flags.update() || flags.schema() ||
-           flags.batch() || flags.create_temp_table() || flags.checkpoint() ||
-           flags.procedure_call());
+           flags.batch() || flags.create_temp_table() || flags.checkpoint());
 }
 
 inline bool is_insert_only(const physical::ExecutionFlag flags) {

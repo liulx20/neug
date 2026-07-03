@@ -461,64 +461,72 @@ static void ensureNeugSymbolsGlobal() {
   promoted = true;
 }
 
+static Status loadExtensionLibrary(const std::string& userLibPath,
+                                   const std::string& logName) {
+  if (!std::filesystem::exists(userLibPath)) {
+    LOG(ERROR) << "[Admin] Extension library not found: " << userLibPath;
+    return Status(StatusCode::ERR_IO_ERROR,
+                  "Extension library not found: " + userLibPath);
+  }
+
+  LOG(INFO) << "[Admin] Loading extension from: " << userLibPath;
+  // Use RTLD_LOCAL so that Arrow symbols statically linked into the
+  // extension stay in its own scope.  This prevents duplicate Arrow
+  // global objects (e.g., FunctionRegistry) from interfering with
+  // libneug.so's copy, which would cause heap corruption on exit.
+  // neug symbols are still resolvable because ensureNeugSymbolsGlobal()
+  // has already promoted libneug.so to RTLD_GLOBAL.
+  void* handle = dlopen(userLibPath.c_str(), RTLD_NOW | RTLD_LOCAL);
+  if (!handle) {
+    return Status(StatusCode::ERR_IO_ERROR,
+                  "Failed to load extension library: " + userLibPath +
+                      ". Error: " + std::string(dlerror()));
+  }
+  dlerror();
+  typedef void (*init_func_t)();
+  init_func_t init_func = (init_func_t) dlsym(handle, "Init");
+  const char* dlsym_error = dlerror();
+  if (dlsym_error) {
+    dlclose(handle);
+    return Status(
+        StatusCode::ERR_IO_ERROR,
+        "Failed to find 'Init' function in extension: " + logName +
+            ". Error: " + std::string(dlsym_error));
+  }
+  try {
+    (*init_func)();
+    LOG(INFO) << "[Admin] Extension " << logName
+              << " loaded and initialized successfully";
+  } catch (const std::exception& e) {
+    dlclose(handle);
+    return Status(StatusCode::ERR_IO_ERROR,
+                  "Extension initialization failed: " + logName +
+                      ". Error: " + std::string(e.what()));
+  } catch (...) {
+    dlclose(handle);
+    return Status(StatusCode::ERR_IO_ERROR,
+                  "Extension initialization failed with unknown error: " +
+                      logName);
+  }
+  LOG(INFO) << "[Admin] Extension " << logName << " is now available";
+  return Status::OK();
+}
+
 Status load_extension(const std::string& extension_name) {
   LOG(INFO) << "[Admin] LOAD extension: " << extension_name;
   ensureNeugSymbolsGlobal();
-  auto fileName =
-      neug::extension::ExtensionUtils::getExtensionFileName(extension_name);
 
-  std::string userExtDir = getUserExtensionDir(extension_name);
-  std::string userLibPath = userExtDir + "/" + fileName;
-  if (std::filesystem::exists(userLibPath)) {
-    LOG(INFO) << "[Admin] Loading extension from user install: " << userLibPath;
-    // Use RTLD_LOCAL so that Arrow symbols statically linked into the
-    // extension stay in its own scope.  This prevents duplicate Arrow
-    // global objects (e.g., FunctionRegistry) from interfering with
-    // libneug.so's copy, which would cause heap corruption on exit.
-    // neug symbols are still resolvable because ensureNeugSymbolsGlobal()
-    // has already promoted libneug.so to RTLD_GLOBAL.
-    void* handle = dlopen(userLibPath.c_str(), RTLD_NOW | RTLD_LOCAL);
-    if (!handle) {
-      return Status(StatusCode::ERR_IO_ERROR,
-                    "Failed to load extension library: " + userLibPath +
-                        ". Error: " + std::string(dlerror()));
-    }
-    dlerror();
-    typedef void (*init_func_t)();
-    init_func_t init_func = (init_func_t) dlsym(handle, "Init");
-    const char* dlsym_error = dlerror();
-    if (dlsym_error) {
-      dlclose(handle);
-      return Status(
-          StatusCode::ERR_IO_ERROR,
-          "Failed to find 'Init' function in extension: " + extension_name +
-              ". Error: " + std::string(dlsym_error));
-    }
-    try {
-      (*init_func)();
-      LOG(INFO) << "[Admin] Extension " << extension_name
-                << " loaded and initialized successfully";
-    } catch (const std::exception& e) {
-      dlclose(handle);
-      return Status(StatusCode::ERR_IO_ERROR,
-                    "Extension initialization failed: " + extension_name +
-                        ". Error: " + std::string(e.what()));
-    } catch (...) {
-      dlclose(handle);
-      return Status(StatusCode::ERR_IO_ERROR,
-                    "Extension initialization failed with unknown error: " +
-                        extension_name);
-    }
-    LOG(INFO) << "[Admin] Extension " << extension_name << " is now available";
-    return Status::OK();
+  std::string userLibPath;
+  if (ExtensionUtils::isFullPath(extension_name)) {
+    userLibPath = extension_name;
+  } else {
+    auto fileName =
+        ExtensionUtils::getExtensionFileName(extension_name);
+    userLibPath =
+        getUserExtensionDir(extension_name) + "/" + fileName;
   }
 
-  // Not found
-  LOG(ERROR) << "[Admin] Extension " << userLibPath
-             << " not found in user install or wheel package";
-  return Status(StatusCode::ERR_IO_ERROR,
-                "Extension " + userLibPath +
-                    " not found in user install or wheel package");
+  return loadExtensionLibrary(userLibPath, extension_name);
 }
 
 Status uninstall_extension(const std::string& extension_name) {

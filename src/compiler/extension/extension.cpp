@@ -22,6 +22,8 @@
 
 #include "neug/compiler/extension/extension.h"
 
+#include <filesystem>
+
 #include "neug/compiler/common/string_format.h"
 #include "neug/compiler/common/string_utils.h"
 #include "neug/compiler/common/system_message.h"
@@ -127,6 +129,20 @@ ExtensionRepoInfo ExtensionUtils::getExtensionLibRepoInfo(
 std::string ExtensionUtils::getExtensionFileName(const std::string& name) {
   return common::stringFormat(EXTENSION_FILE_NAME,
                               common::StringUtils::getLower(name));
+}
+
+bool ExtensionUtils::isFullPath(const std::string& extension) {
+  if (extension.empty()) {
+    return false;
+  }
+  std::filesystem::path path(extension);
+  if (path.is_absolute()) {
+    return true;
+  }
+  // Allow LOAD 'relative/path/libfoo.neug_extension' for local development.
+  return extension.ends_with(".neug_extension") &&
+         (extension.find('/') != std::string::npos ||
+          extension.find('\\') != std::string::npos);
 }
 
 ExtensionLibLoader::ExtensionLibLoader(const std::string& extensionName,
