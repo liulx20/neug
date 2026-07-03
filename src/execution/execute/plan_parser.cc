@@ -24,6 +24,9 @@
 
 #include "neug/execution/common/context.h"
 
+#include "neug/compiler/function/neug_call_function.h"
+#include "neug/compiler/main/metadata_registry.h"
+
 #include "neug/execution/execute/ops/admin/checkpoint.h"
 #include "neug/execution/execute/ops/admin/extension.h"
 
@@ -535,6 +538,35 @@ static void parse_params_type_impl(const physical::PhysicalPlan& plan,
     case physical::PhysicalOpr_Operator::OpKindCase::kUnfold: {
       const auto& unfold_opr = plan.plan(i).opr().unfold();
       expression_parse(unfold_opr.input_expr(), params_type);
+      break;
+    }
+    case physical::PhysicalOpr_Operator::OpKindCase::kProcedureCall: {
+      const auto& proc = plan.plan(i).opr().procedure_call();
+      const auto& query = proc.query();
+      auto* catalog = neug::main::MetadataRegistry::getCatalog();
+      if (catalog == nullptr) {
+        break;
+      }
+      try {
+        const std::string& name = query.query_name().name();
+        auto* func = catalog->getFunctionWithSignature(name);
+        auto* call_func = func->ptrCast<neug::function::NeugCallFunction>();
+        for (const auto& arg : query.arguments()) {
+          if (arg.param_name().empty()) {
+            continue;
+          }
+          if (params_type.find(arg.param_name()) != params_type.end()) {
+            continue;
+          }
+          const int idx = arg.param_ind();
+          if (idx >= 0 && static_cast<size_t>(idx) <
+                              call_func->parameterTypeIDs.size()) {
+            params_type[arg.param_name()] = common::DataType(
+                call_func->parameterTypeIDs[static_cast<size_t>(idx)]);
+          }
+        }
+      } catch (...) {
+      }
       break;
     }
     default: {

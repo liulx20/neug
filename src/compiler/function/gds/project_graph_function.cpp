@@ -227,7 +227,8 @@ function_set ProjectGraphFunction::getFunctionSet() {
   };
 
   func->execFunc = [](const CallFuncInputBase& /*input*/,
-                      neug::IStorageInterface& /*graph*/) {
+                      neug::IStorageInterface& /*graph*/,
+                      const neug::execution::ParamsMap& /*params*/) {
     return execution::Context{};
   };
 
@@ -251,7 +252,8 @@ function_set DropProjectedGraphFunction::getFunctionSet() {
   };
 
   func->execFunc = [](const CallFuncInputBase& /*input*/,
-                      neug::IStorageInterface& /*graph*/) {
+                      neug::IStorageInterface& /*graph*/,
+                      const neug::execution::ParamsMap& /*params*/) {
     return execution::Context{};
   };
 
@@ -264,8 +266,8 @@ function_set ShowProjectedGraphsFunction::getFunctionSet() {
   auto function = std::make_unique<NeugCallFunction>(
       ShowProjectedGraphsFunction::name,
       std::vector<neug::common::DataTypeId>{},
-      std::vector<std::pair<std::string, neug::common::DataTypeId>>{
-          {"name", neug::common::DataTypeId::kVarchar}});
+      function::call_output_columns{
+          function::call_output("name", neug::common::DataTypeId::kVarchar)});
 
   function->bindFunc = [](const neug::Schema& schema,
                           const neug::execution::ContextMeta& ctx_meta,
@@ -275,7 +277,8 @@ function_set ShowProjectedGraphsFunction::getFunctionSet() {
   };
 
   function->execFunc = [](const CallFuncInputBase& /*input*/,
-                          neug::IStorageInterface& /*graph*/) {
+                          neug::IStorageInterface& /*graph*/,
+                          const neug::execution::ParamsMap& /*params*/) {
     neug::execution::Context out;
     neug::execution::ValueColumnBuilder<std::string> name_builder;
     auto metadataManager = main::MetadataRegistry::getMetadata();
@@ -304,9 +307,9 @@ function_set ProjectedGraphInfoFunction::getFunctionSet() {
   auto function = std::make_unique<NeugCallFunction>(
       ProjectedGraphInfoFunction::name,
       std::vector<common::DataTypeId>{common::DataTypeId::kVarchar},
-      std::vector<std::pair<std::string, neug::common::DataTypeId>>{
-          {"label", neug::common::DataTypeId::kVarchar},
-          {"predicate", neug::common::DataTypeId::kVarchar}});
+      function::call_output_columns{
+          function::call_output("label", neug::common::DataTypeId::kVarchar),
+          function::call_output("predicate", neug::common::DataTypeId::kVarchar)});
 
   function->bindFunc = [](const neug::Schema& schema,
                           const neug::execution::ContextMeta& ctx_meta,
@@ -328,7 +331,8 @@ function_set ProjectedGraphInfoFunction::getFunctionSet() {
   };
 
   function->execFunc = [](const CallFuncInputBase& input,
-                          neug::IStorageInterface& /*graph*/) {
+                          neug::IStorageInterface& /*graph*/,
+                          const neug::execution::ParamsMap& /*params*/) {
     neug::execution::Context out;
     neug::execution::ValueColumnBuilder<std::string> name_builder;
     neug::execution::ValueColumnBuilder<std::string> predicate_builder;

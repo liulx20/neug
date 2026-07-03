@@ -27,8 +27,7 @@ struct NEUG_API CDLPFunction {
   static std::unique_ptr<function::CallFuncInputBase> bind(
       const Schema& schema, const execution::ContextMeta& ctx_meta,
       const ::physical::PhysicalPlan& plan, int op_idx);
-  static neug::execution::Context exec(const function::CallFuncInputBase& input,
-                                       neug::IStorageInterface& graph);
+  static neug::execution::Context exec(const function::CallFuncInputBase& input, neug::IStorageInterface& graph, const execution::ParamsMap& params);
 
   static function::function_set getFunctionSet();
 };

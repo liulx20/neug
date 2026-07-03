@@ -89,8 +89,7 @@ std::unique_ptr<function::CallFuncInputBase> CDLPFunction::bind(
   return input;
 }
 
-execution::Context CDLPFunction::exec(const function::CallFuncInputBase& input,
-                                      neug::IStorageInterface& g) {
+execution::Context CDLPFunction::exec(const function::CallFuncInputBase& input, neug::IStorageInterface& g, const execution::ParamsMap& /*params*/) {
   const auto& lp_input = dynamic_cast<const CDLPInput&>(input);
   const auto& graph = dynamic_cast<const StorageReadInterface&>(g);
 
@@ -123,8 +122,8 @@ function::function_set CDLPFunction::getFunctionSet() {
   // 1. node type
   // 2. label id in int64
   function::call_output_columns outputColumns = {
-      {"node", common::DataTypeId::kVertex},
-      {"label", common::DataTypeId::kInt64}};
+      function::call_output("node", common::DataTypeId::kVertex),
+      function::call_output("label", common::DataTypeId::kInt64)};
   auto function = std::make_unique<function::GDSAlgoFunction>(name, inputTypes,
                                                               outputColumns);
   function->bindFunc = bind;

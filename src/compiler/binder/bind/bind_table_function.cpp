@@ -136,7 +136,6 @@ BoundTableScanInfo Binder::bindTableFunc(
   }
   expression_vector outputColumns;
   for (auto& outputColumn : callFunc->outputColumns) {
-    // add ouput columns to scope if exists
     outputColumns.push_back(
         createVariable(outputColumn.first, outputColumn.second));
   }

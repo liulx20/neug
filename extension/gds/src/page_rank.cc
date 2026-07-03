@@ -91,7 +91,7 @@ std::unique_ptr<function::CallFuncInputBase> PageRankFunction::bind(
 }
 
 execution::Context PageRankFunction::exec(
-    const function::CallFuncInputBase& input, neug::IStorageInterface& g) {
+    const function::CallFuncInputBase& input, neug::IStorageInterface& g, const execution::ParamsMap& /*params*/) {
   const auto& func_input = dynamic_cast<const PageRankInput&>(input);
   const auto& graph = dynamic_cast<const StorageReadInterface&>(g);
   execution::Context ret;
@@ -131,8 +131,8 @@ function::function_set PageRankFunction::getFunctionSet() {
   // 1. node type
   // 2. page rank value in double
   function::call_output_columns outputColumns = {
-      {"node", common::DataTypeId::kVertex},
-      {"rank", common::DataTypeId::kDouble}};
+      function::call_output("node", common::DataTypeId::kVertex),
+      function::call_output("rank", common::DataTypeId::kDouble)};
   auto function = std::make_unique<function::GDSAlgoFunction>(name, inputTypes,
                                                               outputColumns);
   function->bindFunc = bind;

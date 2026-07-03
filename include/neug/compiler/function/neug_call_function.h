@@ -16,9 +16,13 @@
 
 #pragma once
 
+#include <string>
+#include <utility>
 #include <vector>
+#include "neug/compiler/common/types/types.h"
 #include "neug/compiler/function/function.h"
 #include "neug/compiler/function/table/table_function.h"
+#include "neug/execution/common/params_map.h"
 #include "neug/generated/proto/plan/physical.pb.h"
 #include "neug/storages/graph/graph_interface.h"
 
@@ -40,10 +44,21 @@ using call_bind_func_t = std::function<std::unique_ptr<CallFuncInputBase>(
     const ::physical::PhysicalPlan& plan, int op_idx)>;
 
 using call_exec_func_t = std::function<execution::Context(
-    const CallFuncInputBase& input, neug::IStorageInterface& graph)>;
+    const CallFuncInputBase& input, neug::IStorageInterface& graph,
+    const execution::ParamsMap& params)>;
 
 using call_output_columns =
-    std::vector<std::pair<std::string, common::DataTypeId>>;
+    std::vector<std::pair<std::string, common::DataType>>;
+
+// Convenience for scalar / graph output columns at registration sites.
+inline std::pair<std::string, common::DataType> call_output(
+    std::string name, common::DataType type) {
+  return {std::move(name), std::move(type)};
+}
+inline std::pair<std::string, common::DataType> call_output(
+    std::string name, common::DataTypeId type_id) {
+  return {std::move(name), common::DataType(type_id)};
+}
 
 struct NeugCallFunction : public TableFunction {
   call_output_columns outputColumns;

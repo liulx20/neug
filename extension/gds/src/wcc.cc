@@ -83,7 +83,7 @@ std::unique_ptr<function::CallFuncInputBase> WCCFunction::bind(
 }
 
 execution::Context WCCFunction::exec(
-    const function::CallFuncInputBase& input_base, neug::IStorageInterface& g) {
+    const function::CallFuncInputBase& input_base, neug::IStorageInterface& g, const execution::ParamsMap& /*params*/) {
   const auto& input = dynamic_cast<const WCCInput&>(input_base);
   const auto& graph = dynamic_cast<const StorageReadInterface&>(g);
 
@@ -114,8 +114,8 @@ function::function_set WCCFunction::getFunctionSet() {
   // 1. node type
   // 2. label id in int64
   function::call_output_columns outputColumns = {
-      {"node", common::DataTypeId::kVertex},
-      {"comp", common::DataTypeId::kInt64}};
+      function::call_output("node", common::DataTypeId::kVertex),
+      function::call_output("comp", common::DataTypeId::kInt64)};
   auto function = std::make_unique<function::GDSAlgoFunction>(name, inputTypes,
                                                               outputColumns);
   function->bindFunc = bind;

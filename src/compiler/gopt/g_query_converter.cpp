@@ -1301,6 +1301,8 @@ void GQueryConvertor::convertProcedureCall(
     if (paramPB->operators(0).has_var()) {
       queryArgPB->set_allocated_var(
           paramPB->mutable_operators(0)->release_var());
+    } else if (paramPB->operators(0).has_param()) {
+      queryArgPB->set_param_name(paramPB->operators(0).param().name());
     } else if (paramPB->operators(0).has_const_()) {
       queryArgPB->set_allocated_const_(
           paramPB->mutable_operators(0)->release_const_());

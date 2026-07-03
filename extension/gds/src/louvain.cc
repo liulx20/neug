@@ -95,7 +95,7 @@ std::unique_ptr<function::CallFuncInputBase> LouvainFunction::bind(
 }
 
 execution::Context LouvainFunction::exec(
-    const function::CallFuncInputBase& input_base, neug::IStorageInterface& g) {
+    const function::CallFuncInputBase& input_base, neug::IStorageInterface& g, const execution::ParamsMap& /*params*/) {
   const auto& input = dynamic_cast<const LouvainInput&>(input_base);
   const auto& graph = dynamic_cast<const StorageReadInterface&>(g);
 
@@ -114,8 +114,8 @@ function::function_set LouvainFunction::getFunctionSet() {
   std::vector<common::DataTypeId> inputTypes = {common::DataTypeId::kVarchar,
                                                 common::DataTypeId::kUnknown};
   function::call_output_columns outputColumns = {
-      {"node", common::DataTypeId::kVertex},
-      {"community", common::DataTypeId::kInt64}};
+      function::call_output("node", common::DataTypeId::kVertex),
+      function::call_output("community", common::DataTypeId::kInt64)};
   auto function = std::make_unique<function::GDSAlgoFunction>(name, inputTypes,
                                                               outputColumns);
   function->bindFunc = bind;

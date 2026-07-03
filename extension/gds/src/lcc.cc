@@ -95,8 +95,7 @@ std::unique_ptr<function::CallFuncInputBase> LCCFunction::bind(
   return input;
 }
 
-execution::Context LCCFunction::exec(const function::CallFuncInputBase& input,
-                                     neug::IStorageInterface& g) {
+execution::Context LCCFunction::exec(const function::CallFuncInputBase& input, neug::IStorageInterface& g, const execution::ParamsMap& /*params*/) {
   const auto& lcc_input = dynamic_cast<const LCCInput&>(input);
   const auto& graph = dynamic_cast<const StorageReadInterface&>(g);
 
@@ -127,8 +126,8 @@ function::function_set LCCFunction::getFunctionSet() {
   std::vector<common::DataTypeId> input_types = {common::DataTypeId::kVarchar,
                                                  common::DataTypeId::kUnknown};
   function::call_output_columns output_columns = {
-      {"node", common::DataTypeId::kVertex},
-      {"lcc", common::DataTypeId::kDouble}};
+      function::call_output("node", common::DataTypeId::kVertex),
+      function::call_output("lcc", common::DataTypeId::kDouble)};
 
   auto function = std::make_unique<function::GDSAlgoFunction>(name, input_types,
                                                               output_columns);

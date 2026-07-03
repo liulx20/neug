@@ -102,8 +102,8 @@ static common::case_insensitive_map_t<std::string> extractStringOptions(
 static std::shared_ptr<binder::Expression> bindGDSOutputColumn(
     const TableFuncBindInput& input, binder::Binder& binder,
     const graph::GraphEntry& graphEntry, const std::string& name,
-    common::DataTypeId typeID) {
-  switch (typeID) {
+    const common::DataType& type) {
+  switch (type.id()) {
   case common::DataTypeId::kVertex:
     return graph::GDSFunction::bindNodeOutput(
         input, graphEntry.getNodeEntries(), name);
@@ -134,7 +134,7 @@ static std::shared_ptr<binder::Expression> bindGDSOutputColumn(
     return pathExpr;
   }
   default:
-    return binder.createVariable(name, typeID);
+    return binder.createVariable(name, type);
   }
 }
 

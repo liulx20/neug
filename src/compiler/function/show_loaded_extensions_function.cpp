@@ -28,9 +28,9 @@ function_set ShowLoadedExtensionsFunction::getFunctionSet() {
   auto function = std::make_unique<NeugCallFunction>(
       ShowLoadedExtensionsFunction::name,
       std::vector<neug::common::DataTypeId>{},
-      std::vector<std::pair<std::string, neug::common::DataTypeId>>{
-          {"name", neug::common::DataTypeId::kVarchar},
-          {"description", common::DataTypeId::kVarchar}});
+      function::call_output_columns{
+          function::call_output("name", neug::common::DataTypeId::kVarchar),
+          function::call_output("description", common::DataTypeId::kVarchar)});
 
   function->bindFunc = [](const neug::Schema& schema,
                           const neug::execution::ContextMeta& ctx_meta,
@@ -40,7 +40,8 @@ function_set ShowLoadedExtensionsFunction::getFunctionSet() {
   };
 
   function->execFunc = [](const CallFuncInputBase& input,
-                          neug::IStorageInterface& graph) {
+                          neug::IStorageInterface& graph,
+                          const neug::execution::ParamsMap& /*params*/) {
     try {
       neug::execution::Context ctx;
       const auto& ext_map =
