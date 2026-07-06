@@ -13,8 +13,10 @@
  * limitations under the License.
  */
 
+#include <cctype>
 #include <fstream>
 #include <iostream>
+#include <limits>
 #include <sstream>
 #include <string>
 
@@ -24,6 +26,7 @@
 #include "neug/execution/common/operators/retrieve/sink.h"
 #include "neug/execution/common/types/value.h"
 #include "neug/execution/execute/plan_parser.h"
+#include "neug/main/connection.h"
 #include "neug/main/neug_db.h"
 #include "neug/main/query_request.h"
 #include "neug/server/neug_db_service.h"
@@ -106,7 +109,7 @@ class BenchmarkConfig {
  public:
   struct BenchmarkUnit {
     std::string name;
-    std::string query_pb_path;
+    std::string query_path;
     std::string query_param_path;
     int repeat;
   };
@@ -138,7 +141,7 @@ class BenchmarkConfig {
       }
       BenchmarkUnit unit;
       unit.name = tokens[0];
-      unit.query_pb_path = tokens[1];
+      unit.query_path = tokens[1];
       unit.query_param_path = tokens[2];
       unit.repeat = std::stoi(tokens[3]);
       units_.emplace_back(unit);
@@ -174,23 +177,35 @@ std::vector<std::map<std::string, std::string>> parse_query_file(
   return ret;
 }
 
-std::string parse_query(const std::string& filename) {
-  std::ifstream file(filename, std::ios::binary);
+std::string read_query_file(const std::string& filename) {
+  std::ifstream file(filename);
+  CHECK(file.is_open()) << "Failed to open query file: " << filename;
 
-  CHECK(file.is_open());
+  std::ostringstream ss;
+  ss << file.rdbuf();
+  std::string query = ss.str();
 
-  file.seekg(0, std::ios::end);
-  size_t size = file.tellg();
-  file.seekg(0, std::ios::beg);
+  while (!query.empty() && std::isspace(static_cast<unsigned char>(query.back()))) {
+    query.pop_back();
+  }
+  CHECK(!query.empty()) << "Query file is empty: " << filename;
+  return query;
+}
 
-  std::string buffer;
-  buffer.resize(size);
-
-  file.read(&buffer[0], size);
-
-  file.close();
-
-  return buffer;
+bool load_extension(neug::NeugDB& db, const std::string& extension_path) {
+  auto conn = db.Connect();
+  if (conn == nullptr) {
+    LOG(ERROR) << "Failed to create connection for loading extension";
+    return false;
+  }
+  auto load_res = conn->Query("LOAD '" + extension_path + "'");
+  if (!load_res) {
+    LOG(ERROR) << "Failed to load extension from " << extension_path << ": "
+               << load_res.error().ToString();
+    return false;
+  }
+  LOG(INFO) << "Loaded extension from " << extension_path;
+  return true;
 }
 
 void benchmark_iteration(
@@ -234,7 +249,9 @@ int main(int argc, char** argv) {
       "memory-level,m",
       "1 for InMemory, 2 for SyncToFile, 3 for HugePagePrefered",
       cxxopts::value<int>()->default_value("1"))("benchmark-config,c", "",
-                                                 cxxopts::value<std::string>());
+                                                 cxxopts::value<std::string>())(
+      "extension-path,e", "Extension library path to LOAD before benchmark",
+      cxxopts::value<std::string>());
   google::InitGoogleLogging(argv[0]);
   FLAGS_logtostderr = true;
   cxxopts::ParseResult vm = options.parse(argc, argv);
@@ -261,6 +278,11 @@ int main(int argc, char** argv) {
 
   config.enable_auto_compaction = false;
   db.Open(config);
+  if (vm.count("extension-path")) {
+    if (!load_extension(db, vm["extension-path"].as<std::string>())) {
+      return -1;
+    }
+  }
   auto compiler = db.GetPlanner();
   auto svc = std::make_shared<neug::NeugDBService>(db);
 
@@ -284,7 +306,8 @@ int main(int argc, char** argv) {
     LOG(INFO) << "Running benchmark: " << unit.name
               << ", repeat: " << query_num;
 
-    auto query_str = parse_query(unit.query_pb_path);
+    auto query_str = read_query_file(unit.query_path);
+    LOG(INFO) << "Query: " << query_str;
     const auto res = compiler->compilePlan(query_str);
     if (!res) {
       LOG(ERROR) << "Failed to compile plan: " << res.error().ToString();
