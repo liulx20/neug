@@ -988,7 +988,7 @@ void set_properties_from_context_column(
       break;
     }
     case DataTypeId::kVarchar: {
-      auto* typed = dynamic_cast<TypedColumn<std::string_view>*>(col);
+      auto* typed = dynamic_cast<TypedColumn<string_t>*>(col);
       auto s = val.GetValue<std::string>();
       std::shared_lock<std::shared_mutex> lock(mutex);
       if (typed->available_space() <= s.size()) {

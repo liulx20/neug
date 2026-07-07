@@ -202,7 +202,7 @@ static neug::result<ContextChunk> expand_edge_with_special_edge_predicate_impl0(
     const EdgeExpandParams& params, const SpecialPredicateConfig& config,
     const Value& target_val) {
   T target = [&target_val]() -> T {
-    if constexpr (std::is_same_v<T, std::string_view>) {
+    if constexpr (std::is_same_v<T, string_t>) {
       return StringValue::Get(target_val);
     } else {
       return target_val.template GetValue<T>();
@@ -250,7 +250,7 @@ neug::result<ContextChunk> EdgeExpand::expand_edge_with_special_edge_predicate(
     return expand_edge_with_special_edge_predicate_impl0<DateTime>(
         graph, std::move(chunk), params, config, target_val);
   } else if (config.param_type == DataTypeId::kVarchar) {
-    return expand_edge_with_special_edge_predicate_impl0<std::string_view>(
+    return expand_edge_with_special_edge_predicate_impl0<string_t>(
         graph, std::move(chunk), params, config, target_val);
   } else {
     LOG(ERROR) << "not support edge property type "
@@ -269,7 +269,7 @@ void expand_vertex_ep_cmp_impl(const StorageReadInterface& graph,
                                Direction dir, const Value& cmp_value,
                                SPPredicateType tp) {
   T cmp_val = [&cmp_value]() -> T {
-    if constexpr (std::is_same_v<T, std::string_view>) {
+    if constexpr (std::is_same_v<T, string_t>) {
       return StringValue::Get(cmp_value);
     } else {
       return cmp_value.template GetValue<T>();

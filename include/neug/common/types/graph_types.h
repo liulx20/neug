@@ -152,6 +152,116 @@ class EdgeRecord {
   Direction dir;
 };
 
+#pragma pack(push, 1)
+struct string_t {
+  string_t() = default;
+  string_t(const std::string& rhs) {
+    length = rhs.size();
+    if(length <= 14){
+      memcpy(data, rhs.data(), length);
+    } else {
+      memcpy(ext.prefix, rhs.data(), 6);
+      ext.ptr = const_cast<char*>(rhs.data()) + 6;
+    }
+  }
+
+  string_t(const std::string_view& rhs) {
+    length = rhs.size();
+    if(length <= 14){
+      memcpy(data, rhs.data(), length);
+    } else {
+      memcpy(ext.prefix, rhs.data(), 6);
+      ext.ptr = const_cast<char*>(rhs.data()) + 6;
+    }
+  }
+
+  bool operator==(const std::string& rhs) const {
+     if(length != rhs.size()) return false;
+     if(length <= 14){
+      return memcmp(data, rhs.data(), length) == 0;
+     } else {
+      return memcmp(ext.prefix, rhs.data(), 6) == 0 && memcmp(ext.ptr, rhs.data() + 6, length - 6) == 0;
+     }
+  }
+
+  bool operator==(const string_t& rhs) const {
+    if(length != rhs.length) return false;
+    if(length <= 14){
+      return memcmp(data, rhs.data, length) == 0;
+    } else {
+      return memcmp(ext.prefix, rhs.ext.prefix, 6) == 0 && memcmp(ext.ptr, rhs.ext.ptr, length - 6) == 0;
+    }
+  }
+
+  bool operator==(const std::string_view& rhs) const {
+    if(length != rhs.size()) return false;
+    if(length <= 14){
+      return memcmp(data, rhs.data(), length) == 0;
+    } else {
+      return memcmp(ext.prefix, rhs.data(), 6) == 0 && memcmp(ext.ptr, rhs.data() + 6, length - 6) == 0;
+    }
+  }
+
+  bool operator<(const std::string& rhs) const {
+    if(length != rhs.size()) return length < rhs.size();
+    if(length <= 14){
+      return memcmp(data, rhs.data(), length) < 0;
+    } else {
+      int cmp = memcmp(ext.prefix, rhs.data(), 6);
+      if(cmp != 0) return cmp < 0;
+      return memcmp(ext.ptr, rhs.data() + 6, length - 6) < 0;
+    }
+  }
+  
+  bool operator<(const string_t& rhs) const {
+    if(length != rhs.length) return length < rhs.length;
+    if(length <= 14){
+      return memcmp(data, rhs.data, length) < 0;
+    } else {
+      int cmp = memcmp(ext.prefix, rhs.ext.prefix, 6);
+      if(cmp != 0) return cmp < 0;
+      return memcmp(ext.ptr, rhs.ext.ptr, length - 6) < 0;
+    }
+  }
+
+  bool operator<(const std::string_view& rhs) const {
+    if(length != rhs.size()) return length < rhs.size();
+    if(length <= 14){
+      return memcmp(data, rhs.data(), length) < 0;
+    } else {    
+
+      int cmp = memcmp(ext.prefix, rhs.data(), 6);
+      if(cmp != 0) return cmp < 0;
+      return memcmp(ext.ptr, rhs.data() + 6, length - 6) < 0;
+    }
+  }
+
+  std::string to_string() const {
+    if(length <= 14){
+      return std::string(data, length);
+    } else {
+      return std::string(ext.prefix, 6) + std::string(ext.ptr, length - 6);
+    }
+  }
+
+
+
+  size_t size() const {
+    return length;
+  }
+  uint16_t length;
+  union{
+    char data[14];
+    struct {
+      char prefix[6];
+      char * ptr;
+    } ext;
+  };
+
+
+};
+#pragma pack(pop)
+
 struct PathImpl;
 struct Path {
  public:
@@ -242,6 +352,21 @@ struct hash<neug::LabelTriplet> {
     hash_combine(seed, lt.src_label);
     hash_combine(seed, lt.dst_label);
     hash_combine(seed, lt.edge_label);
+    return seed;
+  }
+};
+
+template <>
+struct hash<neug::string_t> {
+  size_t operator()(const neug::string_t& s) const {
+    size_t seed = 0;
+    hash_combine(seed, s.length);
+    if(s.length <= 14){
+      hash_combine(seed, std::string_view(s.data, s.length));
+    } else {
+      hash_combine(seed, std::string_view(s.ext.prefix, 6));
+      hash_combine(seed, std::string_view(s.ext.ptr, s.length - 6));
+    }
     return seed;
   }
 };

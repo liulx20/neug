@@ -61,7 +61,7 @@ DEFINE_STORAGE_TYPE_NAME(double, "double");
 DEFINE_STORAGE_TYPE_NAME(Date, "date");
 DEFINE_STORAGE_TYPE_NAME(DateTime, "datetime");
 DEFINE_STORAGE_TYPE_NAME(Interval, "interval");
-DEFINE_STORAGE_TYPE_NAME(std::string_view, "string");
+DEFINE_STORAGE_TYPE_NAME(string_t, "string");
 
 #undef DEFINE_STORAGE_TYPE_NAME
 

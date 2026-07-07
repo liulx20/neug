@@ -280,7 +280,7 @@ class VertexTable {
         }
         continue;
       }
-      bool is_string = std::is_same_v<PK_T, std::string_view> ||
+      bool is_string = std::is_same_v<PK_T, string_t> ||
                        std::is_same_v<PK_T, std::string>;
       vids[j] = insert_vertex_pk(oid, 0, is_string);
     }

@@ -69,6 +69,9 @@ struct StringValueInfo : public ExtraValueInfo {
   explicit StringValueInfo(const std::string& str_p)
       : ExtraValueInfo(TYPE), str(str_p) {}
 
+  explicit StringValueInfo(const string_t& str_p)
+      : ExtraValueInfo(TYPE), str(str_p.to_string()) {}
+
   const std::string& GetString() const { return str; }
 
  protected:
@@ -296,6 +299,13 @@ Value Value::STRUCT(std::vector<Value>&& values) {
 }
 
 Value Value::STRING(const std::string& str) {
+  Value result(DataType::VARCHAR);
+  result.value_info_ = std::make_shared<StringValueInfo>(str);
+  result.is_null_ = false;
+  return result;
+}
+
+Value Value::STRING(const string_t& str) {
   Value result(DataType::VARCHAR);
   result.value_info_ = std::make_shared<StringValueInfo>(str);
   result.is_null_ = false;

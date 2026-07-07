@@ -40,7 +40,7 @@ struct DummyGetter : public ProjectExprBase {
 
 template <typename T>
 struct VertexPropertyExpr : public ProjectExprBase {
-  using V = std::conditional_t<std::is_same<T, std::string_view>::value,
+  using V = std::conditional_t<std::is_same<T, string_t>::value,
                                std::string, T>;
   VertexPropertyExpr(const IStorageInterface& igraph, int tag,
                      const std::string& property_name)
@@ -74,8 +74,8 @@ struct VertexPropertyExpr : public ProjectExprBase {
     builder.reserve(chunk.row_num());
     foreach_vertex(vertex_col, [&](size_t idx, label_t label, vid_t vid) {
       auto prop_col = property_columns[label];
-      if constexpr (std::is_same_v<T, std::string_view>) {
-        builder.push_back_opt(std::string(prop_col->get_view(vid)));
+      if constexpr (std::is_same_v<T, string_t>) {
+        builder.push_back_opt(prop_col->get_view(vid).to_string());
       } else {
         builder.push_back_opt(prop_col->get_view(vid));
       }
@@ -111,7 +111,7 @@ struct VertexPropertyExpr : public ProjectExprBase {
 };
 template <typename CMP_T, typename RESULT_T>
 struct CaseWhenExpr : public ProjectExprBase {
-  using V = std::conditional_t<std::is_same<RESULT_T, std::string_view>::value,
+  using V = std::conditional_t<std::is_same<RESULT_T, string_t>::value,
                                std::string, RESULT_T>;
   CaseWhenExpr(const IStorageInterface& igraph, int tag,
                const std::string& property_name, std::vector<Value>&& targets,
@@ -146,8 +146,8 @@ struct CaseWhenExpr : public ProjectExprBase {
     using T = typename CMP_T::data_t;
     std::vector<T> values;
     for (auto& val : targets) {
-      if constexpr (std::is_same_v<T, std::string_view>) {
-        std::string_view sw = StringValue::Get(val);
+      if constexpr (std::is_same_v<T, string_t>) {
+        string_t sw = StringValue::Get(val);
         values.push_back(sw);
       } else {
         values.push_back(val.template GetValue<T>());
@@ -601,7 +601,7 @@ std::unique_ptr<ProjectExprBuilderBase> create_vertex_property_expr_builder(
   case DataTypeId::enum_val:            \
     return std::make_unique<VertexPropertyExprBuilder<type>>(tag, name, alias);
       FOR_EACH_DATA_TYPE_NO_STRING(TYPE_DISPATCHER)
-      TYPE_DISPATCHER(kVarchar, std::string_view)
+      TYPE_DISPATCHER(kVarchar, string_t)
 #undef TYPE_DISPATCHER
     default:
       return nullptr;
@@ -739,7 +739,7 @@ std::unique_ptr<ProjectExprBuilderBase> create_case_when_builder(
     TYPE_DISPATCHER(kInt32, int32_t)
     TYPE_DISPATCHER(kInt64, int64_t)
     TYPE_DISPATCHER(kTimestampMs, DateTime)
-    TYPE_DISPATCHER(kVarchar, std::string_view)
+    TYPE_DISPATCHER(kVarchar, string_t)
 #undef TYPE_DISPATCHER
   default:
     LOG(ERROR) << "unsupported when type " << static_cast<int>(when_type.id());

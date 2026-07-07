@@ -72,7 +72,7 @@ std::unique_ptr<ColumnBase> CreateColumn(DataType type) {
         max_length = str_info->max_length;
       }
     }
-    return std::make_unique<StringColumn>(max_length);
+    return std::make_unique<TypedColumn<string_t>>(max_length);
   }
   case DataTypeId::kArray: {
     return std::make_unique<ArrayColumn>(type);
@@ -97,7 +97,7 @@ std::shared_ptr<RefColumnBase> CreateRefColumn(const ColumnBase& column) {
     FOR_EACH_DATA_TYPE_NO_STRING(TYPE_DISPATCHER)
 #undef TYPE_DISPATCHER
   case DataTypeId::kVarchar: {
-    return std::make_shared<TypedRefColumn<std::string_view>>(
+    return std::make_shared<TypedRefColumn<string_t>>(
         dynamic_cast<const StringColumn&>(column));
   }
   case DataTypeId::kArray: {
@@ -122,6 +122,6 @@ NEUG_REGISTER_TEMPLATE_MODULE(TypedColumn, double);
 NEUG_REGISTER_TEMPLATE_MODULE(TypedColumn, Date);
 NEUG_REGISTER_TEMPLATE_MODULE(TypedColumn, DateTime);
 NEUG_REGISTER_TEMPLATE_MODULE(TypedColumn, Interval);
-NEUG_REGISTER_TEMPLATE_MODULE(TypedColumn, std::string_view);
+NEUG_REGISTER_TEMPLATE_MODULE(TypedColumn, string_t);
 
 }  // namespace neug

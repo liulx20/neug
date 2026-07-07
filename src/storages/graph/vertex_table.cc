@@ -57,7 +57,7 @@ void VertexTable::insert_vertices(
   } else if (pk_type_id == DataTypeId::kUInt64) {
     insert_vertices_impl<uint64_t>(supplier);
   } else if (pk_type_id == DataTypeId::kVarchar) {
-    insert_vertices_impl<std::string_view>(supplier);
+    insert_vertices_impl<string_t>(supplier);
   } else {
     THROW_NOT_SUPPORTED_EXCEPTION(
         "Unsupported primary key type for vertex, type: " +

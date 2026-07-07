@@ -106,7 +106,7 @@ bool vertex_property_topN(bool asc, size_t limit,
     FOR_EACH_DATA_TYPE_NO_STRING(TYPE_DISPATCHER)
 #undef TYPE_DISPATCHER
   case DataTypeId::kVarchar:
-    return vertex_property_topN_impl<std::string_view>(asc, limit, col, graph,
+    return vertex_property_topN_impl<string_t>(asc, limit, col, graph,
                                                        prop_name, offsets);
   default:
     LOG(ERROR) << "prop type not support..." << static_cast<int>(prop_types[0]);

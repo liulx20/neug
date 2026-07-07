@@ -358,8 +358,8 @@ static neug::result<ContextChunk> dispatch_vertex_predicate_impl_typed(
     const SpecialPredicateConfig& config, const ParamsMap& params,
     Args&&... args) {
   auto get_value = [&](const std::string& param_name) -> T {
-    if constexpr (std::is_same<T, std::string_view>::value) {
-      std::string_view sw = StringValue::Get(params.at(param_name));
+    if constexpr (std::is_same<T, string_t>::value) {
+      string_t sw = StringValue::Get(params.at(param_name));
       return sw;
     } else {
       return params.at(param_name).template GetValue<T>();
@@ -428,7 +428,7 @@ neug::result<ContextChunk> dispatch_vertex_predicate(
     TYPE_DISPATCHER(kInt32, int32_t)
     TYPE_DISPATCHER(kInt64, int64_t)
     TYPE_DISPATCHER(kTimestampMs, DateTime)
-    TYPE_DISPATCHER(kVarchar, std::string_view)
+    TYPE_DISPATCHER(kVarchar, string_t)
 #undef TYPE_DISPATCHER
   default:
     break;
