@@ -41,6 +41,8 @@ DataType NeuGTypeConverter::convert(const ::common::DataType& type) const {
       return DataType(DataTypeId::kFloat);
     case ::common::PrimitiveType::DT_DOUBLE:
       return DataType(DataTypeId::kDouble);
+    case ::common::PrimitiveType::DT_IP_ADDRESS:
+      return DataType(DataTypeId::kIpAddress);
     default:
       THROW_CONVERSION_EXCEPTION(
           "Unsupported PrimitiveType for NeuG conversion: " +
@@ -110,6 +112,9 @@ std::shared_ptr<::common::DataType> NeuGTypeConverter::inferCommonType(
     break;
   case DataTypeId::kDouble:
     commonType->set_primitive_type(::common::PrimitiveType::DT_DOUBLE);
+    break;
+  case DataTypeId::kIpAddress:
+    commonType->set_primitive_type(::common::PrimitiveType::DT_IP_ADDRESS);
     break;
   case DataTypeId::kVarchar: {
     auto strType = std::make_unique<::common::String>();

@@ -573,7 +573,8 @@ bool is_property_extract(const common::Expression& expr, int& tag,
           type.id() == DataTypeId::kUInt64 ||
           type.id() == DataTypeId::kUInt32 ||
           type.id() == DataTypeId::kDouble ||
-          type.id() == DataTypeId::kVarchar) {
+          type.id() == DataTypeId::kVarchar ||
+          type.id() == DataTypeId::kIpAddress) {
         return true;
       }
     }

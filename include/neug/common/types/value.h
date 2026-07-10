@@ -77,6 +77,8 @@ class Value {
 
   static Value INTERVAL(interval_t interval);
 
+  static Value IP_ADDRESS(IpAddress value);
+
   static Value FLOAT(float value);
 
   static Value DOUBLE(double value);
@@ -161,6 +163,7 @@ class Value {
     date_t date;
     timestamp_ms_t timestamp_ms;
     interval_t interval;
+    IpAddress ip_address;
     vertex_t vertex;
     edge_t edge;
   } value_;  // NOLINT
@@ -219,6 +222,8 @@ Value Value::CreateValue(double value);
 template <>
 Value Value::CreateValue(interval_t value);
 template <>
+Value Value::CreateValue(IpAddress value);
+template <>
 Value Value::CreateValue(Value value);
 
 template <>
@@ -254,6 +259,8 @@ template <>
 timestamp_ms_t Value::GetValue() const;
 template <>
 interval_t Value::GetValue() const;
+template <>
+IpAddress Value::GetValue() const;
 
 template <>
 vertex_t Value::GetValue() const;
@@ -476,6 +483,31 @@ struct ValueConverter<interval_t> {
       return true;
     } else if constexpr (std::is_same_v<T, std::string>) {
       output = Interval(input);
+      return true;
+    } else {
+      return false;
+    }
+  }
+};
+
+template <>
+struct ValueConverter<IpAddress> {
+  static DataType type() { return DataType(DataTypeId::kIpAddress); }
+  static std::string name() { return "ip_address"; }
+  static IpAddress typed_from_string(const std::string& str) {
+    return IpAddress(str);
+  }
+
+  template <typename T>
+  static bool cast(const T& input, IpAddress& output) {
+    if constexpr (std::is_same_v<T, IpAddress>) {
+      output = input;
+      return true;
+    } else if constexpr (std::is_same_v<T, std::string>) {
+      output = IpAddress(input);
+      return true;
+    } else if constexpr (std::is_same_v<T, uint32_t>) {
+      output = IpAddress(input);
       return true;
     } else {
       return false;
@@ -742,6 +774,29 @@ inline Value performCast<Date>(const Value& input) {
     THROW_CONVERSION_EXCEPTION("Failed to cast value to Date.");
   }
   return Value(DataType(DataTypeId::kDate));
+}
+
+template <>
+inline Value performCast<IpAddress>(const Value& input) {
+  IpAddress val;
+  bool ret = false;
+  if (input.type().id() == DataTypeId::kVarchar) {
+    ret = ValueConverter<IpAddress>::cast(StringValue::Get(input), val);
+  } else if (input.type().id() == DataTypeId::kUInt32) {
+    ret = ValueConverter<IpAddress>::cast(input.GetValue<uint32_t>(), val);
+  } else if (input.type().id() == DataTypeId::kIpAddress) {
+    ret = ValueConverter<IpAddress>::cast(input.GetValue<IpAddress>(), val);
+  } else {
+    THROW_CONVERSION_EXCEPTION(
+        "Only string/uint32/ip_address types are supported for casting to "
+        "IpAddress.");
+  }
+  if (ret) {
+    return Value::CreateValue<IpAddress>(val);
+  } else {
+    THROW_CONVERSION_EXCEPTION("Failed to cast value to IpAddress.");
+  }
+  return Value(DataType(DataTypeId::kIpAddress));
 }
 
 Value performCastToString(const Value& input);

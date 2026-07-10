@@ -239,6 +239,13 @@ Value Value::INTERVAL(interval_t interval) {
   return result;
 }
 
+Value Value::IP_ADDRESS(IpAddress value) {
+  Value result(DataType::IP_ADDRESS);
+  result.value_.ip_address = value;
+  result.is_null_ = false;
+  return result;
+}
+
 Value Value::FLOAT(float value) {
   Value result(DataType::FLOAT);
   result.value_.float_ = value;
@@ -464,6 +471,11 @@ Value Value::CreateValue(interval_t value) {
 }
 
 template <>
+Value Value::CreateValue(IpAddress value) {
+  return Value::IP_ADDRESS(value);
+}
+
+template <>
 Value Value::CreateValue(vertex_t value) {
   return Value::VERTEX(value);
 }
@@ -541,6 +553,11 @@ timestamp_ms_t Value::GetValue() const {
 template <>
 interval_t Value::GetValue() const {
   return value_.interval;
+}
+
+template <>
+IpAddress Value::GetValue() const {
+  return value_.ip_address;
 }
 
 template <>
@@ -719,6 +736,16 @@ Value Value::FromJson(const rapidjson::Value& json_value,
           "Expected an (u)int/string for Date type");
     }
   }
+  case DataTypeId::kIpAddress: {
+    if (json_value.IsUint() || json_value.IsInt()) {
+      return Value::IP_ADDRESS(IpAddress(json_value.GetUint()));
+    } else if (json_value.IsString()) {
+      return Value::IP_ADDRESS(IpAddress(json_value.GetString()));
+    } else {
+      THROW_INVALID_ARGUMENT_EXCEPTION(
+          "Expected a uint/string for IpAddress type");
+    }
+  }
   case DataTypeId::kDouble: {
     return Value::DOUBLE(json_value.GetDouble());
   }
@@ -839,6 +866,10 @@ rapidjson::Value Value::ToJson(const Value& value,
     return rapidjson::Value(
         value.GetValue<timestamp_ms_t>().to_string().c_str(), allocator);
   }
+  case DataTypeId::kIpAddress: {
+    return rapidjson::Value(value.GetValue<IpAddress>().to_string().c_str(),
+                            allocator);
+  }
   default: {
     THROW_NOT_IMPLEMENTED_EXCEPTION("Serialization for parameter type " +
                                     std::to_string(static_cast<int>(type_id)) +
@@ -917,6 +948,8 @@ void encode_value(const Value& val, Encoder& encoder) {
     encoder.put_long(val.GetValue<date_t>().to_timestamp());
   } else if (type.id() == DataTypeId::kInterval) {
     encoder.put_long(val.GetValue<interval_t>().to_mill_seconds());
+  } else if (type.id() == DataTypeId::kIpAddress) {
+    encoder.put_int(val.GetValue<IpAddress>().ip);
   } else {
     THROW_RUNTIME_ERROR("RTAny::encode_sig not support for " +
                         std::to_string(static_cast<int>(type.id())));
@@ -947,6 +980,10 @@ Value performCastToString(const Value& input) {
   }
   case DataTypeId::kInterval: {
     ret = input.GetValue<interval_t>().to_string();
+    break;
+  }
+  case DataTypeId::kIpAddress: {
+    ret = input.GetValue<IpAddress>().to_string();
     break;
   }
   default: {
@@ -984,6 +1021,8 @@ InArchive& operator<<(InArchive& in_archive, const Value& value) {
     auto interval = value.GetValue<interval_t>();
     in_archive << type_id << interval.months << interval.days
                << interval.micros;
+  } else if (type_id == DataTypeId::kIpAddress) {
+    in_archive << type_id << value.GetValue<IpAddress>().ip;
   } else if (type_id == DataTypeId::kList || type_id == DataTypeId::kArray) {
     in_archive << type_id << value.type();
     const auto& children = (type_id == DataTypeId::kList)
@@ -1052,6 +1091,10 @@ OutArchive& operator>>(OutArchive& out_archive, Value& value) {
     Interval interval;
     out_archive >> interval.months >> interval.days >> interval.micros;
     value = Value::INTERVAL(interval);
+  } else if (type_id == DataTypeId::kIpAddress) {
+    uint32_t ip_val;
+    out_archive >> ip_val;
+    value = Value::IP_ADDRESS(IpAddress(ip_val));
   } else if (type_id == DataTypeId::kList || type_id == DataTypeId::kArray) {
     DataType dt;
     out_archive >> dt;

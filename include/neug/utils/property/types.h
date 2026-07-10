@@ -85,6 +85,7 @@ static constexpr const char* DT_INTERVAL =
     "DT_INTERVAL";  // Y Year, M Month, D Day, H Hour, M Minute, S Second
 static constexpr const char* DT_TIMESTAMP =
     "DT_TIMESTAMP";  // millisecond timestamp
+static constexpr const char* DT_IP_ADDRESS = "DT_IP_ADDRESS";
 static constexpr const uint16_t STRING_DEFAULT_MAX_LENGTH = 256;
 
 enum class EdgeStrategy {
@@ -609,7 +610,7 @@ struct convert<neug::DataType> {
     if (id == neug::DataTypeId::kBoolean || id == neug::DataTypeId::kInt32 ||
         id == neug::DataTypeId::kUInt32 || id == neug::DataTypeId::kFloat ||
         id == neug::DataTypeId::kInt64 || id == neug::DataTypeId::kUInt64 ||
-        id == neug::DataTypeId::kDouble) {
+        id == neug::DataTypeId::kDouble || id == neug::DataTypeId::kIpAddress) {
       node["primitive_type"] =
           neug::config_parsing::PrimitivePropertyTypeToString(type.id());
     } else if (id == neug::DataTypeId::kVarchar) {

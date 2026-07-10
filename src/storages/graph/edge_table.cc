@@ -123,6 +123,7 @@ void batch_put_edges_to_bundled_csr(const std::vector<vid_t>& src_lid,
     TYPE_DISPATCHER(kDate, Date);
     TYPE_DISPATCHER(kTimestampMs, DateTime);
     TYPE_DISPATCHER(kInterval, Interval);
+    TYPE_DISPATCHER(kIpAddress, IpAddress);
 #undef TYPE_DISPATCHER
   case DataTypeId::kEmpty: {
     dynamic_cast<TypedCsrBase<EmptyType>*>(out_csr)->batch_put_edges(

@@ -786,6 +786,7 @@ static std::unique_ptr<ReducerBase> create_reducer(
           TYPE_DISPATCHER(kInt64, int64_t)
           TYPE_DISPATCHER(kTimestampMs, DateTime)
           TYPE_DISPATCHER(kVarchar, std::string)
+          TYPE_DISPATCHER(kIpAddress, IpAddress)
 #undef TYPE_DISPATCHER
 
         default:

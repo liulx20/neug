@@ -146,6 +146,9 @@ bool primitive_type_to_property_type(
   case common::PrimitiveType::DT_DOUBLE:
     out_type = DataType::DOUBLE;
     break;
+  case common::PrimitiveType::DT_IP_ADDRESS:
+    out_type = DataType::IP_ADDRESS;
+    break;
   case common::PrimitiveType::DT_NULL:
     out_type = DataType::SQLNULL;
     break;
@@ -293,6 +296,19 @@ bool default_expression_to_value(const DataType& type,
     return false;
   }
 
+  if (out_value.type() != type) {
+    // Default IP values are encoded as u32/string in the plan; coerce to
+    // native IpAddress before the strict type check.
+    if (type.id() == DataTypeId::kIpAddress) {
+      if (out_value.type().id() == DataTypeId::kUInt32) {
+        out_value =
+            Value::IP_ADDRESS(IpAddress(out_value.GetValue<uint32_t>()));
+      } else if (out_value.type().id() == DataTypeId::kVarchar) {
+        out_value = Value::IP_ADDRESS(
+            IpAddress(out_value.GetValue<std::string>()));
+      }
+    }
+  }
   if (out_value.type() != type) {
     LOG(ERROR) << "Default expression type mismatch, expected "
                << type.ToString() << ", got " << out_value.type().ToString()

@@ -61,6 +61,7 @@ DEFINE_STORAGE_TYPE_NAME(double, "double");
 DEFINE_STORAGE_TYPE_NAME(Date, "date");
 DEFINE_STORAGE_TYPE_NAME(DateTime, "datetime");
 DEFINE_STORAGE_TYPE_NAME(Interval, "interval");
+DEFINE_STORAGE_TYPE_NAME(IpAddress, "ip_address");
 DEFINE_STORAGE_TYPE_NAME(std::string_view, "string");
 
 #undef DEFINE_STORAGE_TYPE_NAME
@@ -97,6 +98,8 @@ inline std::string DataTypeShortName(DataTypeId t) {
     return StorageTypeName<DateTime>::value;
   case DataTypeId::kInterval:
     return StorageTypeName<Interval>::value;
+  case DataTypeId::kIpAddress:
+    return StorageTypeName<IpAddress>::value;
   case DataTypeId::kVarchar:
     return StorageTypeName<std::string_view>::value;
   default:

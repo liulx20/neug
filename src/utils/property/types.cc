@@ -64,6 +64,8 @@ std::string PrimitivePropertyTypeToString(DataTypeId type) {
     return DT_DATETIME;
   } else if (type == DataTypeId::kInterval) {
     return DT_INTERVAL;
+  } else if (type == DataTypeId::kIpAddress) {
+    return DT_IP_ADDRESS;
   } else {
     THROW_INVALID_ARGUMENT_EXCEPTION("Unknown property type: " +
                                      std::to_string(type));
@@ -83,6 +85,8 @@ DataTypeId StringToPrimitivePropertyType(const std::string& str) {
     return DataTypeId::kTimestampMs;
   } else if (str == "Interval" || str == DT_INTERVAL) {
     return DataTypeId::kInterval;
+  } else if (str == "IpAddress" || str == "IP" || str == DT_IP_ADDRESS) {
+    return DataTypeId::kIpAddress;
   } else if (str == "Timestamp" || str == DT_TIMESTAMP) {
     return DataTypeId::kTimestampMs;
   } else if (str == "String" || str == "STRING" || str == DT_STRING) {
@@ -676,6 +680,9 @@ std::string to_string(neug::DataTypeId type) {
   }
   case neug::DataTypeId::kInterval: {
     return "Interval";
+  }
+  case neug::DataTypeId::kIpAddress: {
+    return "IpAddress";
   }
   default: {
     return "Unknown";

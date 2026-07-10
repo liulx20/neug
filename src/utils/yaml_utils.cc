@@ -60,6 +60,7 @@ YAML::Node property_type_to_yaml(const DataType& type) {
   case DataTypeId::kUInt64:
   case DataTypeId::kFloat:
   case DataTypeId::kDouble:
+  case DataTypeId::kIpAddress:
     node["primitive_type"] =
         config_parsing::PrimitivePropertyTypeToString(type.id());
     break;

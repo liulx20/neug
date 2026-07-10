@@ -79,6 +79,13 @@
     return n;                        \
   }()
 
+#define YAML_NODE_DT_IP_ADDRESS            \
+  [] {                                     \
+    YAML::Node n;                          \
+    n["primitive_type"] = "DT_IP_ADDRESS"; \
+    return n;                              \
+  }()
+
 #define YAML_NODE_DT_ANY            \
   [] {                              \
     YAML::Node n;                   \

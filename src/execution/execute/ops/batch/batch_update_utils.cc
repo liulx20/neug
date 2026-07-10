@@ -107,6 +107,11 @@ void add_member(rapidjson::Value& object,
     object.AddMember(rapidjson::Value(key.c_str(), allocator).Move(),
                      rapidjson::Value(interval_str.c_str(), allocator).Move(),
                      allocator);
+  } else if (value.type().id() == DataTypeId::kIpAddress) {
+    std::string ip_str = value.GetValue<IpAddress>().to_string();
+    object.AddMember(rapidjson::Value(key.c_str(), allocator).Move(),
+                     rapidjson::Value(ip_str.c_str(), allocator).Move(),
+                     allocator);
   } else {
     THROW_RUNTIME_ERROR("Unsupported property type for key: " + key);
   }
@@ -151,6 +156,11 @@ void add_prop_member(rapidjson::Value& object,
     const std::string& str_value = StringValue::Get(value);
     valueVal.SetString(str_value.data(), str_value.size(), allocator);
     object.AddMember(rapidjson::Value(key.c_str(), allocator).Move(), valueVal,
+                     allocator);
+  } else if (value.type().id() == DataTypeId::kIpAddress) {
+    std::string ip_str = value.GetValue<IpAddress>().to_string();
+    object.AddMember(rapidjson::Value(key.c_str(), allocator).Move(),
+                     rapidjson::Value(ip_str.c_str(), allocator).Move(),
                      allocator);
   } else {
     THROW_NOT_IMPLEMENTED_EXCEPTION("Unsupported property type for key: " +

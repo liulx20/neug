@@ -146,6 +146,12 @@ Value Value::createDefaultValue(const DataType& dataType) {
     return Value((uint64_t) 0);
   case DataTypeId::kUInt32:
     return Value((uint32_t) 0);
+  case DataTypeId::kIpAddress: {
+    Value result(DataType(DataTypeId::kIpAddress));
+    result.isNull_ = false;
+    result.val.uint32Val = 0;
+    return result;
+  }
   case DataTypeId::kUInt16:
     return Value((uint16_t) 0);
   case DataTypeId::kUInt8:
@@ -336,6 +342,9 @@ void Value::copyFromRowLayout(const uint8_t* value) {
   case DataTypeId::kUInt32: {
     val.uint32Val = *((uint32_t*) value);
   } break;
+  case DataTypeId::kIpAddress: {
+    val.uint32Val = *((uint32_t*) value);
+  } break;
   case DataTypeId::kUInt16: {
     val.uint16Val = *((uint16_t*) value);
   } break;
@@ -523,6 +532,13 @@ std::string Value::toString() const {
     return TypeUtils::toString(val.uint64Val);
   case DataTypeId::kUInt32:
     return TypeUtils::toString(val.uint32Val);
+  case DataTypeId::kIpAddress: {
+    const uint32_t ip = val.uint32Val;
+    return std::to_string(ip & 0xFF) + "." +
+           std::to_string((ip >> 8) & 0xFF) + "." +
+           std::to_string((ip >> 16) & 0xFF) + "." +
+           std::to_string((ip >> 24) & 0xFF);
+  }
   case DataTypeId::kUInt16:
     return TypeUtils::toString(val.uint16Val);
   case DataTypeId::kUInt8:

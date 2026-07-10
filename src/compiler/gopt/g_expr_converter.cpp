@@ -377,6 +377,9 @@ std::unique_ptr<::common::Expression> GExprConverter::convertValue(
   case common::DataTypeId::kUInt32:
     valuePB->set_u32(value.getValue<uint32_t>());
     break;
+  case common::DataTypeId::kIpAddress:
+    valuePB->set_u32(value.getValue<uint32_t>());
+    break;
   case common::DataTypeId::kUInt64:
     valuePB->set_u64(value.getValue<uint64_t>());
     break;

@@ -20,6 +20,7 @@
  */
 
 #include <assert.h>
+#include <cstdio>
 
 #include <glog/logging.h>
 
@@ -33,6 +34,38 @@
 #include "neug/utils/serialization/out_archive.h"
 
 namespace neug {
+
+IpAddress::IpAddress(const std::string& ip_str) {
+  unsigned a = 0, b = 0, c = 0, d = 0;
+  if (std::sscanf(ip_str.c_str(), "%u.%u.%u.%u", &a, &b, &c, &d) != 4 ||
+      a > 255 || b > 255 || c > 255 || d > 255) {
+    THROW_INVALID_ARGUMENT_EXCEPTION("Invalid IP address: " + ip_str);
+  }
+  ip = a | (b << 8) | (c << 16) | (d << 24);
+}
+
+std::string IpAddress::to_string() const {
+  std::string s;
+  s.reserve(15);
+  s.append(std::to_string(ip & 0xFF));
+  s.push_back('.');
+  s.append(std::to_string((ip >> 8) & 0xFF));
+  s.push_back('.');
+  s.append(std::to_string((ip >> 16) & 0xFF));
+  s.push_back('.');
+  s.append(std::to_string((ip >> 24) & 0xFF));
+  return s;
+}
+
+InArchive& operator<<(InArchive& arc, const IpAddress& value) {
+  arc << value.ip;
+  return arc;
+}
+
+OutArchive& operator>>(OutArchive& arc, IpAddress& value) {
+  arc >> value.ip;
+  return arc;
+}
 
 DataType::DataType() : DataType(DataTypeId::kInvalid) {}
 
@@ -244,6 +277,8 @@ DataType parse_from_data_type(const ::common::DataType& ddt) {
       return DataType(DataTypeId::kBoolean);
     case ::common::PrimitiveType::DT_ANY:
       return DataType(DataTypeId::kUnknown);
+    case ::common::PrimitiveType::DT_IP_ADDRESS:
+      return DataType(DataTypeId::kIpAddress);
     default:
       THROW_NOT_SUPPORTED_EXCEPTION("unrecognized primitive type - " +
                                     std::to_string(pt));
@@ -379,6 +414,8 @@ std::string DataType::ToString() const {
     return "TIMESTAMP_MS";
   case DataTypeId::kInterval:
     return "INTERVAL";
+  case DataTypeId::kIpAddress:
+    return "IP_ADDRESS";
   case DataTypeId::kInternalId:
     return "INTERNAL_ID";
   case DataTypeId::kVertex:

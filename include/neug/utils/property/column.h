@@ -197,6 +197,7 @@ using DoubleColumn = TypedColumn<double>;
 using FloatColumn = TypedColumn<float>;
 using DateTimeColumn = TypedColumn<DateTime>;
 using IntervalColumn = TypedColumn<Interval>;
+using IpAddressColumn = TypedColumn<IpAddress>;
 
 template <>
 class TypedColumn<EmptyType> : public ColumnBase {
@@ -245,6 +246,7 @@ struct string_item {
   uint64_t offset : 48;
   uint32_t length : 16;
 };
+
 
 template <>
 class TypedColumn<std::string_view> : public ColumnBase {

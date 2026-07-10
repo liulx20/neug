@@ -111,6 +111,12 @@ void append_property_to_json(const std::string& key, const Value& prop,
                   rapidjson::Value(interval_str.c_str(), allocator), allocator);
     break;
   }
+  case DataTypeId::kIpAddress: {
+    auto ip_str = prop.GetValue<IpAddress>().to_string();
+    doc.AddMember(rapidjson::Value(key.c_str(), allocator),
+                  rapidjson::Value(ip_str.c_str(), allocator), allocator);
+    break;
+  }
   default:
     LOG(WARNING) << "append_property_to_json not support for type " +
                         std::to_string(static_cast<int>(type_id));
@@ -420,6 +426,20 @@ static void add_column(const std::shared_ptr<IContextColumn>& col,
     if (casted->is_optional()) {
       auto bitmap = BoolVectorToBitmap(casted->validity_bitmap());
       interval_col->set_validity(bitmap);
+    }
+    break;
+  }
+  case DataTypeId::kIpAddress: {
+    // No dedicated IP array in result proto; export as string.
+    auto casted = std::dynamic_pointer_cast<ValueColumn<IpAddress>>(col);
+    auto string_col = column->mutable_string_array();
+    string_col->mutable_values()->Reserve(casted->size());
+    for (size_t i = 0; i < casted->size(); ++i) {
+      string_col->add_values(casted->get_value(i).to_string());
+    }
+    if (casted->is_optional()) {
+      auto bitmap = BoolVectorToBitmap(casted->validity_bitmap());
+      string_col->set_validity(bitmap);
     }
     break;
   }

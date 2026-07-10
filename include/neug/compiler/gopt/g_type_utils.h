@@ -107,6 +107,8 @@ class GTypeUtils {
       return YAML_NODE_DT_DOUBLE;
     case neug::common::DataTypeId::kBoolean:
       return YAML_NODE_DT_BOOL;
+    case neug::common::DataTypeId::kIpAddress:
+      return YAML_NODE_DT_IP_ADDRESS;
     case neug::common::DataTypeId::kVarchar: {
       size_t maxLen = VARCHAR_DEFAULT_LENGTH;
       auto extraInfo = type.getExtraTypeInfo();

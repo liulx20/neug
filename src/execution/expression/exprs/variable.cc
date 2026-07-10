@@ -44,6 +44,8 @@ DataType parse_from_data_type(const ::common::DataType& ddt) {
       return DataType(DataTypeId::kDouble);
     case ::common::PrimitiveType::DT_BOOL:
       return DataType(DataTypeId::kBoolean);
+    case ::common::PrimitiveType::DT_IP_ADDRESS:
+      return DataType(DataTypeId::kIpAddress);
     default:
       THROW_NOT_SUPPORTED_EXCEPTION("unrecognized primitive type - " +
                                     std::to_string(pt));

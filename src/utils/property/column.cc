@@ -122,6 +122,7 @@ NEUG_REGISTER_TEMPLATE_MODULE(TypedColumn, double);
 NEUG_REGISTER_TEMPLATE_MODULE(TypedColumn, Date);
 NEUG_REGISTER_TEMPLATE_MODULE(TypedColumn, DateTime);
 NEUG_REGISTER_TEMPLATE_MODULE(TypedColumn, Interval);
+NEUG_REGISTER_TEMPLATE_MODULE(TypedColumn, IpAddress);
 NEUG_REGISTER_TEMPLATE_MODULE(TypedColumn, std::string_view);
 
 }  // namespace neug

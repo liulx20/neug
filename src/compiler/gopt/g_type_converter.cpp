@@ -359,6 +359,10 @@ GPhysicalTypeConverter::convertSimpleLogicalType(const neug::DataType& type) {
     result->set_primitive_type(::common::PrimitiveType::DT_DOUBLE);
     break;
   }
+  case common::DataTypeId::kIpAddress: {
+    result->set_primitive_type(::common::PrimitiveType::DT_IP_ADDRESS);
+    break;
+  }
   case common::DataTypeId::kVarchar: {
     auto extraInfo = type.getExtraTypeInfo();
     size_t maxLen;
@@ -464,6 +468,8 @@ neug::DataType GLogicalTypeConverter::convertDataType(
       return neug::DataType(DataTypeId::kFloat);
     case ::common::PrimitiveType::DT_DOUBLE:
       return neug::DataType(DataTypeId::kDouble);
+    case ::common::PrimitiveType::DT_IP_ADDRESS:
+      return neug::DataType(DataTypeId::kIpAddress);
     case ::common::PrimitiveType::DT_NULL:
       return neug::DataType(DataTypeId::kUnknown);
     default:

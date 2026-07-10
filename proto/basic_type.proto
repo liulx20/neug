@@ -14,6 +14,7 @@ enum PrimitiveType {
     DT_FLOAT = 6;
     DT_DOUBLE = 7;
     DT_NULL = 8; // denote the type of 'null' value
+    DT_IP_ADDRESS = 9;
 }
 
 message Decimal { // precision=4 scale=2 : 23.12

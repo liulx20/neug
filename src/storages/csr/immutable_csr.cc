@@ -588,6 +588,7 @@ NEUG_REGISTER_TEMPLATE_MODULE(ImmutableCsr, double);
 NEUG_REGISTER_TEMPLATE_MODULE(ImmutableCsr, Date);
 NEUG_REGISTER_TEMPLATE_MODULE(ImmutableCsr, DateTime);
 NEUG_REGISTER_TEMPLATE_MODULE(ImmutableCsr, Interval);
+NEUG_REGISTER_TEMPLATE_MODULE(ImmutableCsr, IpAddress);
 
 NEUG_REGISTER_TEMPLATE_MODULE(SingleImmutableCsr, EmptyType);
 NEUG_REGISTER_TEMPLATE_MODULE(SingleImmutableCsr, bool);
@@ -600,5 +601,6 @@ NEUG_REGISTER_TEMPLATE_MODULE(SingleImmutableCsr, double);
 NEUG_REGISTER_TEMPLATE_MODULE(SingleImmutableCsr, Date);
 NEUG_REGISTER_TEMPLATE_MODULE(SingleImmutableCsr, DateTime);
 NEUG_REGISTER_TEMPLATE_MODULE(SingleImmutableCsr, Interval);
+NEUG_REGISTER_TEMPLATE_MODULE(SingleImmutableCsr, IpAddress);
 
 }  // namespace neug

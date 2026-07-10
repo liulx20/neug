@@ -204,6 +204,8 @@ Value parse_value_by_type(const std::string& token, const DataType& data_type,
     return parse_timestamp_value(token);
   case DataTypeId::kInterval:
     return parse_typed_value<interval_t>(token);
+  case DataTypeId::kIpAddress:
+    return parse_typed_value<IpAddress>(token);
   case DataTypeId::kVarchar:
     return parse_typed_value<std::string>(token);
   default:
@@ -985,6 +987,11 @@ void set_properties_from_context_column(
     case DataTypeId::kInterval: {
       auto* typed = dynamic_cast<TypedColumn<Interval>*>(col);
       typed->set_value(vids[k], val.GetValue<Interval>());
+      break;
+    }
+    case DataTypeId::kIpAddress: {
+      auto* typed = dynamic_cast<TypedColumn<IpAddress>*>(col);
+      typed->set_value(vids[k], val.GetValue<IpAddress>());
       break;
     }
     case DataTypeId::kVarchar: {

@@ -184,6 +184,7 @@ PhysicalTypeID getPhysicalType(DataTypeId typeId) {
   case DataTypeId::kUInt16:
     return PhysicalTypeID::UINT16;
   case DataTypeId::kUInt32:
+  case DataTypeId::kIpAddress:
     return PhysicalTypeID::UINT32;
   case DataTypeId::kUInt64:
     return PhysicalTypeID::UINT64;
@@ -283,6 +284,8 @@ std::string LogicalTypeUtils::toString(DataTypeId dataTypeID) {
     return "TIMESTAMP_MS";
   case DataTypeId::kInterval:
     return "INTERVAL";
+  case DataTypeId::kIpAddress:
+    return "IP_ADDRESS";
   case DataTypeId::kVarchar:
     return "STRING";
   case DataTypeId::kList:
@@ -570,6 +573,9 @@ bool tryGetIDFromString(const std::string& str, DataTypeId& id) {
     id = DataTypeId::kTimestampMs;
   } else if ("INTERVAL" == upperStr || "DURATION" == upperStr) {
     id = DataTypeId::kInterval;
+  } else if ("IP_ADDRESS" == upperStr || "IPADDRESS" == upperStr ||
+             "IP" == upperStr) {
+    id = DataTypeId::kIpAddress;
   } else {
     return false;
   }

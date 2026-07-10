@@ -71,6 +71,7 @@ enum class DataTypeId : uint8_t {
   kMap = 102,
 
   kArray = 108,
+  kIpAddress = 109,
 
   kVertex = 200,
   kEdge = 201,
@@ -100,14 +101,33 @@ enum class DataTypeId : uint8_t {
 
 #define FOR_EACH_DATA_TYPE_NO_STRING(M) \
   FOR_EACH_DATA_TYPE_PRIMITIVE(M)       \
-  DATA_TYPES_DATETIME(M)
+  DATA_TYPES_DATETIME(M)                \
+  M(kIpAddress, IpAddress)
 
 #define FOR_EACH_DATA_TYPE(M)     \
   FOR_EACH_DATA_TYPE_PRIMITIVE(M) \
   DATA_TYPES_DATETIME(M)          \
-  M(kVarchar, std::string)
+  M(kVarchar, std::string)        \
+  M(kIpAddress, IpAddress)
 
 struct ExtraTypeInfo;
+
+// IPv4 stored as host-order uint32: octet0 in LSB (a.b.c.d => a|(b<<8)|(c<<16)|(d<<24)).
+struct IpAddress {
+  uint32_t ip;
+
+  IpAddress() = default;
+  ~IpAddress() = default;
+  explicit IpAddress(uint32_t ip_v) : ip(ip_v) {}
+  explicit IpAddress(const std::string& ip_str);
+
+  bool operator==(const IpAddress& other) const { return ip == other.ip; }
+  bool operator!=(const IpAddress& other) const { return ip != other.ip; }
+  bool operator<(const IpAddress& other) const { return ip < other.ip; }
+
+  std::string to_string() const;
+};
+
 
 struct DataType {
   DataType();
@@ -205,6 +225,7 @@ struct DataType {
   static constexpr const DataTypeId EDGE = DataTypeId::kEdge;
   static constexpr const DataTypeId PATH = DataTypeId::kPath;
   static constexpr const DataTypeId EMPTY = DataTypeId::kEmpty;
+  static constexpr const DataTypeId IP_ADDRESS = DataTypeId::kIpAddress;
 
   std::shared_ptr<ExtraTypeInfo> getExtraTypeInfoSPtr() const {
     return type_info_;
@@ -238,5 +259,8 @@ DataType parse_from_ir_data_type(const ::common::IrDataType& dt);
 
 InArchive& operator<<(InArchive& arc, const DataType& type);
 OutArchive& operator>>(OutArchive& arc, DataType& type);
+
+InArchive& operator<<(InArchive& arc, const IpAddress& value);
+OutArchive& operator>>(OutArchive& arc, IpAddress& value);
 
 }  // namespace neug
