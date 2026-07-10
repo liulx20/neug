@@ -112,6 +112,12 @@ enum class DataTypeId : uint8_t {
 
 struct ExtraTypeInfo;
 
+// Physical storage encoding for STRING/VARCHAR. Logical type stays kVarchar.
+enum class StringEncoding : uint8_t {
+  PLAIN = 0,
+  DICTIONARY = 1,
+};
+
 // IPv4 stored as host-order uint32: octet0 in LSB (a.b.c.d => a|(b<<8)|(c<<16)|(d<<24)).
 struct IpAddress {
   uint32_t ip;
@@ -143,7 +149,8 @@ struct DataType {
   static DataType List(const DataType& child_type);
   static DataType Array(const DataType& child_type, uint64_t num_elements);
   static DataType Map(const DataType& key_type, const DataType& value_type);
-  static DataType Varchar(size_t max_length = 256);
+  static DataType Varchar(size_t max_length = 256,
+                          StringEncoding encoding = StringEncoding::PLAIN);
   static DataType InternalId();
 
   bool containsAny() const;

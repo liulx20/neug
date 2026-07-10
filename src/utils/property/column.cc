@@ -66,11 +66,16 @@ std::unique_ptr<ColumnBase> CreateColumn(DataType type) {
 #undef TYPE_DISPATCHER
   case DataTypeId::kVarchar: {
     uint16_t max_length = STRING_DEFAULT_MAX_LENGTH;
+    StringEncoding encoding = StringEncoding::PLAIN;
     if (extra_type_info) {
       auto str_info = dynamic_cast<const StringTypeInfo*>(extra_type_info);
       if (str_info) {
         max_length = str_info->max_length;
+        encoding = str_info->encoding;
       }
+    }
+    if (encoding == StringEncoding::DICTIONARY) {
+      return std::make_unique<DictStringColumn>();
     }
     return std::make_unique<StringColumn>(max_length);
   }
@@ -97,8 +102,7 @@ std::shared_ptr<RefColumnBase> CreateRefColumn(const ColumnBase& column) {
     FOR_EACH_DATA_TYPE_NO_STRING(TYPE_DISPATCHER)
 #undef TYPE_DISPATCHER
   case DataTypeId::kVarchar: {
-    return std::make_shared<TypedRefColumn<std::string_view>>(
-        dynamic_cast<const StringColumn&>(column));
+    return std::make_shared<TypedRefColumn<std::string_view>>(column);
   }
   case DataTypeId::kArray: {
     return std::make_shared<ArrayRefColumn>(

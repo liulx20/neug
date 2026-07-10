@@ -93,7 +93,8 @@ class Value {
 
   static Value STRING(const std::string& str);
 
-  static Value VARCHAR(const std::string& str, uint16_t max_length);
+  static Value VARCHAR(const std::string& str, uint16_t max_length,
+                       StringEncoding encoding = StringEncoding::PLAIN);
 
   static Value VERTEX(const vertex_t& vertex);
 

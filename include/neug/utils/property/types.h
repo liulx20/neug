@@ -523,24 +523,39 @@ struct convert<std::shared_ptr<neug::ExtraTypeInfo>> {
         THROW_INTERNAL_EXCEPTION("Failed to cast to StringTypeInfo");
       }
       node["string"]["varchar"]["max_length"] = string_type_info->max_length;
+      if (string_type_info->encoding == neug::StringEncoding::DICTIONARY) {
+        node["string"]["varchar"]["encoding"] = "DICT";
+      }
     }
     return node;
   }
 
   static bool decode(const Node& node,
                      std::shared_ptr<neug::ExtraTypeInfo>& rhs) {
+    auto parse_encoding = [](const Node& vc) {
+      neug::StringEncoding encoding = neug::StringEncoding::PLAIN;
+      if (vc["encoding"]) {
+        auto enc = vc["encoding"].as<std::string>();
+        if (enc == "DICT" || enc == "DICTIONARY" || enc == "dictionary") {
+          encoding = neug::StringEncoding::DICTIONARY;
+        }
+      }
+      return encoding;
+    };
     if (node["string"]) {
       if (node["string"]["varchar"] &&
           node["string"]["varchar"]["max_length"]) {
         size_t max_length =
             node["string"]["varchar"]["max_length"].as<size_t>();
-        rhs = std::make_shared<neug::StringTypeInfo>(max_length);
+        rhs = std::make_shared<neug::StringTypeInfo>(
+            max_length, parse_encoding(node["string"]["varchar"]));
       } else if (node["string"]["var_char"] &&
                  node["string"]["var_char"]["max_length"]) {
         LOG(WARNING) << "var_char is deprecated, use varchar instead.";
         size_t max_length =
             node["string"]["var_char"]["max_length"].as<size_t>();
-        rhs = std::make_shared<neug::StringTypeInfo>(max_length);
+        rhs = std::make_shared<neug::StringTypeInfo>(
+            max_length, parse_encoding(node["string"]["var_char"]));
       }
     }
     return true;
@@ -557,14 +572,35 @@ struct convert<neug::DataType> {
     } else if (config["string"]) {
       if (config["string"].IsMap()) {
         if (config["string"]["var_char"]) {
-          property_type = neug::DataType(
-              neug::DataTypeId::kVarchar,
-              std::make_shared<neug::StringTypeInfo>(
-                  config["string"]["var_char"]["max_length"].as<size_t>()));
+          auto vc = config["string"]["var_char"];
+          size_t max_length = neug::STRING_DEFAULT_MAX_LENGTH;
+          if (vc["max_length"]) {
+            max_length = vc["max_length"].as<size_t>();
+          }
+          neug::StringEncoding encoding = neug::StringEncoding::PLAIN;
+          if (vc["encoding"]) {
+            auto enc = vc["encoding"].as<std::string>();
+            if (enc == "DICT" || enc == "DICTIONARY" || enc == "dictionary") {
+              encoding = neug::StringEncoding::DICTIONARY;
+            }
+          }
+          property_type = neug::DataType::Varchar(max_length, encoding);
+        } else if (config["string"]["varchar"]) {
+          auto vc = config["string"]["varchar"];
+          size_t max_length = neug::STRING_DEFAULT_MAX_LENGTH;
+          if (vc["max_length"]) {
+            max_length = vc["max_length"].as<size_t>();
+          }
+          neug::StringEncoding encoding = neug::StringEncoding::PLAIN;
+          if (vc["encoding"]) {
+            auto enc = vc["encoding"].as<std::string>();
+            if (enc == "DICT" || enc == "DICTIONARY" || enc == "dictionary") {
+              encoding = neug::StringEncoding::DICTIONARY;
+            }
+          }
+          property_type = neug::DataType::Varchar(max_length, encoding);
         } else if (config["string"]["long_text"]) {
-          property_type = neug::DataType(neug::DataTypeId::kVarchar,
-                                         std::make_shared<neug::StringTypeInfo>(
-                                             neug::STRING_DEFAULT_MAX_LENGTH));
+          property_type = neug::DataType::Varchar(neug::STRING_DEFAULT_MAX_LENGTH);
         } else {
           LOG(ERROR) << "Unrecognized string type";
         }
@@ -620,6 +656,10 @@ struct convert<neug::DataType> {
       node["string"]["varchar"]["max_length"] =
           string_type_info ? string_type_info->max_length
                            : neug::STRING_DEFAULT_MAX_LENGTH;
+      if (string_type_info &&
+          string_type_info->encoding == neug::StringEncoding::DICTIONARY) {
+        node["string"]["varchar"]["encoding"] = "DICT";
+      }
     } else if (id == neug::DataTypeId::kDate) {
       node["temporal"]["date"] = "";
     } else if (id == neug::DataTypeId::kArray) {

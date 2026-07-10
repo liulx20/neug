@@ -35,6 +35,8 @@ message String {
     // string with variable length, bounded by max_length
     message VarChar {
         uint32 max_length = 1;
+        // 0 = PLAIN, 1 = DICTIONARY (storage encoding; logical type stays string)
+        uint32 encoding = 2;
     }
 
     oneof item {

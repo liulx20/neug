@@ -309,8 +309,9 @@ Value Value::STRING(const std::string& str) {
   return result;
 }
 
-Value Value::VARCHAR(const std::string& str, uint16_t max_length) {
-  Value result(DataType::Varchar(max_length));
+Value Value::VARCHAR(const std::string& str, uint16_t max_length,
+                     StringEncoding encoding) {
+  Value result(DataType::Varchar(max_length, encoding));
   result.value_info_ = std::make_shared<StringValueInfo>(str);
   result.is_null_ = false;
   return result;

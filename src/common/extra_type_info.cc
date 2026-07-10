@@ -151,6 +151,7 @@ bool MapTypeInfo::EqualsInternal(ExtraTypeInfo* other_p) const {
 
 bool StringTypeInfo::EqualsInternal(ExtraTypeInfo* other_p) const {
   auto& other = other_p->Cast<StringTypeInfo>();
+  // encoding is a storage hint; logical STRING equality ignores it.
   return max_length == other.max_length;
 }
 

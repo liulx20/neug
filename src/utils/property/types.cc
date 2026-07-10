@@ -134,7 +134,8 @@ InArchive& operator<<(InArchive& arc,
   if (type_info->type == ExtraTypeInfoType::STRING_TYPE_INFO) {
     std::shared_ptr<const StringTypeInfo> string_type_info =
         std::dynamic_pointer_cast<const StringTypeInfo>(type_info);
-    arc << string_type_info->max_length;
+    arc << string_type_info->max_length
+        << static_cast<uint8_t>(string_type_info->encoding);
   }
   return arc;
 }
@@ -144,10 +145,11 @@ OutArchive& operator>>(OutArchive& arc,
   ExtraTypeInfoType type;
   arc >> type;
   if (type == ExtraTypeInfoType::STRING_TYPE_INFO) {
-    type_info = std::make_shared<StringTypeInfo>(STRING_DEFAULT_MAX_LENGTH);
-    StringTypeInfo& string_type_info =
-        dynamic_cast<StringTypeInfo&>(*type_info);
-    arc >> string_type_info.max_length;
+    size_t max_length = STRING_DEFAULT_MAX_LENGTH;
+    uint8_t encoding = 0;
+    arc >> max_length >> encoding;
+    type_info = std::make_shared<StringTypeInfo>(
+        max_length, static_cast<StringEncoding>(encoding));
   }
   return arc;
 }

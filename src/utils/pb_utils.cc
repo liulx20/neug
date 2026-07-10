@@ -164,13 +164,17 @@ bool string_type_to_property_type(const common::String& string_type,
   switch (string_type.item_case()) {
   case common::String::kVarChar: {
     size_t max_length = STRING_DEFAULT_MAX_LENGTH;
+    StringEncoding encoding = StringEncoding::PLAIN;
     if (string_type.has_var_char()) {
       auto str_info = string_type.var_char();
       if (str_info.max_length() > 0) {
         max_length = str_info.max_length();
       }
+      if (str_info.encoding() == 1) {
+        encoding = StringEncoding::DICTIONARY;
+      }
     }
-    out_type = DataType::Varchar(max_length);
+    out_type = DataType::Varchar(max_length, encoding);
     break;
   }
   case common::String::kLongText: {
@@ -317,12 +321,15 @@ bool default_expression_to_value(const DataType& type,
   }
   if (type.id() == DataTypeId::kVarchar) {
     size_t max_length = STRING_DEFAULT_MAX_LENGTH;
+    StringEncoding encoding = StringEncoding::PLAIN;
     if (type.getExtraTypeInfo()) {
-      max_length = type.getExtraTypeInfo()->Cast<StringTypeInfo>().max_length;
+      auto& info = type.getExtraTypeInfo()->Cast<StringTypeInfo>();
+      max_length = info.max_length;
+      encoding = info.encoding;
     }
     if (max_length <= std::numeric_limits<uint16_t>::max()) {
       out_value = Value::VARCHAR(StringValue::Get(out_value),
-                                 static_cast<uint16_t>(max_length));
+                                 static_cast<uint16_t>(max_length), encoding);
     }
   }
   return true;

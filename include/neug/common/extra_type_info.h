@@ -126,9 +126,13 @@ struct MapTypeInfo : public ExtraTypeInfo {
 
 struct StringTypeInfo : public ExtraTypeInfo {
   size_t max_length;
-  explicit StringTypeInfo(size_t length)
+  StringEncoding encoding;
+
+  explicit StringTypeInfo(size_t length,
+                          StringEncoding encoding_p = StringEncoding::PLAIN)
       : ExtraTypeInfo(ExtraTypeInfoType::STRING_TYPE_INFO),
-        max_length(length) {}
+        max_length(length),
+        encoding(encoding_p) {}
 
  protected:
   bool EqualsInternal(ExtraTypeInfo* other_p) const override;

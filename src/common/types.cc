@@ -214,9 +214,9 @@ DataType DataType::Map(const DataType& key_type, const DataType& value_type) {
   return DataType(DataTypeId::kMap, type_info);
 }
 
-DataType DataType::Varchar(size_t max_length) {
+DataType DataType::Varchar(size_t max_length, StringEncoding encoding) {
   std::shared_ptr<ExtraTypeInfo> type_info =
-      std::make_shared<StringTypeInfo>(max_length);
+      std::make_shared<StringTypeInfo>(max_length, encoding);
   return DataType(DataTypeId::kVarchar, type_info);
 }
 
@@ -485,7 +485,8 @@ InArchive& operator<<(InArchive& in_archive, const DataType& type) {
       in_archive << array_type_info.child_type << array_type_info.num_elements;
     } else if (id == DataTypeId::kVarchar) {
       const auto& varchar_type_info = type_info->Cast<StringTypeInfo>();
-      in_archive << varchar_type_info.max_length;
+      in_archive << varchar_type_info.max_length
+                 << static_cast<uint8_t>(varchar_type_info.encoding);
     } else {
       THROW_NOT_SUPPORTED_EXCEPTION(
           "unsupported data type with extra type info - " + type.ToString());
@@ -522,8 +523,10 @@ OutArchive& operator>>(OutArchive& out_archive, DataType& type) {
       type = DataType::Array(child_type, array_size);
     } else if (id == DataTypeId::kVarchar) {
       size_t max_length;
-      out_archive >> max_length;
-      type = DataType::Varchar(max_length);
+      uint8_t encoding = 0;
+      out_archive >> max_length >> encoding;
+      type = DataType::Varchar(max_length,
+                               static_cast<StringEncoding>(encoding));
     } else {
       THROW_NOT_SUPPORTED_EXCEPTION(
           "unsupported data type with extra type info - " + std::to_string(id));

@@ -995,17 +995,8 @@ void set_properties_from_context_column(
       break;
     }
     case DataTypeId::kVarchar: {
-      auto* typed = dynamic_cast<TypedColumn<std::string_view>*>(col);
-      auto s = val.GetValue<std::string>();
-      std::shared_lock<std::shared_mutex> lock(mutex);
-      if (typed->available_space() <= s.size()) {
-        lock.unlock();
-        std::unique_lock<std::shared_mutex> w_lock(mutex);
-        typed->resize(typed->size());
-        w_lock.unlock();
-        lock.lock();
-      }
-      typed->set_value(vids[k], std::string_view(s));
+      // Works for both plain StringColumn and DictStringColumn.
+      col->set_any(vids[k], val, true);
       break;
     }
     default:

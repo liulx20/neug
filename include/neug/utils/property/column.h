@@ -580,6 +580,57 @@ class TypedColumn<std::string_view> : public ColumnBase {
 
 using StringColumn = TypedColumn<std::string_view>;
 
+/**
+ * Dictionary-encoded STRING column. Logical type remains kVarchar.
+ * Per-row code is uint8_t (max 256 distinct values); dictionary is
+ * std::vector<std::string>. No max-length truncation.
+ */
+class DictStringColumn : public ColumnBase {
+ public:
+  static constexpr size_t kMaxDictSize = 256;
+
+  DictStringColumn() = default;
+  ~DictStringColumn() override = default;
+
+  void Open(Checkpoint& ckp, const ModuleDescriptor& desc,
+            MemoryLevel level) override;
+
+  void Dump(Checkpoint& ckp, CheckpointManifest& meta,
+            const std::string& key) override;
+
+  size_t size() const override { return codes_.size(); }
+
+  void resize(size_t size) override;
+  void resize(size_t size, const Value& default_value) override;
+
+  DataTypeId type() const override { return DataTypeId::kVarchar; }
+
+  void set_any(size_t index, const Value& value, bool insert_safe) override;
+  Value get_any(size_t index) const override;
+  void ingest(uint32_t index, OutArchive& arc) override;
+
+  inline std::string_view get_view(size_t index) const {
+    assert(index < codes_.size());
+    uint8_t id = codes_[index];
+    assert(id < dict_.size());
+    return dict_[id];
+  }
+
+  std::unique_ptr<Module> Clone() const override;
+  void Detach(Checkpoint& ckp, MemoryLevel level) override;
+
+  std::string ModuleTypeName() const override { return type_name(); }
+  static std::string type_name() { return "column<dict_string>"; }
+
+ private:
+  uint8_t intern(std::string_view value);
+  void rebuildIndex();
+
+  std::vector<uint8_t> codes_;
+  std::vector<std::string> dict_;
+  std::unordered_map<std::string, uint8_t> str_to_id_;
+};
+
 std::unique_ptr<ColumnBase> CreateColumn(DataType type);
 
 class RefColumnBase {
@@ -628,13 +679,22 @@ class TypedRefColumn<std::string_view> : public RefColumnBase {
  public:
   using value_type = std::string_view;
 
-  explicit TypedRefColumn(const TypedColumn<std::string_view>& column)
-      : column_(column), basic_size(column.size()) {}
+  explicit TypedRefColumn(const ColumnBase& column)
+      : plain_(nullptr), dict_(nullptr), basic_size(0) {
+    if (auto* dict = dynamic_cast<const DictStringColumn*>(&column)) {
+      dict_ = dict;
+      basic_size = dict->size();
+    } else {
+      plain_ = &dynamic_cast<const StringColumn&>(column);
+      basic_size = plain_->size();
+    }
+  }
+
   ~TypedRefColumn() {}
 
   inline std::string_view get_view(size_t index) const {
     assert(index < basic_size);
-    return column_.get_view(index);
+    return plain_ ? plain_->get_view(index) : dict_->get_view(index);
   }
 
   Value get_any(size_t index) const override {
@@ -646,7 +706,8 @@ class TypedRefColumn<std::string_view> : public RefColumnBase {
   ColType col_type() const override { return ColType::kInternal; }
 
  private:
-  const TypedColumn<std::string_view>& column_;
+  const TypedColumn<std::string_view>* plain_;
+  const DictStringColumn* dict_;
   size_t basic_size;
 };
 

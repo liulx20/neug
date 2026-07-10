@@ -365,16 +365,19 @@ GPhysicalTypeConverter::convertSimpleLogicalType(const neug::DataType& type) {
   }
   case common::DataTypeId::kVarchar: {
     auto extraInfo = type.getExtraTypeInfo();
-    size_t maxLen;
-    if (!extraInfo) {
-      maxLen = VARCHAR_DEFAULT_LENGTH;
-    } else {
+    size_t maxLen = VARCHAR_DEFAULT_LENGTH;
+    StringEncoding encoding = StringEncoding::PLAIN;
+    if (extraInfo) {
       auto& stringTypeInfo = extraInfo->Cast<neug::StringTypeInfo>();
       maxLen = stringTypeInfo.max_length;
+      encoding = stringTypeInfo.encoding;
     }
     auto strType = std::make_unique<::common::String>();
     auto varChar = std::make_unique<::common::String::VarChar>();
     varChar->set_max_length(maxLen);
+    if (encoding == StringEncoding::DICTIONARY) {
+      varChar->set_encoding(1);
+    }
     strType->set_allocated_var_char(varChar.release());
     result->set_allocated_string(strType.release());
     break;

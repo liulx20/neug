@@ -40,15 +40,26 @@ class GTypeUtils {
 
     auto stringType = node["string"];
     if (stringType) {
-      // denote varchar
-      if (stringType["var_char"]) {
-        auto varChar = stringType["var_char"];
+      auto parse_varchar = [](YAML::Node varChar) {
+        size_t maxLen = VARCHAR_DEFAULT_LENGTH;
         auto maxLength = varChar["max_length"];
         if (maxLength && maxLength.IsScalar()) {
-          return neug::common::DataType::Varchar(maxLength.as<uint64_t>());
-        } else {
-          return neug::common::DataType::Varchar();
+          maxLen = maxLength.as<uint64_t>();
         }
+        neug::StringEncoding encoding = neug::StringEncoding::PLAIN;
+        if (varChar["encoding"] && varChar["encoding"].IsScalar()) {
+          auto enc = varChar["encoding"].as<std::string>();
+          if (enc == "DICT" || enc == "DICTIONARY" || enc == "dictionary") {
+            encoding = neug::StringEncoding::DICTIONARY;
+          }
+        }
+        return neug::common::DataType::Varchar(maxLen, encoding);
+      };
+      // denote varchar
+      if (stringType["var_char"]) {
+        return parse_varchar(stringType["var_char"]);
+      } else if (stringType["varchar"]) {
+        return parse_varchar(stringType["varchar"]);
       } else if (stringType["long_text"]) {
         return neug::common::DataType::Varchar();
       }

@@ -743,6 +743,10 @@ DataType convertFromString(const std::string& str,
     return parseMapType(trimmedStr, context);
   } else if (upperDataTypeString == "STRING") {
     return DataType::Varchar();
+  } else if (upperDataTypeString == "DICTSTRING" ||
+             upperDataTypeString == "STRING_DICT") {
+    // Storage-layer dictionary encoding; logical type remains STRING.
+    return DataType::Varchar(256, StringEncoding::DICTIONARY);
   } else if (upperDataTypeString.starts_with("VARCHAR")) {
     return parseStringType(trimmedStr);
   } else {

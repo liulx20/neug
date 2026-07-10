@@ -64,11 +64,20 @@ YAML::Node property_type_to_yaml(const DataType& type) {
     node["primitive_type"] =
         config_parsing::PrimitivePropertyTypeToString(type.id());
     break;
-  case DataTypeId::kVarchar:
-    node["string"]["var_char"]["max_length"] =
-        type_info ? type_info->Cast<StringTypeInfo>().max_length
-                  : STRING_DEFAULT_MAX_LENGTH;
+  case DataTypeId::kVarchar: {
+    size_t max_length = STRING_DEFAULT_MAX_LENGTH;
+    StringEncoding encoding = StringEncoding::PLAIN;
+    if (type_info) {
+      auto& info = type_info->Cast<StringTypeInfo>();
+      max_length = info.max_length;
+      encoding = info.encoding;
+    }
+    node["string"]["var_char"]["max_length"] = max_length;
+    if (encoding == StringEncoding::DICTIONARY) {
+      node["string"]["var_char"]["encoding"] = "DICT";
+    }
     break;
+  }
   case DataTypeId::kDate:
     node["temporal"] = config_parsing::TemporalTypeToYAML(type.id());
     break;
