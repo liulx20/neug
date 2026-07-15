@@ -43,6 +43,10 @@
 #define TOSTRING(x) STRINGIFY(x)
 
 namespace neug {
+namespace main {
+class MetadataManager;
+}  // namespace main
+
 class NeugDBService;
 class AppManager;
 class Connection;
@@ -331,6 +335,10 @@ class NeugDB {
 
   // GraphSnapshotStore - manages multiple versions of PropertyGraph for MVCC
   std::unique_ptr<GraphSnapshotStore> snapshot_store_;
+
+  // Lives for the NeugDB object lifetime so Catalog/VFS/extension registrations
+  // survive Close()/Open() (e.g. AP -> TP via serve()).
+  std::shared_ptr<main::MetadataManager> metadata_manager_;
 
   std::shared_ptr<IGraphPlanner> planner_;
   std::shared_ptr<QueryProcessor> query_processor_;

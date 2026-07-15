@@ -32,6 +32,9 @@ class MetadataRegistry {
 
   static void registerMetadata(main::MetadataManager* metadataManager);
 
+  // Clear the registry if it still points at @p metadataManager.
+  static void clearIf(main::MetadataManager* metadataManager);
+
   static MetadataManager* getMetadata();
 
   static catalog::GCatalog* getCatalog();

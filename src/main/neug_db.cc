@@ -27,6 +27,8 @@
 #include <sstream>
 #include <vector>
 
+#include "neug/compiler/main/metadata_manager.h"
+#include "neug/compiler/main/metadata_registry.h"
 #include "neug/compiler/planner/gopt_planner.h"
 #include "neug/compiler/planner/graph_planner.h"
 #include "neug/execution/execute/plan_parser.h"
@@ -84,6 +86,10 @@ NeugDB::NeugDB()
 
 NeugDB::~NeugDB() {
   Close();
+  if (metadata_manager_) {
+    main::MetadataRegistry::clearIf(metadata_manager_.get());
+    metadata_manager_.reset();
+  }
   WalWriterFactory::Finalize();
   WalParserFactory::Finalize();
   // We put the removal of temp dir here to avoid the situation that
@@ -297,8 +303,12 @@ void NeugDB::ingestWals(IWalParser& parser, PropertyGraph& graph) {
 
 void NeugDB::initPlannerAndQueryProcessor() {
   if (config_.planner_kind == "gopt") {
-    // Gopt planner is the default planner, so we don't need to create it.
-    planner_ = std::make_shared<GOptPlanner>();
+    // Keep MetadataManager across Close()/Open() so LOAD-ed extensions remain
+    // registered when switching AP -> TP via serve().
+    if (!metadata_manager_) {
+      metadata_manager_ = std::make_shared<main::MetadataManager>();
+    }
+    planner_ = std::make_shared<GOptPlanner>(metadata_manager_);
   } else {
     THROW_INVALID_ARGUMENT_EXCEPTION("Invalid planner kind: " +
                                      config_.planner_kind);

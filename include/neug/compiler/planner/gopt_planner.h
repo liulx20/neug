@@ -5,6 +5,7 @@
 
 #include <memory>
 #include <string>
+#include <utility>
 
 #include "neug/compiler/common/case_insensitive_map.h"
 #include "neug/compiler/main/client_context.h"
@@ -22,12 +23,21 @@ namespace neug {
  * @note GOptPlanner is not thread-safe. Concurrent access to its methods
  * should be synchronized externally.
  * compilePlan: need read-lock.
+ *
+ * MetadataManager may be shared with NeugDB so extension registrations
+ * (Catalog / VFS) survive Close()/Open() during serve().
  */
 class GOptPlanner : public neug::IGraphPlanner {
  public:
-  GOptPlanner() : IGraphPlanner() {
-    database = std::make_unique<neug::main::MetadataManager>();
-    neug::main::MetadataRegistry::registerMetadata(database.get());
+  explicit GOptPlanner(
+      std::shared_ptr<main::MetadataManager> metadata_manager = nullptr)
+      : IGraphPlanner() {
+    if (metadata_manager) {
+      database = std::move(metadata_manager);
+    } else {
+      database = std::make_shared<main::MetadataManager>();
+    }
+    main::MetadataRegistry::registerMetadata(database.get());
   }
 
   inline std::string type() const override { return "gopt"; }
@@ -38,8 +48,10 @@ class GOptPlanner : public neug::IGraphPlanner {
 
   AccessMode analyzeMode(const std::string& query) const override;
 
+  main::MetadataManager* getMetadataManager() const { return database.get(); }
+
  private:
-  std::unique_ptr<neug::main::MetadataManager> database;
+  std::shared_ptr<main::MetadataManager> database;
 
  private:
   // return string pattern of update operators
