@@ -38,7 +38,8 @@ class DataExportOpr : public IOperator {
 
   Stream<ContextChunk> Eval(IStorageInterface& graph, const ParamsMap& params,
                             Stream<ContextChunk>&& input,
-                            neug::execution::OprTimer* timer) override;
+                            neug::execution::OprTimer* timer,
+                            TaskScheduler* scheduler) override;
 
  private:
   reader::FileSchema schema_;
@@ -49,7 +50,8 @@ class DataExportOpr : public IOperator {
 Stream<ContextChunk> DataExportOpr::Eval(IStorageInterface& graph_interface,
                                          const ParamsMap& params,
                                          Stream<ContextChunk>&& input,
-                                         neug::execution::OprTimer* timer) {
+                                         neug::execution::OprTimer* timer,
+                                         TaskScheduler* scheduler) {
   return defer_stream(
       std::move(input),
       [this, &graph_interface, params,

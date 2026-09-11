@@ -28,16 +28,23 @@ namespace neug {
 
 namespace execution {
 
+class TaskScheduler;
+
 class IOperator {
  public:
   virtual ~IOperator() = default;
 
   virtual std::string get_operator_name() const = 0;
 
+  // Explicit opt-in: storage being read-only does not make exports, extension
+  // management or arbitrary procedures safe to schedule concurrently.
+  virtual bool supports_task_execution() const { return false; }
+
   virtual Stream<ContextChunk> Eval(IStorageInterface& graph,
                                     const ParamsMap& params,
                                     Stream<ContextChunk>&& input,
-                                    OprTimer* timer) = 0;
+                                    OprTimer* timer,
+                                    TaskScheduler* scheduler = nullptr) = 0;
 
   virtual void build_explain_children(OprTimer* parent_timer,
                                       const ParamsMap& params,

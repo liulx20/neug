@@ -31,8 +31,8 @@ class DropIndexOpr : public IOperator {
   std::string get_operator_name() const override { return "DropIndexOpr"; }
 
   Stream<ContextChunk> Eval(IStorageInterface& graph, const ParamsMap& params,
-                            Stream<ContextChunk>&& input,
-                            OprTimer* timer) override {
+                            Stream<ContextChunk>&& input, OprTimer* timer,
+                            TaskScheduler* scheduler) override {
     return defer_stream(
         std::move(input),
         [this, &graph, params,

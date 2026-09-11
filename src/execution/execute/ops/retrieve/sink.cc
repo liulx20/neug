@@ -28,11 +28,13 @@ namespace ops {
 
 class SinkOpr : public IOperator {
  public:
+  bool supports_task_execution() const override { return true; }
+
   explicit SinkOpr(const std::vector<int>& tag_ids) : tag_ids_(tag_ids) {}
 
   Stream<ContextChunk> Eval(IStorageInterface& graph, const ParamsMap& params,
-                            Stream<ContextChunk>&& input,
-                            OprTimer* timer) override {
+                            Stream<ContextChunk>&& input, OprTimer* timer,
+                            TaskScheduler* scheduler) override {
     input.set_metadata(StreamMetadata{tag_ids_});
     return std::move(input);
   }

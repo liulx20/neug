@@ -32,6 +32,8 @@ namespace ops {
 template <typename T1>
 class TCOpr : public IOperator {
  public:
+  bool supports_task_execution() const override { return true; }
+
   TCOpr(const physical::EdgeExpand& ee_opr0,
         const physical::EdgeExpand& ee_opr1,
         const physical::EdgeExpand& ee_opr2, const LabelTriplet& label0,
@@ -76,7 +78,8 @@ class TCOpr : public IOperator {
   Stream<ContextChunk> Eval(IStorageInterface& graph_interface,
                             const ParamsMap& params,
                             Stream<ContextChunk>&& input,
-                            neug::execution::OprTimer* timer) override {
+                            neug::execution::OprTimer* timer,
+                            TaskScheduler* scheduler) override {
     return map_chunks(std::move(input),
                       [this, &graph_interface, params,
                        timer](ContextChunk&& chunk) -> result<ContextChunk> {

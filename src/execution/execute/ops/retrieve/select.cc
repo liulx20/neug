@@ -31,6 +31,8 @@ namespace ops {
 
 class SelectIdNeOpr : public IOperator {
  public:
+  bool supports_task_execution() const override { return true; }
+
   explicit SelectIdNeOpr(std::unique_ptr<neug::execution::ExprBase>&& pred,
                          int tag, const std::string& prop_name,
                          const std::string& param_name)
@@ -44,7 +46,8 @@ class SelectIdNeOpr : public IOperator {
   Stream<ContextChunk> Eval(IStorageInterface& graph_interface,
                             const ParamsMap& params,
                             Stream<ContextChunk>&& input,
-                            neug::execution::OprTimer* timer) override {
+                            neug::execution::OprTimer* timer,
+                            TaskScheduler* scheduler) override {
     return map_chunks(
         std::move(input),
         [this, &graph_interface, params,
@@ -102,6 +105,8 @@ class SelectIdNeOpr : public IOperator {
 
 class SelectOpr : public IOperator {
  public:
+  bool supports_task_execution() const override { return true; }
+
   explicit SelectOpr(std::unique_ptr<neug::execution::ExprBase>&& expr)
       : pred_(std::move(expr)) {}
 
@@ -109,7 +114,8 @@ class SelectOpr : public IOperator {
 
   Stream<ContextChunk> Eval(IStorageInterface& graph, const ParamsMap& params,
                             Stream<ContextChunk>&& input,
-                            neug::execution::OprTimer* timer) override {
+                            neug::execution::OprTimer* timer,
+                            TaskScheduler* scheduler) override {
     return map_chunks(
         std::move(input),
         [this, &graph, params,

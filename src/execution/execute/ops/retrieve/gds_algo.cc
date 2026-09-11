@@ -31,7 +31,8 @@ GDSAlgoOpr::GDSAlgoOpr(std::unique_ptr<function::CallFuncInputBase> algo_input,
 Stream<ContextChunk> GDSAlgoOpr::Eval(IStorageInterface& graph_interface,
                                       const ParamsMap& params,
                                       Stream<ContextChunk>&& input,
-                                      neug::execution::OprTimer* timer) {
+                                      neug::execution::OprTimer* timer,
+                                      TaskScheduler* scheduler) {
   return defer_stream(
       std::move(input),
       [this, &graph_interface, params,

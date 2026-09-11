@@ -44,8 +44,8 @@ class BatchInsertVertexOpr : public IOperator {
   }
 
   Stream<ContextChunk> Eval(IStorageInterface& graph, const ParamsMap& params,
-                            Stream<ContextChunk>&& input,
-                            OprTimer* timer) override;
+                            Stream<ContextChunk>&& input, OprTimer* timer,
+                            TaskScheduler* scheduler) override;
 
  private:
   common::NameOrId vertex_type_;
@@ -54,7 +54,7 @@ class BatchInsertVertexOpr : public IOperator {
 
 Stream<ContextChunk> BatchInsertVertexOpr::Eval(
     IStorageInterface& graph_interface, const ParamsMap& params,
-    Stream<ContextChunk>&& input, OprTimer* timer) {
+    Stream<ContextChunk>&& input, OprTimer* timer, TaskScheduler* scheduler) {
   return defer_stream(
       std::move(input),
       [this, &graph_interface, params,

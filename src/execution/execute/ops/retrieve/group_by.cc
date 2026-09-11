@@ -32,6 +32,8 @@ namespace ops {
 
 class GroupByOpr : public IOperator {
  public:
+  bool supports_task_execution() const override { return true; }
+
   GroupByOpr(std::vector<std::pair<int, int>>&& mappings,
              std::vector<physical::GroupBy_AggFunc>&& aggrs)
       : mappings_(std::move(mappings)), aggrs_(std::move(aggrs)) {}
@@ -40,7 +42,8 @@ class GroupByOpr : public IOperator {
 
   Stream<ContextChunk> Eval(IStorageInterface& graph, const ParamsMap& params,
                             Stream<ContextChunk>&& input,
-                            neug::execution::OprTimer* timer) override {
+                            neug::execution::OprTimer* timer,
+                            TaskScheduler* scheduler) override {
     return reduce_stream(
         std::move(input),
         [this, &graph, params,

@@ -46,6 +46,8 @@ const DataType& getListLikeChildType(const DataType& type) {
 
 class UnfoldOpr : public IOperator {
  public:
+  bool supports_task_execution() const override { return true; }
+
   explicit UnfoldOpr(std::optional<int32_t> key,
                      std::unique_ptr<neug::execution::ExprBase> expr, int alias)
       : key_(key), expr_(std::move(expr)), alias_(alias) {}
@@ -54,7 +56,8 @@ class UnfoldOpr : public IOperator {
 
   Stream<ContextChunk> Eval(IStorageInterface& graph, const ParamsMap& params,
                             Stream<ContextChunk>&& input,
-                            neug::execution::OprTimer* timer) override {
+                            neug::execution::OprTimer* timer,
+                            TaskScheduler* scheduler) override {
     return map_chunks(
         std::move(input),
         [this, &graph, params,

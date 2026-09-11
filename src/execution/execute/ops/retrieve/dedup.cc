@@ -35,12 +35,15 @@ class OprTimer;
 namespace ops {
 class DedupOpr : public IOperator {
  public:
+  bool supports_task_execution() const override { return true; }
+
   explicit DedupOpr(const std::vector<int32_t>& tag_ids) : tag_ids_(tag_ids) {}
   std::string get_operator_name() const override { return "DedupOpr"; }
 
   Stream<ContextChunk> Eval(IStorageInterface& graph, const ParamsMap& params,
                             Stream<ContextChunk>&& input,
-                            neug::execution::OprTimer* timer) override {
+                            neug::execution::OprTimer* timer,
+                            TaskScheduler* scheduler) override {
     return reduce_stream(std::move(input),
                          [this, &graph, params,
                           timer](ContextChunk&& chunk) -> result<ContextChunk> {

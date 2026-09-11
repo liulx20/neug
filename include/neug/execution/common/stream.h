@@ -29,6 +29,17 @@ struct StreamMetadata {
   std::vector<int> output_columns;
 };
 
+// Per-execution state, never shared by concurrent consumers. Operator objects
+// describe the plan; state objects own cursors, inputs and intermediate data.
+template <typename T>
+class StreamState {
+ public:
+  virtual ~StreamState() = default;
+  virtual result<std::optional<T>> Next() = 0;
+};
+
+using OperatorState = StreamState<ContextChunk>;
+
 // A single-consumer, synchronous pull stream. Construction does not read rows.
 // The stream yields T directly. Execution uses ContextChunk, which already
 // owns the DataChunk and anonymous head. Metadata also describes empty streams.
@@ -41,7 +52,14 @@ class Stream {
 
   Stream() = default;
   explicit Stream(Pull pull, StreamMetadata metadata = {})
-      : metadata_(std::move(metadata)), pull_(std::move(pull)) {}
+      : metadata_(std::move(metadata)) {
+    if (pull) {
+      state_ = std::make_shared<FunctionState>(std::move(pull));
+    }
+  }
+  explicit Stream(std::shared_ptr<StreamState<T>> state,
+                  StreamMetadata metadata = {})
+      : metadata_(std::move(metadata)), state_(std::move(state)) {}
   Stream(Stream&&) = default;
   Stream& operator=(Stream&&) = default;
   Stream(const Stream&) = delete;
@@ -51,15 +69,15 @@ class Stream {
     if (error_) {
       return tl::unexpected(*error_);
     }
-    if (!pull_) {
+    if (!state_) {
       return std::optional<T>{};
     }
     auto output = PullOne();
     if (!output) {
       error_ = output.error();
-      pull_ = nullptr;
+      state_.reset();
     } else if (!*output) {
-      pull_ = nullptr;
+      state_.reset();
     }
     return output;
   }
@@ -73,14 +91,22 @@ class Stream {
   NextResult PullOne() {
     NextResult output = std::optional<T>{};
     TRY_HANDLE_ALL_WITH_EXCEPTION(
-        NextResult, [&]() { return pull_(); },
+        NextResult, [&]() { return state_->Next(); },
         [&](const Status& status) { output = tl::unexpected(status); },
         [&](NextResult&& batch) { output = std::move(batch); });
     return output;
   }
 
+  class FunctionState final : public StreamState<T> {
+   public:
+    explicit FunctionState(Pull pull) : pull_(std::move(pull)) {}
+    NextResult Next() override { return pull_(); }
+
+   private:
+    Pull pull_;
+  };
   StreamMetadata metadata_;
-  Pull pull_;
+  std::shared_ptr<StreamState<T>> state_;
   std::optional<Status> error_;
 };
 
@@ -98,19 +124,24 @@ template <typename Initialize>
 Stream<ContextChunk> defer_stream(Stream<ContextChunk> input,
                                   Initialize initialize) {
   auto metadata = input.metadata();
-  struct State {
-    Stream<ContextChunk> input;
-    std::optional<Stream<ContextChunk>> output;
+  class DeferredState final : public OperatorState {
+   public:
+    DeferredState(Stream<ContextChunk> input, Initialize initialize)
+        : input_(std::move(input)), initialize_(std::move(initialize)) {}
+    Stream<ContextChunk>::NextResult Next() override {
+      if (!output_) {
+        output_.emplace(initialize_(std::move(input_)));
+      }
+      return output_->Next();
+    }
+
+   private:
+    Stream<ContextChunk> input_;
+    Initialize initialize_;
+    std::optional<Stream<ContextChunk>> output_;
   };
-  auto state = std::make_shared<State>(State{std::move(input), std::nullopt});
   return Stream<ContextChunk>(
-      [state, initialize = std::move(
-                  initialize)]() mutable -> Stream<ContextChunk>::NextResult {
-        if (!state->output) {
-          state->output.emplace(initialize(std::move(state->input)));
-        }
-        return state->output->Next();
-      },
+      std::make_shared<DeferredState>(std::move(input), std::move(initialize)),
       std::move(metadata));
 }
 
@@ -141,17 +172,25 @@ template <typename Transform>
 Stream<ContextChunk> map_chunks(Stream<ContextChunk> input,
                                 Transform transform) {
   auto metadata = input.metadata();
-  auto upstream = std::make_shared<Stream<ContextChunk>>(std::move(input));
+  class MapState final : public OperatorState {
+   public:
+    MapState(Stream<ContextChunk> input, Transform transform)
+        : input_(std::move(input)), transform_(std::move(transform)) {}
+    Stream<ContextChunk>::NextResult Next() override {
+      GS_AUTO(next, input_.Next());
+      if (!next) {
+        return std::optional<ContextChunk>{};
+      }
+      GS_AUTO(output, transform_(std::move(*next)));
+      return std::optional<ContextChunk>(std::move(output));
+    }
+
+   private:
+    Stream<ContextChunk> input_;
+    Transform transform_;
+  };
   return Stream<ContextChunk>(
-      [upstream, transform = std::move(
-                     transform)]() mutable -> Stream<ContextChunk>::NextResult {
-        GS_AUTO(next, upstream->Next());
-        if (!next) {
-          return std::optional<ContextChunk>{};
-        }
-        GS_AUTO(output, transform(std::move(*next)));
-        return std::optional<ContextChunk>(std::move(output));
-      },
+      std::make_shared<MapState>(std::move(input), std::move(transform)),
       std::move(metadata));
 }
 
@@ -159,16 +198,25 @@ Stream<ContextChunk> map_chunks(Stream<ContextChunk> input,
 template <typename Producer>
 Stream<ContextChunk> generate_chunk(Producer producer,
                                     StreamMetadata metadata = {}) {
+  class GenerateState final : public OperatorState {
+   public:
+    explicit GenerateState(Producer producer)
+        : producer_(std::move(producer)) {}
+    Stream<ContextChunk>::NextResult Next() override {
+      if (done_) {
+        return std::optional<ContextChunk>{};
+      }
+      done_ = true;
+      GS_AUTO(chunk, producer_());
+      return std::optional<ContextChunk>(std::move(chunk));
+    }
+
+   private:
+    Producer producer_;
+    bool done_ = false;
+  };
   return Stream<ContextChunk>(
-      [producer = std::move(producer),
-       done = false]() mutable -> Stream<ContextChunk>::NextResult {
-        if (done) {
-          return std::optional<ContextChunk>{};
-        }
-        done = true;
-        GS_AUTO(chunk, producer());
-        return std::optional<ContextChunk>(std::move(chunk));
-      },
+      std::make_shared<GenerateState>(std::move(producer)),
       std::move(metadata));
 }
 
@@ -217,16 +265,23 @@ inline result<std::vector<ContextChunk>> collect_batches(
 
 inline Stream<ContextChunk> stream_from_batches(
     std::vector<ContextChunk> chunks, StreamMetadata metadata = {}) {
-  auto batches = std::make_shared<std::vector<ContextChunk>>(std::move(chunks));
-  return Stream<ContextChunk>(
-      [batches,
-       index = size_t{0}]() mutable -> Stream<ContextChunk>::NextResult {
-        if (index == batches->size()) {
-          return std::optional<ContextChunk>{};
-        }
-        return std::optional<ContextChunk>(std::move((*batches)[index++]));
-      },
-      std::move(metadata));
+  class BatchState final : public OperatorState {
+   public:
+    explicit BatchState(std::vector<ContextChunk> chunks)
+        : chunks_(std::move(chunks)) {}
+    Stream<ContextChunk>::NextResult Next() override {
+      if (index_ == chunks_.size()) {
+        return std::optional<ContextChunk>{};
+      }
+      return std::optional<ContextChunk>(std::move(chunks_[index_++]));
+    }
+
+   private:
+    std::vector<ContextChunk> chunks_;
+    size_t index_ = 0;
+  };
+  return Stream<ContextChunk>(std::make_shared<BatchState>(std::move(chunks)),
+                              std::move(metadata));
 }
 
 inline Stream<ContextChunk> stream_from_context(Context ctx) {

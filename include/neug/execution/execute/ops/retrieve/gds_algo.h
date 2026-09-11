@@ -34,7 +34,8 @@ class GDSAlgoOpr : public IOperator {
 
   Stream<ContextChunk> Eval(IStorageInterface& graph, const ParamsMap& params,
                             Stream<ContextChunk>&& input,
-                            neug::execution::OprTimer* timer) override;
+                            neug::execution::OprTimer* timer,
+                            TaskScheduler* scheduler = nullptr) override;
 
  private:
   std::unique_ptr<function::CallFuncInputBase> algo_input_;

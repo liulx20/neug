@@ -14,6 +14,7 @@
  */
 
 #include "neug/execution/execute/pipeline.h"
+#include "neug/execution/execute/task_scheduler.h"
 
 #include <glog/logging.h>
 #include <algorithm>
@@ -68,7 +69,8 @@ neug::result<Context> Pipeline::Execute(IStorageInterface& graph, Context&& ctx,
 Stream<ContextChunk> Pipeline::ExecuteStream(IStorageInterface& graph,
                                              Stream<ContextChunk> stream,
                                              const ParamsMap& params,
-                                             OprTimer* timer) {
+                                             OprTimer* timer,
+                                             TaskScheduler* scheduler) {
   auto charged = timer ? std::make_shared<double>(0.0) : nullptr;
   auto* current_timer = timer;
   for (size_t i = 0; i < operators_.size(); ++i) {
@@ -76,38 +78,98 @@ Stream<ContextChunk> Pipeline::ExecuteStream(IStorageInterface& graph,
     if (current_timer) {
       current_timer->set_name(name);
     }
-    auto output =
-        operators_[i]->Eval(graph, params, std::move(stream), current_timer);
+    auto output = operators_[i]->Eval(graph, params, std::move(stream),
+                                      current_timer, scheduler);
     auto metadata = output.metadata();
-    auto producer = std::make_shared<Stream<ContextChunk>>(std::move(output));
-    auto pull = [producer, name]() -> Stream<ContextChunk>::NextResult {
-      auto next = producer->Next();
-      if (!next) {
-        return tl::unexpected(operator_error(next.error(), name));
+    class PipelineOperatorState final : public OperatorState {
+     public:
+      PipelineOperatorState(Stream<ContextChunk> producer, std::string name,
+                            OprTimer* timer, std::shared_ptr<double> charged)
+          : producer_(std::move(producer)),
+            name_(std::move(name)),
+            timer_(timer),
+            charged_(std::move(charged)) {}
+      Stream<ContextChunk>::NextResult Next() override {
+        if (timer_) {
+          StreamTimerScope scope(*timer_, *charged_);
+          auto next = Pull();
+          if (next && *next) {
+            timer_->add_num_tuples((**next).row_num());
+          }
+          return next;
+        }
+        return Pull();
       }
-      return next;
+
+     private:
+      Stream<ContextChunk>::NextResult Pull() {
+        auto next = producer_.Next();
+        if (!next) {
+          return tl::unexpected(operator_error(next.error(), name_));
+        }
+        return next;
+      }
+      Stream<ContextChunk> producer_;
+      std::string name_;
+      OprTimer* timer_;
+      std::shared_ptr<double> charged_;
     };
-    if (current_timer) {
-      stream = Stream<ContextChunk>(
-          [pull = std::move(pull), current_timer,
-           charged]() -> Stream<ContextChunk>::NextResult {
-            StreamTimerScope scope(*current_timer, *charged);
-            auto next = pull();
-            if (next && *next) {
-              current_timer->add_num_tuples((**next).row_num());
-            }
-            return next;
-          },
-          std::move(metadata));
-    } else {
-      stream = Stream<ContextChunk>(std::move(pull), std::move(metadata));
-    }
+    stream = Stream<ContextChunk>(
+        std::make_shared<PipelineOperatorState>(std::move(output), name,
+                                                current_timer, charged),
+        std::move(metadata));
     if (current_timer && i + 1 < operators_.size()) {
       current_timer->set_next(std::make_unique<OprTimer>());
       current_timer = current_timer->next();
     }
   }
   return std::move(stream);
+}
+
+bool Pipeline::supports_task_execution() const {
+  return std::all_of(operators_.begin(), operators_.end(), [](const auto& op) {
+    return op->supports_task_execution();
+  });
+}
+
+Stream<ContextChunk> Pipeline::ExecuteScheduled(IStorageInterface& graph,
+                                                Stream<ContextChunk> input,
+                                                const ParamsMap& params,
+                                                size_t workers,
+                                                OprTimer* timer) {
+  if (graph.writable() || !graph.readable()) {
+    return error_stream<ContextChunk>(
+        Status(StatusCode::ERR_INVALID_ARGUMENT,
+               "Scheduled execution requires a read-only snapshot"));
+  }
+  if (!supports_task_execution()) {
+    return error_stream<ContextChunk>(Status(
+        StatusCode::ERR_INVALID_ARGUMENT,
+        "Pipeline contains an operator that does not support task execution"));
+  }
+  if (workers == 0) {
+    return error_stream<ContextChunk>(
+        Status(StatusCode::ERR_INVALID_ARGUMENT,
+               "Scheduled execution requires at least one worker"));
+  }
+  // Eval establishes output metadata without pulling data. Keep initialization
+  // on the caller, just as in ExecuteStream, so empty results retain aliases.
+  auto scheduler = std::make_unique<TaskScheduler>(workers);
+  auto output =
+      ExecuteStream(graph, std::move(input), params, timer, scheduler.get());
+  auto metadata = output.metadata();
+  struct ScheduledPipelineState final : OperatorState {
+    std::unique_ptr<TaskScheduler> scheduler;
+    Stream<ContextChunk> output;
+    Stream<ContextChunk>::NextResult Next() override {
+      auto task = scheduler->Submit([this] { return output.Next(); });
+      return scheduler->Wait(task);
+    }
+  };
+  auto state = std::make_shared<ScheduledPipelineState>();
+  state->scheduler = std::move(scheduler);
+  state->output = std::move(output);
+  return Stream<ContextChunk>(std::move(state), std::move(metadata));
 }
 
 neug::result<std::unique_ptr<OprTimer>> Pipeline::explain_tree(

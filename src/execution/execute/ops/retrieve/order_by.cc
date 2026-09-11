@@ -28,6 +28,8 @@ namespace ops {
 
 class OrderByOpr : public IOperator {
  public:
+  bool supports_task_execution() const override { return true; }
+
   OrderByOpr(std::vector<std::pair<int32_t, bool>> keys, int lower, int upper)
       : keys_(std::move(keys)), lower_(lower), upper_(upper) {}
 
@@ -36,7 +38,8 @@ class OrderByOpr : public IOperator {
   Stream<ContextChunk> Eval(IStorageInterface& graph_interface,
                             const ParamsMap& params,
                             Stream<ContextChunk>&& input,
-                            neug::execution::OprTimer* timer) override {
+                            neug::execution::OprTimer* timer,
+                            TaskScheduler* scheduler) override {
     return reduce_stream(
         std::move(input),
         [this, &graph_interface, params,

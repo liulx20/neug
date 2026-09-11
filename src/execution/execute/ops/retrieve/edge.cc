@@ -93,6 +93,8 @@ bool edge_expand_get_v_fusable(const physical::PhysicalPlan& plan, int idx,
 
 class EdgeExpandVWithEPCmpOpr : public IOperator {
  public:
+  bool supports_task_execution() const override { return true; }
+
   EdgeExpandVWithEPCmpOpr(const EdgeExpandParams& eep,
                           const SpecialPredicateConfig& config,
                           std::unique_ptr<ExprBase>&& pred)
@@ -105,7 +107,8 @@ class EdgeExpandVWithEPCmpOpr : public IOperator {
   Stream<ContextChunk> Eval(IStorageInterface& graph_interface,
                             const ParamsMap& params,
                             Stream<ContextChunk>&& input,
-                            neug::execution::OprTimer* timer) override {
+                            neug::execution::OprTimer* timer,
+                            TaskScheduler* scheduler) override {
     return map_chunks(
         std::move(input),
         [this, &graph_interface, params,
@@ -142,6 +145,8 @@ class EdgeExpandVWithEPCmpOpr : public IOperator {
 
 class EdgeExpandVOpr : public IOperator {
  public:
+  bool supports_task_execution() const override { return true; }
+
   EdgeExpandVOpr(const EdgeExpandParams& eep, std::unique_ptr<ExprBase>&& pred)
       : eep_(eep), pred_(std::move(pred)) {}
 
@@ -150,7 +155,8 @@ class EdgeExpandVOpr : public IOperator {
   Stream<ContextChunk> Eval(IStorageInterface& graph_interface,
                             const ParamsMap& params,
                             Stream<ContextChunk>&& input,
-                            neug::execution::OprTimer* timer) override {
+                            neug::execution::OprTimer* timer,
+                            TaskScheduler* scheduler) override {
     return map_chunks(
         std::move(input),
         [this, &graph_interface, params,
@@ -182,6 +188,8 @@ class EdgeExpandVOpr : public IOperator {
 
 class EdgeExpandEWithSPredOpr : public IOperator {
  public:
+  bool supports_task_execution() const override { return true; }
+
   EdgeExpandEWithSPredOpr(const EdgeExpandParams& eep,
                           const SpecialPredicateConfig& config)
       : eep_(eep), config_(config) {}
@@ -193,7 +201,8 @@ class EdgeExpandEWithSPredOpr : public IOperator {
   Stream<ContextChunk> Eval(IStorageInterface& graph_interface,
                             const ParamsMap& params,
                             Stream<ContextChunk>&& input,
-                            neug::execution::OprTimer* timer) override {
+                            neug::execution::OprTimer* timer,
+                            TaskScheduler* scheduler) override {
     return map_chunks(
         std::move(input),
         [this, &graph_interface, params,
@@ -215,6 +224,8 @@ class EdgeExpandEWithSPredOpr : public IOperator {
 
 class EdgeExpandEOpr : public IOperator {
  public:
+  bool supports_task_execution() const override { return true; }
+
   EdgeExpandEOpr(const EdgeExpandParams& eep, std::unique_ptr<ExprBase>&& pred)
       : eep_(eep), pred_(std::move(pred)) {}
 
@@ -223,7 +234,8 @@ class EdgeExpandEOpr : public IOperator {
   Stream<ContextChunk> Eval(IStorageInterface& graph_interface,
                             const ParamsMap& params,
                             Stream<ContextChunk>&& input,
-                            neug::execution::OprTimer* timer) override {
+                            neug::execution::OprTimer* timer,
+                            TaskScheduler* scheduler) override {
     return map_chunks(
         std::move(input),
         [this, &graph_interface, params,
@@ -254,6 +266,8 @@ class EdgeExpandEOpr : public IOperator {
 
 class EdgeExpandVWithSPVertexPredOpr : public IOperator {
  public:
+  bool supports_task_execution() const override { return true; }
+
   EdgeExpandVWithSPVertexPredOpr(const EdgeExpandParams& eep,
                                  const SpecialPredicateConfig& config)
       : eep_(eep), config_(config) {}
@@ -265,7 +279,8 @@ class EdgeExpandVWithSPVertexPredOpr : public IOperator {
   Stream<ContextChunk> Eval(IStorageInterface& graph_interface,
                             const ParamsMap& params,
                             Stream<ContextChunk>&& input,
-                            neug::execution::OprTimer* timer) override {
+                            neug::execution::OprTimer* timer,
+                            TaskScheduler* scheduler) override {
     return map_chunks(
         std::move(input),
         [this, &graph_interface, params,
@@ -286,6 +301,8 @@ class EdgeExpandVWithSPVertexPredOpr : public IOperator {
 
 class EdgeExpandVWithGPVertexPredOpr : public IOperator {
  public:
+  bool supports_task_execution() const override { return true; }
+
   EdgeExpandVWithGPVertexPredOpr(const EdgeExpandParams& eep,
                                  std::unique_ptr<ExprBase>&& pred)
       : eep_(eep), pred_(std::move(pred)) {}
@@ -296,7 +313,8 @@ class EdgeExpandVWithGPVertexPredOpr : public IOperator {
   Stream<ContextChunk> Eval(IStorageInterface& graph_interface,
                             const ParamsMap& params,
                             Stream<ContextChunk>&& input,
-                            neug::execution::OprTimer* timer) override {
+                            neug::execution::OprTimer* timer,
+                            TaskScheduler* scheduler) override {
     return map_chunks(
         std::move(input),
         [this, &graph_interface, params,
@@ -320,12 +338,15 @@ class EdgeExpandVWithGPVertexPredOpr : public IOperator {
 
 class EdgeExpandDegreeOpr : public IOperator {
  public:
+  bool supports_task_execution() const override { return true; }
+
   EdgeExpandDegreeOpr(const EdgeExpandParams& eep) : eep_(eep) {}
 
   Stream<ContextChunk> Eval(IStorageInterface& graph_interface,
                             const ParamsMap& params,
                             Stream<ContextChunk>&& input,
-                            neug::execution::OprTimer* timer) override {
+                            neug::execution::OprTimer* timer,
+                            TaskScheduler* scheduler) override {
     return map_chunks(
         std::move(input),
         [this, &graph_interface, params,
@@ -527,12 +548,15 @@ neug::result<OpBuildResultT> EdgeExpandGetVOprBuilder::Build(
 
 class ExpandCountOpr : public IOperator {
  public:
+  bool supports_task_execution() const override { return true; }
+
   ExpandCountOpr(const EdgeExpandParams& eep) : eep_(eep) {}
 
   Stream<ContextChunk> Eval(IStorageInterface& graph_interface,
                             const ParamsMap& params,
                             Stream<ContextChunk>&& input,
-                            neug::execution::OprTimer* timer) override {
+                            neug::execution::OprTimer* timer,
+                            TaskScheduler* scheduler) override {
     return map_chunks(
         std::move(input),
         [this, &graph_interface, params,

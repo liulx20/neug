@@ -30,6 +30,8 @@ namespace ops {
 
 class ProjectOpr : public IOperator {
  public:
+  bool supports_task_execution() const override { return true; }
+
   ProjectOpr(std::vector<std::pair<int, int>>&& select_columns_mapping,
              bool is_append)
       : is_append_(is_append),
@@ -49,7 +51,8 @@ class ProjectOpr : public IOperator {
 
   Stream<ContextChunk> Eval(IStorageInterface& graph, const ParamsMap& params,
                             Stream<ContextChunk>&& input,
-                            neug::execution::OprTimer* timer) override {
+                            neug::execution::OprTimer* timer,
+                            TaskScheduler* scheduler) override {
     return map_chunks(
         std::move(input),
         [this, &graph, params,
@@ -161,6 +164,8 @@ neug::result<OpBuildResultT> ProjectOprBuilder::Build(
 
 class ProjectOrderByOprBeta : public IOperator {
  public:
+  bool supports_task_execution() const override { return true; }
+
   ProjectOrderByOprBeta(
       std::vector<std::unique_ptr<ProjectExprBuilderBase>>&& expr_builders,
       std::vector<std::unique_ptr<ProjectExprBuilderBase>>&&
@@ -184,7 +189,8 @@ class ProjectOrderByOprBeta : public IOperator {
   Stream<ContextChunk> Eval(IStorageInterface& graph_interface,
                             const ParamsMap& params,
                             Stream<ContextChunk>&& input,
-                            neug::execution::OprTimer* timer) override {
+                            neug::execution::OprTimer* timer,
+                            TaskScheduler* scheduler) override {
     return reduce_stream(
         std::move(input),
         [this, &graph_interface, params,
