@@ -33,7 +33,7 @@ class BatchDeleteVertexOpr : public IOperator {
 
   Stream<ContextChunk> Eval(IStorageInterface& graph, const ParamsMap& params,
                             Stream<ContextChunk>&& input, OprTimer* timer,
-                            TaskScheduler* scheduler) override;
+                            OperatorInputs branches) override;
 
  private:
   std::vector<std::vector<label_t>> vertex_labels_;
@@ -42,7 +42,7 @@ class BatchDeleteVertexOpr : public IOperator {
 
 Stream<ContextChunk> BatchDeleteVertexOpr::Eval(
     IStorageInterface& graph_interface, const ParamsMap& params,
-    Stream<ContextChunk>&& input, OprTimer* timer, TaskScheduler* scheduler) {
+    Stream<ContextChunk>&& input, OprTimer* timer, OperatorInputs branches) {
   return defer_stream(
       std::move(input),
       [this, &graph_interface, params,

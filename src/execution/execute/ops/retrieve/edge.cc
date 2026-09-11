@@ -108,7 +108,7 @@ class EdgeExpandVWithEPCmpOpr : public IOperator {
                             const ParamsMap& params,
                             Stream<ContextChunk>&& input,
                             neug::execution::OprTimer* timer,
-                            TaskScheduler* scheduler) override {
+                            OperatorInputs branches) override {
     return map_chunks(
         std::move(input),
         [this, &graph_interface, params,
@@ -156,7 +156,7 @@ class EdgeExpandVOpr : public IOperator {
                             const ParamsMap& params,
                             Stream<ContextChunk>&& input,
                             neug::execution::OprTimer* timer,
-                            TaskScheduler* scheduler) override {
+                            OperatorInputs branches) override {
     return map_chunks(
         std::move(input),
         [this, &graph_interface, params,
@@ -202,7 +202,7 @@ class EdgeExpandEWithSPredOpr : public IOperator {
                             const ParamsMap& params,
                             Stream<ContextChunk>&& input,
                             neug::execution::OprTimer* timer,
-                            TaskScheduler* scheduler) override {
+                            OperatorInputs branches) override {
     return map_chunks(
         std::move(input),
         [this, &graph_interface, params,
@@ -235,7 +235,7 @@ class EdgeExpandEOpr : public IOperator {
                             const ParamsMap& params,
                             Stream<ContextChunk>&& input,
                             neug::execution::OprTimer* timer,
-                            TaskScheduler* scheduler) override {
+                            OperatorInputs branches) override {
     return map_chunks(
         std::move(input),
         [this, &graph_interface, params,
@@ -280,7 +280,7 @@ class EdgeExpandVWithSPVertexPredOpr : public IOperator {
                             const ParamsMap& params,
                             Stream<ContextChunk>&& input,
                             neug::execution::OprTimer* timer,
-                            TaskScheduler* scheduler) override {
+                            OperatorInputs branches) override {
     return map_chunks(
         std::move(input),
         [this, &graph_interface, params,
@@ -314,7 +314,7 @@ class EdgeExpandVWithGPVertexPredOpr : public IOperator {
                             const ParamsMap& params,
                             Stream<ContextChunk>&& input,
                             neug::execution::OprTimer* timer,
-                            TaskScheduler* scheduler) override {
+                            OperatorInputs branches) override {
     return map_chunks(
         std::move(input),
         [this, &graph_interface, params,
@@ -346,7 +346,7 @@ class EdgeExpandDegreeOpr : public IOperator {
                             const ParamsMap& params,
                             Stream<ContextChunk>&& input,
                             neug::execution::OprTimer* timer,
-                            TaskScheduler* scheduler) override {
+                            OperatorInputs branches) override {
     return map_chunks(
         std::move(input),
         [this, &graph_interface, params,
@@ -556,7 +556,7 @@ class ExpandCountOpr : public IOperator {
                             const ParamsMap& params,
                             Stream<ContextChunk>&& input,
                             neug::execution::OprTimer* timer,
-                            TaskScheduler* scheduler) override {
+                            OperatorInputs branches) override {
     return map_chunks(
         std::move(input),
         [this, &graph_interface, params,

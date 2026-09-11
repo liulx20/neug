@@ -24,6 +24,7 @@
 #include "neug/execution/execute/ops/retrieve/join.h"
 #include "neug/execution/execute/ops/retrieve/sink.h"
 #include "neug/execution/execute/pipeline.h"
+#include "neug/execution/execute/pipeline_graph.h"
 #include "neug/execution/execute/plan_parser.h"
 #include "neug/execution/execute/task_scheduler.h"
 #include "neug/storages/graph/property_graph.h"
@@ -40,63 +41,89 @@ ContextChunk MakeChunk(int64_t value) {
 
 TEST(TaskSchedulerTest, BranchesActuallyOverlap) {
   TaskScheduler scheduler(2);
+  PipelineGraph graph;
   std::mutex mutex;
   std::condition_variable ready;
   int started = 0;
-  auto branch = [&] {
-    std::unique_lock<std::mutex> lock(mutex);
-    ++started;
-    ready.notify_all();
-    EXPECT_TRUE(ready.wait_for(lock, std::chrono::seconds(5),
-                               [&] { return started == 2; }));
-    return std::this_thread::get_id();
-  };
-  auto task =
-      scheduler.Submit([&] { return scheduler.RunPair(branch, branch); });
-  auto ids = scheduler.Wait(task);
-  EXPECT_NE(ids.first, ids.second);
-  EXPECT_NE(ids.first, std::this_thread::get_id());
-  EXPECT_NE(ids.second, std::this_thread::get_id());
+  std::thread::id ids[2];
+  auto seed = graph.Add("seed", {}, [] { return Status::OK(); });
+  std::vector<PipelineGraph::NodeId> dependencies;
+  for (int i = 0; i < 2; ++i) {
+    dependencies.push_back(graph.Add("branch", {seed}, [&, i] {
+      std::unique_lock<std::mutex> lock(mutex);
+      ids[i] = std::this_thread::get_id();
+      ++started;
+      ready.notify_all();
+      EXPECT_TRUE(ready.wait_for(lock, std::chrono::seconds(5),
+                                 [&] { return started == 2; }));
+      return Status::OK();
+    }));
+  }
+  int joined = 0;
+  auto join = graph.Add("join", dependencies, [&] {
+    EXPECT_EQ(started, 2);
+    ++joined;
+    return Status::OK();
+  });
+  EXPECT_EQ(graph.dependencies(join), dependencies);
+  ASSERT_TRUE(graph.Execute(scheduler));
+  EXPECT_NE(ids[0], ids[1]);
+  EXPECT_NE(ids[0], std::this_thread::get_id());
+  EXPECT_NE(ids[1], std::this_thread::get_id());
+  EXPECT_EQ(joined, 1);
+  EXPECT_TRUE(graph.Execute(scheduler));
+  EXPECT_EQ(joined, 1);
 }
 
 TEST(TaskSchedulerTest, NestedDependenciesWithOneWorker) {
   TaskScheduler scheduler(1);
-  std::function<int(int)> run = [&](int depth) {
-    if (depth == 0) {
-      return 1;
+  PipelineGraph graph;
+  std::vector<int> values(63, 0);
+  std::function<PipelineGraph::NodeId(int)> build = [&](int depth) {
+    std::vector<PipelineGraph::NodeId> inputs;
+    if (depth != 0) {
+      inputs = {build(depth - 1), build(depth - 1)};
     }
-    auto pair = scheduler.RunPair([&] { return run(depth - 1); },
-                                  [&] { return run(depth - 1); });
-    return pair.first + pair.second;
+    auto id = graph.size();
+    return graph.Add("reduce", inputs, [&, id, inputs] {
+      values[id] = inputs.empty() ? 1 : values[inputs[0]] + values[inputs[1]];
+      return Status::OK();
+    });
   };
-  auto task = scheduler.Submit([&] { return run(5); });
-  EXPECT_EQ(scheduler.Wait(task), 32);
+  auto output = build(5);
+  ASSERT_TRUE(graph.Execute(scheduler));
+  EXPECT_EQ(values[output], 32);
 }
 
-TEST(TaskSchedulerTest, ExceptionsDoNotAbandonSiblingTasks) {
-  TaskScheduler scheduler(1);
-  std::atomic<int> completed{0};
-  for (bool fail_left : {false, true}) {
-    auto task = scheduler.Submit([&] {
-      return scheduler.RunPair(
-          [&] {
-            ++completed;
-            if (fail_left) {
-              throw std::runtime_error("left failed");
-            }
-            return 1;
-          },
-          [&] {
-            ++completed;
-            if (!fail_left) {
-              throw std::runtime_error("right failed");
-            }
-            return 2;
-          });
+TEST(TaskSchedulerTest, FailureDrainsSubmittedTasksAndSkipsConsumers) {
+  for (bool throws : {false, true}) {
+    TaskScheduler scheduler(2);
+    PipelineGraph graph;
+    std::atomic<int> completed{0};
+    auto left = graph.Add("left", {}, [&]() -> Status {
+      ++completed;
+      if (throws) {
+        throw std::runtime_error("left failed");
+      }
+      return Status::InternalError("left failed");
     });
-    EXPECT_THROW(scheduler.Wait(task), std::runtime_error);
+    auto right = graph.Add("right", {}, [&] {
+      ++completed;
+      return Status::OK();
+    });
+    graph.Add("join", {left, right}, [&] {
+      ADD_FAILURE() << "Failed dependency must not unlock its consumer";
+      return Status::OK();
+    });
+    if (throws) {
+      EXPECT_THROW(graph.Execute(scheduler), std::runtime_error);
+    } else {
+      auto result = graph.Execute(scheduler);
+      EXPECT_FALSE(result);
+      EXPECT_NE(result.ToString().find("left failed"), std::string::npos);
+    }
+    EXPECT_EQ(completed.load(), 2);
   }
-  EXPECT_EQ(completed.load(), 4);
 }
 
 TEST(TaskSchedulerTest, ScheduledPullIsLazyOrderedAndStopsOnDestruction) {
@@ -154,7 +181,7 @@ TEST(TaskSchedulerTest, UnsupportedOperatorsAreRejectedBeforeEval) {
     std::string get_operator_name() const override { return "UnsafeOperator"; }
     Stream<ContextChunk> Eval(IStorageInterface&, const ParamsMap&,
                               Stream<ContextChunk>&&, OprTimer*,
-                              TaskScheduler*) override {
+                              OperatorInputs) override {
       ADD_FAILURE() << "Unsupported operator must not be initialized";
       return {};
     }
@@ -170,6 +197,193 @@ TEST(TaskSchedulerTest, UnsupportedOperatorsAreRejectedBeforeEval) {
   ASSERT_FALSE(next);
   EXPECT_NE(next.error().ToString().find("does not support"),
             std::string::npos);
+}
+
+class CallbackSource final : public IOperator {
+ public:
+  explicit CallbackSource(std::function<result<ContextChunk>()> produce,
+                          int* initialized = nullptr)
+      : produce_(std::move(produce)), initialized_(initialized) {}
+  bool supports_task_execution() const override { return true; }
+  bool consumes_input() const override { return false; }
+  std::string get_operator_name() const override { return "CallbackSource"; }
+  Stream<ContextChunk> Eval(IStorageInterface&, const ParamsMap&,
+                            Stream<ContextChunk>&&, OprTimer*,
+                            OperatorInputs) override {
+    if (initialized_) {
+      ++*initialized_;
+    }
+    return generate_chunk(produce_);
+  }
+
+ private:
+  std::function<result<ContextChunk>()> produce_;
+  int* initialized_;
+};
+
+Pipeline OneOperator(std::unique_ptr<IOperator> op) {
+  std::vector<std::unique_ptr<IOperator>> operators;
+  operators.push_back(std::move(op));
+  return Pipeline(std::move(operators));
+}
+
+class TestForkState final : public OperatorState {
+ public:
+  TestForkState(SubPipelineMode mode, OperatorInputs inputs)
+      : mode_(mode), inputs_(std::move(inputs)) {}
+  Stream<ContextChunk>::NextResult Next() override {
+    if (mode_ == SubPipelineMode::kMaterialized) {
+      if (index_ != 0) {
+        return std::optional<ContextChunk>{};
+      }
+      ++index_;
+      GS_AUTO(left, collect_chunk(std::move(inputs_[0])));
+      GS_AUTO(right, collect_chunk(std::move(inputs_[1])));
+      return std::optional<ContextChunk>(std::move(left));
+    }
+    while (index_ < inputs_.size()) {
+      GS_AUTO(next, inputs_[index_].Next());
+      if (next) {
+        return next;
+      }
+      ++index_;
+    }
+    return std::optional<ContextChunk>{};
+  }
+
+ private:
+  SubPipelineMode mode_;
+  OperatorInputs inputs_;
+  size_t index_ = 0;
+};
+
+class TestFork final : public IOperator {
+ public:
+  TestFork(SubPipelineMode mode, Pipeline left, Pipeline right)
+      : mode_(mode), left_(std::move(left)), right_(std::move(right)) {}
+  bool supports_task_execution() const override { return true; }
+  std::string get_operator_name() const override { return "TestFork"; }
+  SubPipelines sub_pipelines() override { return {mode_, {&left_, &right_}}; }
+  Stream<ContextChunk> Eval(IStorageInterface&, const ParamsMap&,
+                            Stream<ContextChunk>&&, OprTimer*,
+                            OperatorInputs inputs) override {
+    return Stream<ContextChunk>(
+        std::make_shared<TestForkState>(mode_, std::move(inputs)));
+  }
+
+ private:
+  SubPipelineMode mode_;
+  Pipeline left_;
+  Pipeline right_;
+};
+
+TEST(TaskSchedulerTest, BuilderSplitsForkWithoutOperatorScheduling) {
+  PropertyGraph graph;
+  GraphView view(graph);
+  StorageReadInterface storage(view, 0);
+  std::mutex mutex;
+  std::condition_variable ready;
+  int started = 0;
+  int input_pulls = 0;
+  auto produce = [&]() -> result<ContextChunk> {
+    std::unique_lock<std::mutex> lock(mutex);
+    EXPECT_EQ(input_pulls,
+              4);  // three chunks and EOF before either branch starts
+    ++started;
+    ready.notify_all();
+    EXPECT_TRUE(ready.wait_for(lock, std::chrono::seconds(5),
+                               [&] { return started == 2; }));
+    return MakeChunk(7);
+  };
+  auto pipeline = OneOperator(std::make_unique<TestFork>(
+      SubPipelineMode::kMaterialized,
+      OneOperator(std::make_unique<CallbackSource>(produce)),
+      OneOperator(std::make_unique<CallbackSource>(produce))));
+  auto input = Stream<ContextChunk>([&]() -> Stream<ContextChunk>::NextResult {
+    if (++input_pulls == 4) {
+      return std::optional<ContextChunk>{};
+    }
+    return std::optional<ContextChunk>(MakeChunk(input_pulls));
+  });
+  auto output = pipeline.ExecuteScheduled(storage, std::move(input), {}, 2);
+  EXPECT_EQ(input_pulls, 0);
+  auto result = collect_chunk(std::move(output));
+  ASSERT_TRUE(result);
+  EXPECT_EQ(started, 2);
+  EXPECT_EQ(input_pulls, 4);
+  EXPECT_EQ(result->get(0)->get_elem(0).GetValue<int64_t>(), 7);
+}
+
+TEST(TaskSchedulerTest, SequentialGroupDoesNotInitializeUnusedBranch) {
+  PropertyGraph graph;
+  GraphView view(graph);
+  StorageReadInterface storage(view, 0);
+  int left_init = 0;
+  int right_init = 0;
+  auto pipeline = OneOperator(std::make_unique<TestFork>(
+      SubPipelineMode::kSequential,
+      OneOperator(std::make_unique<CallbackSource>([] { return MakeChunk(1); },
+                                                   &left_init)),
+      OneOperator(std::make_unique<CallbackSource>(
+          []() -> result<ContextChunk> {
+            ADD_FAILURE() << "An unconsumed sequential branch must not execute";
+            return tl::unexpected(Status::InternalError("unused"));
+          },
+          &right_init))));
+  {
+    auto output = pipeline.ExecuteScheduled(storage, {}, {}, 2);
+    EXPECT_EQ(left_init, 0);
+    EXPECT_EQ(right_init, 0);
+    auto next = output.Next();
+    ASSERT_TRUE(next);
+    ASSERT_TRUE(*next);
+    EXPECT_EQ(left_init, 1);
+    EXPECT_EQ(right_init, 0);
+  }
+  EXPECT_EQ(right_init, 0);
+}
+
+TEST(TaskSchedulerTest, FailedCommonInputPreventsBranchesFromRunning) {
+  PropertyGraph graph;
+  GraphView view(graph);
+  StorageReadInterface storage(view, 0);
+  auto produce = []() -> result<ContextChunk> {
+    ADD_FAILURE() << "Failed common input must block both branches";
+    return MakeChunk(1);
+  };
+  auto pipeline = OneOperator(std::make_unique<TestFork>(
+      SubPipelineMode::kMaterialized,
+      OneOperator(std::make_unique<CallbackSource>(produce)),
+      OneOperator(std::make_unique<CallbackSource>(produce))));
+  auto output = pipeline.ExecuteScheduled(
+      storage,
+      error_stream<ContextChunk>(Status::InternalError("bad common input")), {},
+      2);
+  auto next = output.Next();
+  ASSERT_FALSE(next);
+  EXPECT_NE(next.error().ToString().find("bad common input"),
+            std::string::npos);
+}
+
+TEST(TaskSchedulerTest, ReplacementSourcePrunesUnusedPipelineGraph) {
+  PropertyGraph graph;
+  GraphView view(graph);
+  StorageReadInterface storage(view, 0);
+  auto unused = []() -> result<ContextChunk> {
+    ADD_FAILURE() << "Replaced upstream data flow must not execute";
+    return tl::unexpected(Status::InternalError("unused input"));
+  };
+  std::vector<std::unique_ptr<IOperator>> operators;
+  operators.push_back(std::make_unique<TestFork>(
+      SubPipelineMode::kMaterialized,
+      OneOperator(std::make_unique<CallbackSource>(unused)),
+      OneOperator(std::make_unique<CallbackSource>(unused))));
+  operators.push_back(
+      std::make_unique<CallbackSource>([] { return MakeChunk(9); }));
+  Pipeline pipeline(std::move(operators));
+  auto output = collect_chunk(pipeline.ExecuteScheduled(storage, {}, {}, 2));
+  ASSERT_TRUE(output);
+  EXPECT_EQ(output->get(0)->get_elem(0).GetValue<int64_t>(), 9);
 }
 
 void AddJoin(physical::PhysicalPlan& plan, int depth) {
@@ -224,6 +438,24 @@ TEST(TaskSchedulerTest, RealNestedJoinReplaysMultipleChunksAndProfiles) {
     EXPECT_GE(profile.operators_size(), 3);
     EXPECT_EQ(profile.operators(0).output_rows(), 17);
   }
+  auto execute = [&](int64_t value) {
+    std::vector<ContextChunk> chunks;
+    chunks.push_back(MakeChunk(value));
+    auto output = pipeline.ExecuteScheduled(
+        storage, stream_from_batches(std::move(chunks)), {}, 2);
+    return std::async(std::launch::async,
+                      [stream = std::move(output)]() mutable {
+                        return collect_chunk(std::move(stream));
+                      });
+  };
+  auto first = execute(11);
+  auto second = execute(22);
+  auto first_result = first.get();
+  auto second_result = second.get();
+  ASSERT_TRUE(first_result);
+  ASSERT_TRUE(second_result);
+  EXPECT_EQ(first_result->get(0)->get_elem(0).GetValue<int64_t>(), 11);
+  EXPECT_EQ(second_result->get(0)->get_elem(0).GetValue<int64_t>(), 22);
 }
 
 TEST(TaskSchedulerTest, ScheduledSinkPreservesEmptyOutputSchema) {

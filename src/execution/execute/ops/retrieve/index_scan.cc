@@ -30,7 +30,7 @@ class IndexScanOpr final : public IOperator {
 
   Stream<ContextChunk> Eval(IStorageInterface& graph, const ParamsMap& params,
                             Stream<ContextChunk>&& upstream, OprTimer* timer,
-                            TaskScheduler* scheduler) override {
+                            OperatorInputs branches) override {
     return defer_stream(
         std::move(upstream),
         [this, &graph, params, timer](

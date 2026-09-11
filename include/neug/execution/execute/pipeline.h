@@ -23,6 +23,8 @@ namespace execution {
 class Context;
 class OprTimer;
 
+class PipelineBuilder;
+
 class Pipeline {
  public:
   Pipeline() {}
@@ -35,8 +37,7 @@ class Pipeline {
   // consumed or destroyed. Params are captured by value by lazy operators.
   Stream<ContextChunk> ExecuteStream(IStorageInterface& graph,
                                      Stream<ContextChunk> input,
-                                     const ParamsMap& params, OprTimer* timer,
-                                     TaskScheduler* scheduler = nullptr);
+                                     const ParamsMap& params, OprTimer* timer);
 
   bool supports_task_execution() const;
 
@@ -55,6 +56,7 @@ class Pipeline {
                                                        const ParamsMap& params);
 
  private:
+  friend class PipelineBuilder;
   std::vector<std::unique_ptr<IOperator>> operators_;
 };
 

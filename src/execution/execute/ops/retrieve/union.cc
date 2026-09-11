@@ -29,11 +29,38 @@ namespace execution {
 class OprTimer;
 
 namespace ops {
+class UnionState final : public OperatorState {
+ public:
+  explicit UnionState(OperatorInputs inputs) : inputs_(std::move(inputs)) {}
+  Stream<ContextChunk>::NextResult Next() override {
+    while (index_ < inputs_.size()) {
+      GS_AUTO(next, inputs_[index_].Next());
+      if (next) {
+        next->head().reset();
+        return next;
+      }
+      ++index_;
+    }
+    return std::optional<ContextChunk>{};
+  }
+
+ private:
+  OperatorInputs inputs_;
+  size_t index_ = 0;
+};
+
 class UnionOpr : public IOperator {
  public:
   explicit UnionOpr(std::vector<Pipeline>&& sub_plans)
       : sub_plans_(std::move(sub_plans)) {}
 
+  SubPipelines sub_pipelines() override {
+    SubPipelines result{SubPipelineMode::kSequential, {}};
+    for (auto& plan : sub_plans_) {
+      result.plans.push_back(&plan);
+    }
+    return result;
+  }
   std::string get_operator_name() const override { return "UnionOpr"; }
   bool supports_task_execution() const override {
     return std::all_of(
@@ -44,61 +71,11 @@ class UnionOpr : public IOperator {
   Stream<ContextChunk> Eval(IStorageInterface& graph, const ParamsMap& params,
                             Stream<ContextChunk>&& input,
                             neug::execution::OprTimer* timer,
-                            TaskScheduler* scheduler) override {
-    class UnionState final : public OperatorState {
-     public:
-      UnionState(UnionOpr& plan, IStorageInterface& graph, ParamsMap params,
-                 Stream<ContextChunk> input, OprTimer* timer,
-                 TaskScheduler* scheduler)
-          : plan_(plan),
-            graph_(graph),
-            params_(std::move(params)),
-            metadata_(input.metadata()),
-            input_(std::move(input)),
-            timer_(timer),
-            scheduler_(scheduler) {}
-      Stream<ContextChunk>::NextResult Next() override {
-        if (!seed_) {
-          GS_AUTO(seed, collect_batches(std::move(input_)));
-          seed_ = std::move(seed);
-        }
-        while (true) {
-          GS_AUTO(next, branch_.Next());
-          if (next) {
-            next->head().reset();
-            return next;
-          }
-          if (index_ == plan_.sub_plans_.size()) {
-            return std::optional<ContextChunk>{};
-          }
-          auto sub_timer = timer_ ? std::make_unique<OprTimer>() : nullptr;
-          auto* child = sub_timer.get();
-          if (timer_) {
-            timer_->add_child(std::move(sub_timer));
-          }
-          branch_ = plan_.sub_plans_[index_++].ExecuteStream(
-              graph_, stream_from_batches(*seed_, metadata_), params_, child,
-              scheduler_);
-        }
-      }
-
-     private:
-      UnionOpr& plan_;
-      IStorageInterface& graph_;
-      ParamsMap params_;
-      StreamMetadata metadata_;
-      Stream<ContextChunk> input_;
-      OprTimer* timer_;
-      TaskScheduler* scheduler_;
-      std::optional<std::vector<ContextChunk>> seed_;
-      Stream<ContextChunk> branch_;
-      size_t index_ = 0;
-    };
-    auto metadata = input.metadata();
+                            OperatorInputs branches) override {
+    auto metadata =
+        branches.empty() ? input.metadata() : branches[0].metadata();
     return Stream<ContextChunk>(
-        std::make_shared<UnionState>(*this, graph, params, std::move(input),
-                                     timer, scheduler),
-        std::move(metadata));
+        std::make_shared<UnionState>(std::move(branches)), std::move(metadata));
   }
 
   void build_explain_children(OprTimer* parent_timer, const ParamsMap& params,

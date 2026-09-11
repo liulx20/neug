@@ -26,6 +26,41 @@ namespace execution {
 class OprTimer;
 
 namespace ops {
+class LimitState final : public OperatorState {
+ public:
+  LimitState(Stream<ContextChunk> input, size_t lower, size_t upper)
+      : input_(std::move(input)),
+        skip_(lower),
+        remaining_(upper > lower ? upper - lower : 0) {}
+  Stream<ContextChunk>::NextResult Next() override {
+    if (done_) {
+      return std::optional<ContextChunk>{};
+    }
+    GS_AUTO(next, input_.Next());
+    if (!next) {
+      return std::optional<ContextChunk>{};
+    }
+    ContextChunk chunk = std::move(*next);
+    auto rows = chunk.row_num();
+    auto begin = std::min(skip_, rows);
+    skip_ -= begin;
+    auto count = std::min(remaining_, rows - begin);
+    remaining_ -= count;
+    GS_AUTO(output, Limit::limit(std::move(chunk), begin, begin + count));
+    if (remaining_ == 0) {
+      done_ = true;
+      input_ = Stream<ContextChunk>();
+    }
+    return std::optional<ContextChunk>(std::move(output));
+  }
+
+ private:
+  Stream<ContextChunk> input_;
+  size_t skip_;
+  size_t remaining_;
+  bool done_ = false;
+};
+
 class LimitOpr : public IOperator {
  public:
   bool supports_task_execution() const override { return true; }
@@ -44,42 +79,9 @@ class LimitOpr : public IOperator {
   Stream<ContextChunk> Eval(IStorageInterface& graph, const ParamsMap& params,
                             Stream<ContextChunk>&& input,
                             neug::execution::OprTimer* timer,
-                            TaskScheduler* scheduler) override {
+                            OperatorInputs branches) override {
     auto metadata = input.metadata();
-    class LimitState final : public OperatorState {
-     public:
-      LimitState(Stream<ContextChunk> input, size_t lower, size_t upper)
-          : input_(std::move(input)),
-            skip_(lower),
-            remaining_(upper > lower ? upper - lower : 0) {}
-      Stream<ContextChunk>::NextResult Next() override {
-        if (done_) {
-          return std::optional<ContextChunk>{};
-        }
-        GS_AUTO(next, input_.Next());
-        if (!next) {
-          return std::optional<ContextChunk>{};
-        }
-        ContextChunk chunk = std::move(*next);
-        auto rows = chunk.row_num();
-        auto begin = std::min(skip_, rows);
-        skip_ -= begin;
-        auto count = std::min(remaining_, rows - begin);
-        remaining_ -= count;
-        GS_AUTO(output, Limit::limit(std::move(chunk), begin, begin + count));
-        if (remaining_ == 0) {
-          done_ = true;
-          input_ = Stream<ContextChunk>();
-        }
-        return std::optional<ContextChunk>(std::move(output));
-      }
 
-     private:
-      Stream<ContextChunk> input_;
-      size_t skip_;
-      size_t remaining_;
-      bool done_ = false;
-    };
     return Stream<ContextChunk>(
         std::make_shared<LimitState>(std::move(input), lower_, upper_),
         std::move(metadata));

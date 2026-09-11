@@ -39,7 +39,7 @@ class ProcedureCallOpr : public IOperator {
   Stream<ContextChunk> Eval(IStorageInterface& graph, const ParamsMap& params,
                             Stream<ContextChunk>&& input,
                             neug::execution::OprTimer* timer,
-                            TaskScheduler* scheduler) override {
+                            OperatorInputs branches) override {
     return defer_stream(
         std::move(input),
         [this, &graph, params,

@@ -14,11 +14,11 @@
  */
 #pragma once
 
-#include <chrono>
 #include <condition_variable>
 #include <deque>
 #include <functional>
 #include <future>
+#include <memory>
 #include <mutex>
 #include <stdexcept>
 #include <thread>
@@ -28,9 +28,8 @@
 
 namespace neug::execution {
 
-// One queue per execution. Tasks own their execution state; a stream must never
-// have two Next tasks in flight. Waiting workers execute queued dependencies so
-// nested pipelines also make progress with a single worker.
+// Workers execute ready tasks only. Pipeline dependency management belongs to
+// PipelineGraph; tasks never submit or wait for other tasks.
 class TaskScheduler {
  public:
   explicit TaskScheduler(size_t workers) : worker_count_(workers) {
@@ -59,47 +58,6 @@ class TaskScheduler {
     return future;
   }
 
-  template <typename T>
-  T Wait(std::future<T>& future) {
-    if (current_ != this) {
-      return future.get();
-    }
-    while (future.wait_for(std::chrono::seconds(0)) !=
-           std::future_status::ready) {
-      std::function<void()> task;
-      {
-        std::unique_lock<std::mutex> lock(mutex_);
-        ready_.wait(lock, [&] {
-          return !tasks_.empty() || future.wait_for(std::chrono::seconds(0)) ==
-                                        std::future_status::ready;
-        });
-        if (future.wait_for(std::chrono::seconds(0)) ==
-            std::future_status::ready) {
-          break;
-        }
-        task = std::move(tasks_.front());
-        tasks_.pop_front();
-      }
-      task();
-      NotifyCompletion();
-    }
-    return future.get();
-  }
-
-  // The current pipeline task executes the right branch while another worker
-  // can run the queued left branch. Packaged tasks retain exceptions until both
-  // branches have finished. No sibling task is abandoned on an error path.
-  template <typename Left, typename Right>
-  auto RunPair(Left left, Right right) {
-    using R = std::invoke_result_t<Right>;
-    std::packaged_task<R()> right_task(std::move(right));
-    auto right_result = right_task.get_future();
-    auto left_result = Submit(std::move(left));
-    right_task();
-    auto left_value = Wait(left_result);
-    return std::make_pair(std::move(left_value), right_result.get());
-  }
-
  private:
   void Start() {
     std::call_once(start_, [this] {
@@ -114,7 +72,6 @@ class TaskScheduler {
     });
   }
   void Run() {
-    current_ = this;
     while (true) {
       std::function<void()> task;
       {
@@ -127,14 +84,7 @@ class TaskScheduler {
         tasks_.pop_front();
       }
       task();
-      NotifyCompletion();
     }
-    current_ = nullptr;
-  }
-  void NotifyCompletion() {
-    // Synchronize completion notification with Wait's condition check.
-    std::lock_guard<std::mutex> lock(mutex_);
-    ready_.notify_all();
   }
   void Stop() {
     {
@@ -149,7 +99,6 @@ class TaskScheduler {
     }
   }
 
-  inline static thread_local TaskScheduler* current_ = nullptr;
   size_t worker_count_;
   std::once_flag start_;
   std::mutex mutex_;

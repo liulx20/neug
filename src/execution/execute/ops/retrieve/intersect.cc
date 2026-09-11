@@ -47,7 +47,7 @@ class IntersectOprMultip : public IOperator {
                             const ParamsMap& params,
                             Stream<ContextChunk>&& input,
                             neug::execution::OprTimer* timer,
-                            TaskScheduler* scheduler) override {
+                            OperatorInputs branches) override {
     return map_chunks(
         std::move(input),
         [this, &graph_interface, params,
@@ -107,7 +107,7 @@ class IntersectWithEdgeOpr : public IOperator {
                             const ParamsMap& params,
                             Stream<ContextChunk>&& input,
                             neug::execution::OprTimer* timer,
-                            TaskScheduler* scheduler) override {
+                            OperatorInputs branches) override {
     return map_chunks(
         std::move(input),
         [this, &graph_interface, params,

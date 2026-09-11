@@ -34,7 +34,7 @@ class SinkOpr : public IOperator {
 
   Stream<ContextChunk> Eval(IStorageInterface& graph, const ParamsMap& params,
                             Stream<ContextChunk>&& input, OprTimer* timer,
-                            TaskScheduler* scheduler) override {
+                            OperatorInputs branches) override {
     input.set_metadata(StreamMetadata{tag_ids_});
     return std::move(input);
   }

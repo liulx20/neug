@@ -42,7 +42,7 @@ class UpdateVertexOpr : public IOperator {
 
   Stream<ContextChunk> Eval(IStorageInterface& graph, const ParamsMap& params,
                             Stream<ContextChunk>&& input, OprTimer* timer,
-                            TaskScheduler* scheduler) override;
+                            OperatorInputs branches) override;
 
  private:
   // No alias is produced in this operator.
@@ -119,7 +119,7 @@ Stream<ContextChunk> UpdateVertexOpr::Eval(IStorageInterface& graph_interface,
                                            const ParamsMap& params,
                                            Stream<ContextChunk>&& input,
                                            OprTimer* timer,
-                                           TaskScheduler* scheduler) {
+                                           OperatorInputs branches) {
   return defer_stream(
       std::move(input),
       [this, &graph_interface, params,

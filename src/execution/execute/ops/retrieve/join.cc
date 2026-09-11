@@ -22,7 +22,6 @@
 #include "neug/execution/common/operators/retrieve/join.h"
 #include "neug/execution/execute/pipeline.h"
 #include "neug/execution/execute/plan_parser.h"
-#include "neug/execution/execute/task_scheduler.h"
 #include "neug/execution/utils/params.h"
 #include "neug/execution/utils/pb_parse_utils.h"
 #include "neug/storages/graph/graph_interface.h"
@@ -36,6 +35,29 @@ class OprTimer;
 
 namespace ops {
 
+// One execution's inputs and progress. The cached JoinOpr owns only the plan.
+class JoinState final : public OperatorState {
+ public:
+  JoinState(const JoinParams& params, OperatorInputs inputs)
+      : params_(params), inputs_(std::move(inputs)) {}
+
+  Stream<ContextChunk>::NextResult Next() override {
+    if (done_) {
+      return std::optional<ContextChunk>{};
+    }
+    done_ = true;
+    GS_AUTO(left, collect_chunk(std::move(inputs_[0])));
+    GS_AUTO(right, collect_chunk(std::move(inputs_[1])));
+    GS_AUTO(output, Join::join(std::move(left), std::move(right), params_));
+    return std::optional<ContextChunk>(std::move(output));
+  }
+
+ private:
+  const JoinParams& params_;
+  OperatorInputs inputs_;
+  bool done_ = false;
+};
+
 class JoinOpr : public IOperator {
  public:
   JoinOpr(neug::execution::Pipeline&& left_pipeline,
@@ -45,6 +67,10 @@ class JoinOpr : public IOperator {
         right_pipeline_(std::move(right_pipeline)),
         params_(join_params) {}
 
+  SubPipelines sub_pipelines() override {
+    return {SubPipelineMode::kMaterialized,
+            {&left_pipeline_, &right_pipeline_}};
+  }
   std::string get_operator_name() const override { return "JoinOpr"; }
   bool supports_task_execution() const override {
     return left_pipeline_.supports_task_execution() &&
@@ -54,103 +80,13 @@ class JoinOpr : public IOperator {
   Stream<ContextChunk> Eval(IStorageInterface& graph, const ParamsMap& params,
                             Stream<ContextChunk>&& input,
                             neug::execution::OprTimer* timer,
-                            TaskScheduler* scheduler) override {
-    class JoinState final : public OperatorState {
-     public:
-      enum class Phase { kInput, kBranches, kJoin, kDone };
-
-      JoinState(JoinOpr& plan, IStorageInterface& graph, ParamsMap params,
-                Stream<ContextChunk> input, OprTimer* timer,
-                TaskScheduler* scheduler)
-          : plan_(plan),
-            graph_(graph),
-            params_(std::move(params)),
-            metadata_(input.metadata()),
-            input_(std::move(input)),
-            timer_(timer),
-            scheduler_(scheduler) {}
-
-      Stream<ContextChunk>::NextResult Next() override {
-        if (phase_ == Phase::kDone) {
-          return std::optional<ContextChunk>{};
-        }
-        if (phase_ == Phase::kInput) {
-          GS_AUTO(seed, collect_batches(std::move(input_)));
-          seed_ = std::move(seed);
-          left_timer_ = timer_ ? std::make_unique<OprTimer>() : nullptr;
-          right_timer_ = timer_ ? std::make_unique<OprTimer>() : nullptr;
-          phase_ = Phase::kBranches;
-        }
-        if (phase_ == Phase::kBranches) {
-          // Each branch has its own stream and timer. All tasks are joined
-          // before returning, including errors, so graph/plan references cannot
-          // outlive the execution and no worker keeps pulling after
-          // cancellation.
-          auto left = [this] {
-            return ReadBranch(plan_.left_pipeline_, left_timer_.get());
-          };
-          auto right = [this] {
-            return ReadBranch(plan_.right_pipeline_, right_timer_.get());
-          };
-          result<ContextChunk> left_result = ContextChunk{};
-          result<ContextChunk> right_result = ContextChunk{};
-          if (scheduler_) {
-            auto pair = scheduler_->RunPair(left, right);
-            left_result = std::move(pair.first);
-            right_result = std::move(pair.second);
-          } else {
-            left_result = left();
-            if (!left_result) {
-              return tl::unexpected(left_result.error());
-            }
-            right_result = right();
-          }
-          if (timer_) {
-            timer_->add_child(std::move(left_timer_));
-            timer_->add_child(std::move(right_timer_));
-          }
-          if (!left_result) {
-            return tl::unexpected(left_result.error());
-          }
-          if (!right_result) {
-            return tl::unexpected(right_result.error());
-          }
-          left_ = std::move(*left_result);
-          right_ = std::move(*right_result);
-          seed_.clear();
-          phase_ = Phase::kJoin;
-        }
-        GS_AUTO(output,
-                Join::join(std::move(left_), std::move(right_), plan_.params_));
-        phase_ = Phase::kDone;
-        return std::optional<ContextChunk>(std::move(output));
-      }
-
-     private:
-      result<ContextChunk> ReadBranch(Pipeline& pipeline, OprTimer* timer) {
-        // Include Eval exceptions in the same error boundary as Next.
-        return collect_chunk(generate_chunk([&]() -> result<ContextChunk> {
-          return collect_chunk(pipeline.ExecuteStream(
-              graph_, stream_from_batches(seed_, metadata_), params_, timer,
-              scheduler_));
-        }));
-      }
-      JoinOpr& plan_;
-      IStorageInterface& graph_;
-      ParamsMap params_;
-      StreamMetadata metadata_;
-      Stream<ContextChunk> input_;
-      OprTimer* timer_;
-      TaskScheduler* scheduler_;
-      Phase phase_ = Phase::kInput;
-      std::vector<ContextChunk> seed_;
-      ContextChunk left_;
-      ContextChunk right_;
-      std::unique_ptr<OprTimer> left_timer_;
-      std::unique_ptr<OprTimer> right_timer_;
-    };
-    return Stream<ContextChunk>(std::make_shared<JoinState>(
-        *this, graph, params, std::move(input), timer, scheduler));
+                            OperatorInputs branches) override {
+    if (branches.size() != 2) {
+      return error_stream<ContextChunk>(
+          Status::InternalError("Join requires two inputs"));
+    }
+    return Stream<ContextChunk>(
+        std::make_shared<JoinState>(params_, std::move(branches)));
   }
 
   void build_explain_children(OprTimer* parent_timer, const ParamsMap& params,
@@ -264,6 +200,9 @@ class PrimaryKeyJoinOpr : public IOperator {
         tag_(tag),
         alias_(alias) {}
 
+  SubPipelines sub_pipelines() override {
+    return {SubPipelineMode::kStreaming, {&right_pipeline_}};
+  }
   std::string get_operator_name() const override { return "PrimaryJoinOpr"; }
   bool supports_task_execution() const override {
     return right_pipeline_.supports_task_execution();
@@ -272,24 +211,15 @@ class PrimaryKeyJoinOpr : public IOperator {
   Stream<ContextChunk> Eval(IStorageInterface& graph, const ParamsMap& params,
                             Stream<ContextChunk>&& input,
                             neug::execution::OprTimer* timer,
-                            TaskScheduler* scheduler) override {
-    return defer_stream(
-        std::move(input),
-        [this, &graph, params, timer, scheduler](
-            Stream<ContextChunk>&& input) mutable -> Stream<ContextChunk> {
-          auto right_timer = timer ? std::make_unique<OprTimer>() : nullptr;
-          auto* child = right_timer.get();
-          if (timer) {
-            timer->add_child(std::move(right_timer));
-          }
-          auto right = right_pipeline_.ExecuteStream(graph, std::move(input),
-                                                     params, child, scheduler);
-          return map_chunks(
-              std::move(right),
-              [this, &graph](ContextChunk&& chunk) -> result<ContextChunk> {
-                return Join::pk_join(graph, std::move(chunk), labels_, tag_,
-                                     alias_);
-              });
+                            OperatorInputs branches) override {
+    if (branches.size() != 1) {
+      return error_stream<ContextChunk>(
+          Status::InternalError("PK Join requires one input"));
+    }
+    return map_chunks(
+        std::move(branches[0]),
+        [this, &graph](ContextChunk&& chunk) -> result<ContextChunk> {
+          return Join::pk_join(graph, std::move(chunk), labels_, tag_, alias_);
         });
   }
 

@@ -201,7 +201,7 @@ class MergeVertexOpr : public IOperator {
   Stream<ContextChunk> Eval(IStorageInterface& graph_interface,
                             const ParamsMap& params,
                             Stream<ContextChunk>&& input, OprTimer* timer,
-                            TaskScheduler* scheduler) override {
+                            OperatorInputs branches) override {
     return defer_stream(
         std::move(input),
         [this, &graph_interface, params,

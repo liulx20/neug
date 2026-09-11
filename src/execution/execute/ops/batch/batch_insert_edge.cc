@@ -108,7 +108,7 @@ class BatchInsertEdgeOpr : public IOperator {
 
   Stream<ContextChunk> Eval(IStorageInterface& graph, const ParamsMap& params,
                             Stream<ContextChunk>&& input, OprTimer* timer,
-                            TaskScheduler* scheduler) override;
+                            OperatorInputs branches) override;
 
  private:
   physical::EdgeType edge_type_;
@@ -118,7 +118,7 @@ class BatchInsertEdgeOpr : public IOperator {
 
 Stream<ContextChunk> BatchInsertEdgeOpr::Eval(
     IStorageInterface& graph_interface, const ParamsMap& params,
-    Stream<ContextChunk>&& input, OprTimer* timer, TaskScheduler* scheduler) {
+    Stream<ContextChunk>&& input, OprTimer* timer, OperatorInputs branches) {
   return defer_stream(
       std::move(input),
       [this, &graph_interface, params,

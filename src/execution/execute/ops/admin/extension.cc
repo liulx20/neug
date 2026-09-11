@@ -85,7 +85,7 @@ class ExtensionInstallOpr : public IOperator {
   }
   Stream<ContextChunk> Eval(IStorageInterface& graph, const ParamsMap& params,
                             Stream<ContextChunk>&& input, OprTimer* timer,
-                            TaskScheduler* scheduler) override;
+                            OperatorInputs branches) override;
 
  private:
   std::string extension_name_;
@@ -99,7 +99,7 @@ class ExtensionLoadOpr : public IOperator {
   std::string get_operator_name() const override { return "ExtensionLoadOpr"; }
   Stream<ContextChunk> Eval(IStorageInterface& graph, const ParamsMap& params,
                             Stream<ContextChunk>&& input, OprTimer* timer,
-                            TaskScheduler* scheduler) override;
+                            OperatorInputs branches) override;
 
  private:
   std::string extension_name_;
@@ -115,7 +115,7 @@ class ExtensionUninstallOpr : public IOperator {
   }
   Stream<ContextChunk> Eval(IStorageInterface& graph, const ParamsMap& params,
                             Stream<ContextChunk>&& input, OprTimer* timer,
-                            TaskScheduler* scheduler) override;
+                            OperatorInputs branches) override;
 
  private:
   std::string extension_name_;
@@ -125,7 +125,7 @@ Stream<ContextChunk> ExtensionInstallOpr::Eval(IStorageInterface& graph,
                                                const ParamsMap& params,
                                                Stream<ContextChunk>&& input,
                                                OprTimer* timer,
-                                               TaskScheduler* scheduler) {
+                                               OperatorInputs branches) {
   return defer_stream(
       std::move(input),
       [this, &graph, params,
@@ -148,7 +148,7 @@ Stream<ContextChunk> ExtensionLoadOpr::Eval(IStorageInterface& graph,
                                             const ParamsMap& params,
                                             Stream<ContextChunk>&& input,
                                             OprTimer* timer,
-                                            TaskScheduler* scheduler) {
+                                            OperatorInputs branches) {
   return defer_stream(
       std::move(input),
       [this, &graph, params,
@@ -177,7 +177,7 @@ Stream<ContextChunk> ExtensionUninstallOpr::Eval(IStorageInterface& graph,
                                                  const ParamsMap& params,
                                                  Stream<ContextChunk>&& input,
                                                  OprTimer* timer,
-                                                 TaskScheduler* scheduler) {
+                                                 OperatorInputs branches) {
   return defer_stream(
       std::move(input),
       [this, &graph, params,

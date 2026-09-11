@@ -63,6 +63,7 @@ static std::vector<Value> deduplicate_ids(std::vector<Value> values) {
 class FilterOidsGPredOpr : public IOperator {
  public:
   bool supports_task_execution() const override { return true; }
+  bool consumes_input() const override { return false; }
 
   FilterOidsGPredOpr(ScanParams params,
                      const algebra::IndexPredicate_Triplet& oids,
@@ -72,7 +73,7 @@ class FilterOidsGPredOpr : public IOperator {
   Stream<ContextChunk> Eval(IStorageInterface& graph, const ParamsMap& params,
                             Stream<ContextChunk>&& input,
                             neug::execution::OprTimer* timer,
-                            TaskScheduler* scheduler) override {
+                            OperatorInputs branches) override {
     return defer_stream(
         std::move(input),
         [this, &graph, params,
@@ -136,6 +137,7 @@ class FilterOidsGPredOpr : public IOperator {
 class ScanWithSPredOpr : public IOperator {
  public:
   bool supports_task_execution() const override { return true; }
+  bool consumes_input() const override { return false; }
 
   ScanWithSPredOpr(const ScanParams& scan_params,
                    const SpecialPredicateConfig& config)
@@ -146,7 +148,7 @@ class ScanWithSPredOpr : public IOperator {
   Stream<ContextChunk> Eval(IStorageInterface& graph, const ParamsMap& params,
                             Stream<ContextChunk>&& input,
                             neug::execution::OprTimer* timer,
-                            TaskScheduler* scheduler) override {
+                            OperatorInputs branches) override {
     return defer_stream(
         std::move(input),
         [this, &graph, params,
@@ -171,6 +173,7 @@ class ScanWithSPredOpr : public IOperator {
 class ScanWithGPredOpr : public IOperator {
  public:
   bool supports_task_execution() const override { return true; }
+  bool consumes_input() const override { return false; }
 
   ScanWithGPredOpr(const ScanParams& scan_params,
                    std::unique_ptr<neug::execution::ExprBase> pred)
@@ -178,7 +181,7 @@ class ScanWithGPredOpr : public IOperator {
   Stream<ContextChunk> Eval(IStorageInterface& graph, const ParamsMap& params,
                             Stream<ContextChunk>&& input,
                             neug::execution::OprTimer* timer,
-                            TaskScheduler* scheduler) override {
+                            OperatorInputs branches) override {
     return defer_stream(
         std::move(input),
         [this, &graph, params,
@@ -279,6 +282,7 @@ neug::result<OpBuildResultT> ScanOprBuilder::Build(
 class DummySourceOpr : public IOperator {
  public:
   bool supports_task_execution() const override { return true; }
+  bool consumes_input() const override { return false; }
 
   DummySourceOpr() {}
 
@@ -286,7 +290,7 @@ class DummySourceOpr : public IOperator {
                             const ParamsMap& params,
                             Stream<ContextChunk>&& input,
                             neug::execution::OprTimer* timer,
-                            TaskScheduler* scheduler) override {
+                            OperatorInputs branches) override {
     return defer_stream(
         std::move(input),
         [this, &graph_interface, params,

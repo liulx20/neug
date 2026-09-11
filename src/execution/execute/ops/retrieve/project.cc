@@ -52,7 +52,7 @@ class ProjectOpr : public IOperator {
   Stream<ContextChunk> Eval(IStorageInterface& graph, const ParamsMap& params,
                             Stream<ContextChunk>&& input,
                             neug::execution::OprTimer* timer,
-                            TaskScheduler* scheduler) override {
+                            OperatorInputs branches) override {
     return map_chunks(
         std::move(input),
         [this, &graph, params,
@@ -190,7 +190,7 @@ class ProjectOrderByOprBeta : public IOperator {
                             const ParamsMap& params,
                             Stream<ContextChunk>&& input,
                             neug::execution::OprTimer* timer,
-                            TaskScheduler* scheduler) override {
+                            OperatorInputs branches) override {
     return reduce_stream(
         std::move(input),
         [this, &graph_interface, params,

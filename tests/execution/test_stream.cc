@@ -225,7 +225,7 @@ class CountingSource final : public IOperator {
   explicit CountingSource(Counts& counts) : counts_(counts) {}
   std::string get_operator_name() const override { return "CountingSource"; }
   ChunkStream Eval(IStorageInterface&, const ParamsMap&, ChunkStream&&,
-                   OprTimer*, TaskScheduler* scheduler) override {
+                   OprTimer*, OperatorInputs branches) override {
     return ChunkStream([this]() -> ChunkStream::NextResult {
       EXPECT_EQ(counts_.produced, counts_.consumed);
       if (counts_.produced == 3) {
@@ -245,7 +245,7 @@ class CountingProject final : public IOperator {
   std::string get_operator_name() const override { return "CountingProject"; }
   Stream<ContextChunk> Eval(IStorageInterface&, const ParamsMap&,
                             Stream<ContextChunk>&& input, OprTimer*,
-                            TaskScheduler* scheduler) override {
+                            OperatorInputs branches) override {
     return map_chunks(std::move(input),
                       [this](ContextChunk&& chunk) -> result<ContextChunk> {
                         ++counts_.consumed;
@@ -323,7 +323,7 @@ TEST(StreamTest, PipelineReportsInitializationFailureOnlyWhenPulled) {
     std::string get_operator_name() const override { return "FailingSource"; }
     Stream<ContextChunk> Eval(IStorageInterface&, const ParamsMap&,
                               Stream<ContextChunk>&& input, OprTimer*,
-                              TaskScheduler* scheduler) override {
+                              OperatorInputs branches) override {
       return defer_stream(
           std::move(input),
           [this](Stream<ContextChunk> &&) -> Stream<ContextChunk> {

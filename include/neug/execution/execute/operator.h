@@ -28,11 +28,26 @@ namespace neug {
 
 namespace execution {
 
-class TaskScheduler;
+class Pipeline;
+using OperatorInputs = std::vector<Stream<ContextChunk>>;
+
+// Declares data dependencies, never scheduling operations. Materialized inputs
+// form pipeline barriers. Sequential inputs retain demand-driven consumption.
+enum class SubPipelineMode { kNone, kMaterialized, kStreaming, kSequential };
+struct SubPipelines {
+  SubPipelineMode mode = SubPipelineMode::kNone;
+  std::vector<Pipeline*> plans;
+};
 
 class IOperator {
  public:
   virtual ~IOperator() = default;
+
+  virtual SubPipelines sub_pipelines() { return {}; }
+
+  // Source-like operators can replace the incoming data flow. The builder
+  // retains enclosing fork barriers while pruning unused data dependencies.
+  virtual bool consumes_input() const { return true; }
 
   virtual std::string get_operator_name() const = 0;
 
@@ -44,7 +59,7 @@ class IOperator {
                                     const ParamsMap& params,
                                     Stream<ContextChunk>&& input,
                                     OprTimer* timer,
-                                    TaskScheduler* scheduler = nullptr) = 0;
+                                    OperatorInputs branches = {}) = 0;
 
   virtual void build_explain_children(OprTimer* parent_timer,
                                       const ParamsMap& params,

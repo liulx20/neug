@@ -79,7 +79,7 @@ class TCOpr : public IOperator {
                             const ParamsMap& params,
                             Stream<ContextChunk>&& input,
                             neug::execution::OprTimer* timer,
-                            TaskScheduler* scheduler) override {
+                            OperatorInputs branches) override {
     return map_chunks(std::move(input),
                       [this, &graph_interface, params,
                        timer](ContextChunk&& chunk) -> result<ContextChunk> {

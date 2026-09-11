@@ -37,6 +37,46 @@ namespace execution {
 class OprTimer;
 namespace ops {
 
+class SourceState final : public OperatorState {
+ public:
+  SourceState(Stream<ContextChunk> input, const reader::ReadSharedState& config,
+              ParamsMap params, function::ReadFunction* function)
+      : input_(std::move(input)),
+        reader_state_(std::make_shared<reader::ReadSharedState>(config)),
+        function_(function) {
+    reader_state_->parameters = std::move(params);
+  }
+  Stream<ContextChunk>::NextResult Next() override {
+    if (!initialized_) {
+      while (true) {
+        GS_AUTO(before, input_.Next());
+        if (!before) {
+          break;
+        }
+      }
+      NEUG_ASSERT(function_ != nullptr);
+      initialized_ = true;
+      supplier_ = function_->supplierFunc(reader_state_);
+      if (!supplier_) {
+        return tl::unexpected(
+            Status::InternalError("Reader returned a null supplier"));
+      }
+    }
+    auto chunk = supplier_->GetNextChunk();
+    if (!chunk) {
+      return std::optional<ContextChunk>{};
+    }
+    return std::optional<ContextChunk>(std::in_place, std::move(*chunk));
+  }
+
+ private:
+  Stream<ContextChunk> input_;
+  std::shared_ptr<reader::ReadSharedState> reader_state_;
+  function::ReadFunction* function_;
+  std::shared_ptr<IDataChunkSupplier> supplier_;
+  bool initialized_ = false;
+};
+
 class DataSourceOpr : public IOperator {
  private:
   std::shared_ptr<reader::ReadSharedState> sharedState;
@@ -55,47 +95,7 @@ class DataSourceOpr : public IOperator {
 
   Stream<ContextChunk> Eval(IStorageInterface& graph, const ParamsMap& params,
                             Stream<ContextChunk>&& input, OprTimer* timer,
-                            TaskScheduler* scheduler) override {
-    class SourceState final : public OperatorState {
-     public:
-      SourceState(Stream<ContextChunk> input,
-                  const reader::ReadSharedState& config, ParamsMap params,
-                  function::ReadFunction* function)
-          : input_(std::move(input)),
-            reader_state_(std::make_shared<reader::ReadSharedState>(config)),
-            function_(function) {
-        reader_state_->parameters = std::move(params);
-      }
-      Stream<ContextChunk>::NextResult Next() override {
-        if (!initialized_) {
-          while (true) {
-            GS_AUTO(before, input_.Next());
-            if (!before) {
-              break;
-            }
-          }
-          NEUG_ASSERT(function_ != nullptr);
-          initialized_ = true;
-          supplier_ = function_->supplierFunc(reader_state_);
-          if (!supplier_) {
-            return tl::unexpected(
-                Status::InternalError("Reader returned a null supplier"));
-          }
-        }
-        auto chunk = supplier_->GetNextChunk();
-        if (!chunk) {
-          return std::optional<ContextChunk>{};
-        }
-        return std::optional<ContextChunk>(std::in_place, std::move(*chunk));
-      }
-
-     private:
-      Stream<ContextChunk> input_;
-      std::shared_ptr<reader::ReadSharedState> reader_state_;
-      function::ReadFunction* function_;
-      std::shared_ptr<IDataChunkSupplier> supplier_;
-      bool initialized_ = false;
-    };
+                            OperatorInputs branches) override {
     return Stream<ContextChunk>(std::make_shared<SourceState>(
         std::move(input), *sharedState, params, readFunction));
   }

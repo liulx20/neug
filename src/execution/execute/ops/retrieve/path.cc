@@ -235,7 +235,7 @@ class SPOrderByLimitOpr : public IOperator {
                             const ParamsMap& params,
                             Stream<ContextChunk>&& input,
                             neug::execution::OprTimer* timer,
-                            TaskScheduler* scheduler) override {
+                            OperatorInputs branches) override {
     return map_chunks(
         std::move(input),
         [this, &graph_interface, params,
@@ -277,7 +277,7 @@ class SPOrderByLimitWithGPredOpr : public IOperator {
                             const ParamsMap& params,
                             Stream<ContextChunk>&& input,
                             neug::execution::OprTimer* timer,
-                            TaskScheduler* scheduler) override {
+                            OperatorInputs branches) override {
     return map_chunks(
         std::move(input),
         [this, &graph_interface, params,
@@ -385,7 +385,7 @@ class SPSPredOpr : public IOperator {
                             const ParamsMap& params,
                             Stream<ContextChunk>&& input,
                             neug::execution::OprTimer* timer,
-                            TaskScheduler* scheduler) override {
+                            OperatorInputs branches) override {
     return map_chunks(
         std::move(input),
         [this, &graph_interface, params,
@@ -418,7 +418,7 @@ class SPGPredOpr : public IOperator {
                             const ParamsMap& params,
                             Stream<ContextChunk>&& input,
                             neug::execution::OprTimer* timer,
-                            TaskScheduler* scheduler) override {
+                            OperatorInputs branches) override {
     return map_chunks(
         std::move(input),
         [this, &graph_interface, params,
@@ -451,7 +451,7 @@ class SPWithoutPredOpr : public IOperator {
                             const ParamsMap& params,
                             Stream<ContextChunk>&& input,
                             neug::execution::OprTimer* timer,
-                            TaskScheduler* scheduler) override {
+                            OperatorInputs branches) override {
     return map_chunks(
         std::move(input),
         [this, &graph_interface, params,
@@ -501,7 +501,7 @@ class ASPOpr : public IOperator {
                             const ParamsMap& params,
                             Stream<ContextChunk>&& input,
                             neug::execution::OprTimer* timer,
-                            TaskScheduler* scheduler) override {
+                            OperatorInputs branches) override {
     return map_chunks(
         std::move(input),
         [this, &graph_interface, params,
@@ -553,7 +553,7 @@ class SSSDSPOpr : public IOperator {
                             const ParamsMap& params,
                             Stream<ContextChunk>&& input,
                             neug::execution::OprTimer* timer,
-                            TaskScheduler* scheduler) override {
+                            OperatorInputs branches) override {
     return map_chunks(
         std::move(input),
         [this, &graph_interface, params,
@@ -696,7 +696,7 @@ class PathExpandVOpr : public IOperator {
                             const ParamsMap& params,
                             Stream<ContextChunk>&& input,
                             neug::execution::OprTimer* timer,
-                            TaskScheduler* scheduler) override {
+                            OperatorInputs branches) override {
     return map_chunks(
         std::move(input),
         [this, &graph_interface, params,
@@ -802,7 +802,7 @@ class PathExpandOpr : public IOperator {
                             const ParamsMap& params,
                             Stream<ContextChunk>&& input,
                             neug::execution::OprTimer* timer,
-                            TaskScheduler* scheduler) override {
+                            OperatorInputs branches) override {
     return map_chunks(
         std::move(input),
         [this, &graph_interface, params,
@@ -832,7 +832,7 @@ class PathExpandOprWithPred : public IOperator {
                             const ParamsMap& params,
                             Stream<ContextChunk>&& input,
                             neug::execution::OprTimer* timer,
-                            TaskScheduler* scheduler) override {
+                            OperatorInputs branches) override {
     return map_chunks(
         std::move(input),
         [this, &graph_interface, params,
@@ -869,7 +869,7 @@ class AnyWeightedShortestPathOpr : public IOperator {
                             const ParamsMap& params,
                             Stream<ContextChunk>&& input,
                             neug::execution::OprTimer* timer,
-                            TaskScheduler* scheduler) override {
+                            OperatorInputs branches) override {
     return map_chunks(
         std::move(input),
         [this, &graph_interface, params,

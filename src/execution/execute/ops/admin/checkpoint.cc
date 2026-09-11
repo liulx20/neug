@@ -28,14 +28,14 @@ class CheckpointOpr : public IOperator {
   std::string get_operator_name() const override { return "CheckpointOpr"; }
   Stream<ContextChunk> Eval(IStorageInterface& graph, const ParamsMap& params,
                             Stream<ContextChunk>&& input, OprTimer* timer,
-                            TaskScheduler* scheduler) override;
+                            OperatorInputs branches) override;
 };
 
 Stream<ContextChunk> CheckpointOpr::Eval(IStorageInterface& graph_interface,
                                          const ParamsMap& params,
                                          Stream<ContextChunk>&& input,
                                          OprTimer* timer,
-                                         TaskScheduler* scheduler) {
+                                         OperatorInputs branches) {
   return defer_stream(
       std::move(input),
       [this, &graph_interface, params,
