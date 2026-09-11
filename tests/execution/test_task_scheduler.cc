@@ -397,6 +397,51 @@ void AddJoin(physical::PhysicalPlan& plan, int depth) {
   }
 }
 
+TEST(TaskSchedulerTest, JoinBuildsOnceAndPullsOnlyOneProbeChunk) {
+  PlanParser::get().init();
+  PropertyGraph graph;
+  GraphView view(graph);
+  StorageReadInterface storage(view, 0);
+  physical::PhysicalPlan plan;
+  AddJoin(plan, 1);
+  ContextMeta meta;
+  meta.set(0, DataType::INT64);
+  ops::JoinOprBuilder builder;
+  auto built = builder.Build(graph.schema(), meta, plan, 0);
+  ASSERT_TRUE(built);
+  int left_pulls = 0;
+  int right_pulls = 0;
+  OperatorInputs inputs;
+  inputs.emplace_back([&]() -> Stream<ContextChunk>::NextResult {
+    EXPECT_EQ(right_pulls, 3);
+    if (++left_pulls == 3) {
+      return tl::unexpected(Status::InternalError("later probe failure"));
+    }
+    return std::optional<ContextChunk>(MakeChunk(1));
+  });
+  inputs.emplace_back([&]() -> Stream<ContextChunk>::NextResult {
+    EXPECT_EQ(left_pulls, 0);
+    if (++right_pulls == 3) {
+      return std::optional<ContextChunk>{};
+    }
+    return std::optional<ContextChunk>(MakeChunk(1));
+  });
+  auto output = built->first->Eval(storage, {}, {}, nullptr, std::move(inputs));
+  EXPECT_EQ(right_pulls, 0);
+  for (int expected = 1; expected <= 2; ++expected) {
+    auto next = output.Next();
+    ASSERT_TRUE(next);
+    ASSERT_TRUE(*next);
+    EXPECT_EQ((**next).row_num(), 2);
+    EXPECT_EQ(left_pulls, expected);
+    EXPECT_EQ(right_pulls, 3);
+  }
+  EXPECT_FALSE(output.Next());
+  EXPECT_FALSE(output.Next());
+  EXPECT_EQ(left_pulls, 3);
+  EXPECT_EQ(right_pulls, 3);
+}
+
 TEST(TaskSchedulerTest, RealNestedJoinReplaysMultipleChunksAndProfiles) {
   PlanParser::get().init();
   PropertyGraph graph;
@@ -428,7 +473,13 @@ TEST(TaskSchedulerTest, RealNestedJoinReplaysMultipleChunksAndProfiles) {
     OprTimer timer;
     auto stream =
         pipeline.ExecuteScheduled(storage, input(), {}, workers, &timer);
-    auto actual = collect_chunk(std::move(stream));
+    auto chunks = collect_batches(std::move(stream));
+    ASSERT_TRUE(chunks) << chunks.error().ToString();
+    ASSERT_EQ(chunks->size(), 3);
+    EXPECT_EQ((*chunks)[0].row_num(), 8);
+    EXPECT_EQ((*chunks)[1].row_num(), 1);
+    EXPECT_EQ((*chunks)[2].row_num(), 8);
+    auto actual = collect_chunk(stream_from_batches(std::move(*chunks)));
     ASSERT_TRUE(actual) << actual.error().ToString();
     ASSERT_EQ(actual->row_num(), expected->row_num());
     for (size_t row = 0; row < actual->row_num(); ++row) {

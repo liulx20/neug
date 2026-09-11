@@ -29,7 +29,8 @@ or destroyed. There is no Python/SQL switch in this prototype.
 `IOperator::sub_pipelines()` declares child plans and how they consume input:
 
 - `kMaterialized`: all child results are required before the consumer can run.
-  Ordinary Join uses this mode.
+- `kBuildProbe`: input 1 feeds a blocking build phase; input 0 streams through
+  the probe phase after build completion. Ordinary Join uses this mode.
 - `kStreaming`: a single child stream feeds the operator. Primary-key Join uses
   this mode and can stay in the same pull pipeline as its child and downstream.
 - `kSequential`: child streams are consumed one after another on demand. Union
@@ -45,33 +46,43 @@ State classes such as `SourceState`, `LimitState`, `UnionState`, `JoinState` and
 `Stream<ContextChunk>` owns them through `OperatorState`.
 
 For example, `JoinOpr` holds Join parameters and child plans. Its independent
-`JoinState` holds input streams and completion progress, and invokes the existing
-Join kernel. It has no child-task phases, futures, queue or dependency counters.
+`JoinState` holds its input streams and a reusable `JoinTable`. `Build()` consumes
+only the right input and constructs the hash table once; `Next()` probes one
+left chunk and returns its matches. It has no futures, queue or dependency
+counters.
 The execution layer owns common-input caches and materialized branch buffers.
 
 ## Ordinary Join graph
 
-The builder splits a materialized fork into these stages:
+The builder schedules the right build before the left probe pipeline:
 
 ```text
 Input pipeline -> shared input buffer
                          |
-                +--------+--------+
-                |                 |
-          left pipeline     right pipeline
-                |                 |
-          left buffer       right buffer
-                +--------+--------+
+                   right pipeline
                          |
-                  Join -> downstream
+                 right data + hash table
+                         | build complete
+                   left pipeline
+                         | one chunk at a time
+                   Join probe -> downstream
 ```
+
+The right input is materialized once. Its table is reused for every left chunk.
+Inner, left outer, semi and anti joins use right-side hash lookup. Cartesian
+Join retains the right rows without hashing; primary-key Join remains a separate
+lookup implementation. Probe results follow left row order, with duplicate
+matches in right row order. This can change incidental output order from the old
+size-dependent inner-join kernel; queries requiring order must use `ORDER BY`.
+A full right table can consume more memory than the old prefiltered table when
+few right keys match the left input.
 
 The common input is evaluated once and retains chunk boundaries. Each branch
 has an independent reader cursor over the prepared input. Shared columns are
 read-only; kernels create replacement columns when changing values.
 
-Nested materialized forks are recursively expanded into the same DAG. A branch
-collector depends on its own nested prerequisites. The builder is driven by
+Nested build/probe and materialized forks are recursively expanded into the
+same DAG. The left pipeline's prerequisites depend on the right build node. The builder is driven by
 input declarations, not operator names or Join-specific scheduler calls.
 
 The external consumer runs the coordinator on first `Next()`:
@@ -117,8 +128,10 @@ This prototype parallelizes independent materialized child pipelines. It does
 not yet partition scans or hash tables:
 
 - Linear Scan/Filter/Project chains run on a worker as synchronous pull chains.
-- Join still materializes both sides and uses the existing one-shot kernel.
-  Parallel build/probe requires its own shared and worker-local Join state.
+- Join materializes only its right result; its left result is probed by chunk.
+  Shared upstream input is still buffered for both branches. One build task and
+  one probe consumer execute each Join; neither phase is partitioned across
+  workers. One probe chunk can still produce a large result for duplicate keys.
 - Aggregation and sorting remain blocking kernels within a pipeline task.
 - Dedup and aggregation have no hash exchange or parallel merge phase.
 - The graph has no byte-based memory budget, spill support or cross-query
@@ -126,8 +139,9 @@ not yet partition scans or hash tables:
 - Write/admin operators, exports, arbitrary procedures and GDS operations do not
   opt in to scheduled execution.
 
-Each child pipeline has its own profiling state. A scheduled Join's local time
-covers its kernel; branch preparation is recorded on its child pipelines.
+Each child pipeline has its own profiling state. A scheduled Join's build time
+includes consuming its right pipeline and constructing the table. Child timers
+also record their own execution; the probe phase is measured on output pulls.
 Concurrent child durations must not be summed to interpret query wall time.
 
 ## Validation
@@ -141,3 +155,9 @@ independent inputs and states.
 
 The ordinary execution suite and Python streaming/query tests validate the
 synchronous path after moving child-flow construction into the execution layer.
+
+`HashJoinTest.*` compares joins with a nested-loop oracle across duplicate keys,
+empty inputs, both size relationships, multiple chunks and repeated probes of
+the same table. `JoinBuildsOnceAndPullsOnlyOneProbeChunk` checks that the real
+operator consumes the build input once, pulls one left chunk per result, and
+reports a later left-input error only when that chunk is requested.

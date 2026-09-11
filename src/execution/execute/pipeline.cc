@@ -213,7 +213,38 @@ class PipelineBuilder {
       }
       auto children = op.sub_pipelines();
       OperatorInputs inputs;
-      if (children.mode == SubPipelineMode::kMaterialized && graph_) {
+      std::shared_ptr<BuildProbeState> build_state;
+      if (children.mode == SubPipelineMode::kBuildProbe && graph_) {
+        if (children.plans.size() != 2) {
+          throw std::logic_error("Build/probe requires two inputs");
+        }
+        auto seed =
+            std::make_shared<PipelineBuffer>(std::move(fragment.output));
+        auto seed_id =
+            graph_->Add(name + "/input", std::move(fragment.dependencies),
+                        [seed] { return seed->Fill(); });
+        auto* left_timer = ChildTimer(current_timer);
+        auto* right_timer = ChildTimer(current_timer);
+        auto right =
+            Build(*children.plans[1], {ReadBuffer(seed), {seed_id}, {seed_id}},
+                  right_timer);
+        build_state = op.CreateBuildState(std::move(right.output));
+        auto build_id =
+            graph_->Add(name + "/build", std::move(right.dependencies),
+                        [state = build_state, current_timer] {
+                          if (current_timer) {
+                            double charged = 0;
+                            StreamTimerScope scope(*current_timer, charged);
+                            return state->Build();
+                          }
+                          return state->Build();
+                        });
+        auto left =
+            Build(*children.plans[0],
+                  {ReadBuffer(seed), {build_id}, {build_id}}, left_timer);
+        build_state->SetProbeInput(std::move(left.output));
+        fragment.dependencies = std::move(left.dependencies);
+      } else if (children.mode == SubPipelineMode::kMaterialized && graph_) {
         auto seed =
             std::make_shared<PipelineBuffer>(std::move(fragment.output));
         auto seed_id =
@@ -249,8 +280,10 @@ class PipelineBuilder {
               seed->metadata);
         }
       }
-      auto output = op.Eval(storage_, params_, std::move(fragment.output),
-                            current_timer, std::move(inputs));
+      auto output = build_state
+                        ? Stream<ContextChunk>(std::move(build_state))
+                        : op.Eval(storage_, params_, std::move(fragment.output),
+                                  current_timer, std::move(inputs));
       auto metadata = output.metadata();
       fragment.output = Stream<ContextChunk>(
           std::make_shared<PipelineOperatorState>(std::move(output), name,

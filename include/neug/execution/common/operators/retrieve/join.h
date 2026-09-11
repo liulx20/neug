@@ -14,6 +14,8 @@
  */
 #pragma once
 
+#include <memory>
+
 #include "neug/common/types/graph_types.h"
 #include "neug/utils/result.h"
 
@@ -23,8 +25,23 @@ namespace execution {
 class ContextChunk;
 struct JoinParams;
 
+// Immutable build-side data, reusable across all probe chunks in one execution.
+class JoinTable {
+ public:
+  JoinTable(ContextChunk right, const JoinParams& params);
+  ~JoinTable();
+  result<ContextChunk> Probe(ContextChunk left) const;
+
+ private:
+  struct Impl;
+  std::unique_ptr<Impl> impl_;
+};
+
 class Join {
  public:
+  // Equi-joins build on the right input and probe in left-input order.
+  // Duplicate right matches retain their right-input order. The Cartesian
+  // product and primary-key lookup retain their separate implementations.
   static neug::result<ContextChunk> join(ContextChunk&& chunk,
                                          ContextChunk&& chunk2,
                                          const JoinParams& params);

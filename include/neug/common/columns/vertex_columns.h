@@ -317,6 +317,9 @@ class MLVertexColumn : public IVertexColumn {
     return VertexColumnType::kMultiple;
   }
 
+  std::shared_ptr<IContextColumn> union_col(
+      std::shared_ptr<IContextColumn> other) const override;
+
   std::shared_ptr<IContextColumn> shuffle(
       const sel_vec_t& offsets) const override;
   std::shared_ptr<IContextColumn> optional_shuffle(

@@ -240,6 +240,28 @@ bool MSVertexColumn::generate_dedup_offset(sel_vec_t& offsets) const {
   }
   return true;
 }
+std::shared_ptr<IContextColumn> MLVertexColumn::union_col(
+    std::shared_ptr<IContextColumn> other) const {
+  CHECK(other->column_type() == ContextColumnType::kVertex);
+  const auto& column = static_cast<const IVertexColumn&>(*other);
+  auto labels = labels_;
+  auto other_labels = column.get_labels_set();
+  labels.insert(other_labels.begin(), other_labels.end());
+  MLVertexColumnBuilder builder(labels);
+  builder.reserve(size() + column.size());
+  for (const IVertexColumn* source :
+       {static_cast<const IVertexColumn*>(this), &column}) {
+    for (size_t row = 0; row < source->size(); ++row) {
+      if (source->has_value(row)) {
+        builder.push_back_vertex(source->get_vertex(row));
+      } else {
+        builder.push_back_null();
+      }
+    }
+  }
+  return builder.finish();
+}
+
 std::shared_ptr<IContextColumn> MLVertexColumn::shuffle(
     const sel_vec_t& offsets) const {
   MLVertexColumnBuilderOpt builder(this->get_labels_set());

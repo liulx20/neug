@@ -35,27 +35,45 @@ class OprTimer;
 
 namespace ops {
 
-// One execution's inputs and progress. The cached JoinOpr owns only the plan.
-class JoinState final : public OperatorState {
+// Build data belongs to this execution, independently of the cached plan.
+class JoinState final : public BuildProbeState {
  public:
-  JoinState(const JoinParams& params, OperatorInputs inputs)
-      : params_(params), inputs_(std::move(inputs)) {}
+  JoinState(const JoinParams& params, Stream<ContextChunk> right)
+      : params_(params), right_(std::move(right)) {}
+
+  Status Build() override {
+    if (!table_) {
+      auto right = collect_chunk(std::move(right_));
+      if (!right) {
+        return right.error();
+      }
+      table_ = std::make_unique<JoinTable>(std::move(*right), params_);
+    }
+    return Status::OK();
+  }
+
+  void SetProbeInput(Stream<ContextChunk> input) override {
+    left_ = std::move(input);
+  }
 
   Stream<ContextChunk>::NextResult Next() override {
-    if (done_) {
+    auto status = Build();
+    if (!status) {
+      return tl::unexpected(status);
+    }
+    GS_AUTO(left, left_.Next());
+    if (!left) {
       return std::optional<ContextChunk>{};
     }
-    done_ = true;
-    GS_AUTO(left, collect_chunk(std::move(inputs_[0])));
-    GS_AUTO(right, collect_chunk(std::move(inputs_[1])));
-    GS_AUTO(output, Join::join(std::move(left), std::move(right), params_));
+    GS_AUTO(output, table_->Probe(std::move(*left)));
     return std::optional<ContextChunk>(std::move(output));
   }
 
  private:
-  const JoinParams& params_;
-  OperatorInputs inputs_;
-  bool done_ = false;
+  JoinParams params_;
+  Stream<ContextChunk> left_;
+  Stream<ContextChunk> right_;
+  std::unique_ptr<JoinTable> table_;
 };
 
 class JoinOpr : public IOperator {
@@ -68,8 +86,7 @@ class JoinOpr : public IOperator {
         params_(join_params) {}
 
   SubPipelines sub_pipelines() override {
-    return {SubPipelineMode::kMaterialized,
-            {&left_pipeline_, &right_pipeline_}};
+    return {SubPipelineMode::kBuildProbe, {&left_pipeline_, &right_pipeline_}};
   }
   std::string get_operator_name() const override { return "JoinOpr"; }
   bool supports_task_execution() const override {
@@ -85,8 +102,14 @@ class JoinOpr : public IOperator {
       return error_stream<ContextChunk>(
           Status::InternalError("Join requires two inputs"));
     }
-    return Stream<ContextChunk>(
-        std::make_shared<JoinState>(params_, std::move(branches)));
+    auto state = CreateBuildState(std::move(branches[1]));
+    state->SetProbeInput(std::move(branches[0]));
+    return Stream<ContextChunk>(std::move(state));
+  }
+
+  std::shared_ptr<BuildProbeState> CreateBuildState(
+      Stream<ContextChunk> right) override {
+    return std::make_shared<JoinState>(params_, std::move(right));
   }
 
   void build_explain_children(OprTimer* parent_timer, const ParamsMap& params,

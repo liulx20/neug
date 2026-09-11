@@ -33,10 +33,24 @@ using OperatorInputs = std::vector<Stream<ContextChunk>>;
 
 // Declares data dependencies, never scheduling operations. Materialized inputs
 // form pipeline barriers. Sequential inputs retain demand-driven consumption.
-enum class SubPipelineMode { kNone, kMaterialized, kStreaming, kSequential };
+enum class SubPipelineMode {
+  kNone,
+  kMaterialized,
+  kStreaming,
+  kSequential,
+  kBuildProbe
+};
 struct SubPipelines {
   SubPipelineMode mode = SubPipelineMode::kNone;
   std::vector<Pipeline*> plans;
+};
+
+// Execution-owned blocking build phase followed by a streaming probe phase.
+// The pipeline builder controls when Build runs and connects the probe input.
+class BuildProbeState : public OperatorState {
+ public:
+  virtual Status Build() = 0;
+  virtual void SetProbeInput(Stream<ContextChunk> input) = 0;
 };
 
 class IOperator {
@@ -44,6 +58,11 @@ class IOperator {
   virtual ~IOperator() = default;
 
   virtual SubPipelines sub_pipelines() { return {}; }
+
+  virtual std::shared_ptr<BuildProbeState> CreateBuildState(
+      Stream<ContextChunk> input) {
+    throw std::logic_error("Operator has no build phase");
+  }
 
   // Source-like operators can replace the incoming data flow. The builder
   // retains enclosing fork barriers while pruning unused data dependencies.
