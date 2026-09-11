@@ -63,11 +63,6 @@ class UnionOpr : public IOperator {
     return result;
   }
   std::string get_operator_name() const override { return "UnionOpr"; }
-  bool supports_task_execution() const override {
-    return std::all_of(
-        sub_plans_.begin(), sub_plans_.end(),
-        [](const auto& plan) { return plan.supports_task_execution(); });
-  }
 
   Stream<ContextChunk> Eval(IStorageInterface& graph, const ParamsMap& params,
                             OperatorInputs inputs,

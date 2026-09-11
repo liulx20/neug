@@ -89,8 +89,6 @@ class DataSourceOpr : public IOperator {
 
   ~DataSourceOpr() override = default;
 
-  bool supports_task_execution() const override { return true; }
-
   std::string get_operator_name() const override { return "DataSourceOpr"; }
 
   Stream<ContextChunk> Eval(IStorageInterface& graph, const ParamsMap& params,

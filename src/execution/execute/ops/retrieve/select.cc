@@ -31,8 +31,6 @@ namespace ops {
 
 class SelectIdNeOpr : public IOperator {
  public:
-  bool supports_task_execution() const override { return true; }
-
   explicit SelectIdNeOpr(std::unique_ptr<neug::execution::ExprBase>&& pred,
                          int tag, const std::string& prop_name,
                          const std::string& param_name)
@@ -104,8 +102,6 @@ class SelectIdNeOpr : public IOperator {
 
 class SelectOpr : public IOperator {
  public:
-  bool supports_task_execution() const override { return true; }
-
   explicit SelectOpr(std::unique_ptr<neug::execution::ExprBase>&& expr)
       : pred_(std::move(expr)) {}
 

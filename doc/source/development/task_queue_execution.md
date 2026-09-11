@@ -5,14 +5,23 @@ objects retain plan configuration; each execution owns separate state objects.
 Operators do not receive a scheduler and cannot submit or wait for tasks.
 
 ```cpp
-auto stream = pipeline.ExecuteScheduled(
-    storage, stream_from_context(Context()), params, 4, nullptr);
+auto stream = pipeline.ExecuteStream(
+    storage, stream_from_context(Context()), params, nullptr, 4);
 auto result = materialize(std::move(stream));
 ```
 
-This C++ API is opt-in and requires a read-only storage snapshot. Keep the plan,
-snapshot and optional profiling timer alive until the output stream is consumed
-or destroyed. There is no Python/SQL switch in this prototype.
+`ExecuteStream` is the single execution entry point for reads, writes, DDL and
+other commands. `Execute` materializes that stream for existing result consumers.
+Every execution uses the same pipeline builder, dependency graph and task runner.
+There is no separate scheduled API or per-operator admission switch.
+
+The default worker count is one. Read-only executions may request more workers;
+writable storage is constrained to one worker even when a higher count is
+requested, preserving transaction sequencing. This enables worker execution of
+writes without introducing concurrent mutation within one transaction. Keep the
+plan, storage and optional profiling timer alive until the stream is consumed or
+destroyed. The worker pool is joined before the completed execution returns to
+its transaction owner. There is no Python/SQL worker-count switch yet.
 
 ## Plan, state and scheduling
 
@@ -24,7 +33,7 @@ or destroyed. There is no Python/SQL switch in this prototype.
 | `PipelineFragment` | Output stream, prerequisite nodes and enclosing fork barriers |
 | `PipelineGraph` | Dependency counts, ready nodes, completion notifications and failures |
 | `TaskScheduler` | Worker pool and queue of runnable tasks |
-| `ScheduledPipelineState` | Own the graph, worker pool and final output pipeline |
+| `PipelineExecutionState` | Own the graph, worker pool and final output pipeline |
 
 `IOperator::sub_pipelines()` declares child plans and how they consume input:
 
@@ -43,15 +52,14 @@ operators such as Union use `TakeAll()`, and build/probe operators use
 transfers their ownership; fixed-arity access checks the number of inputs.
 There is no separate upstream/branches pair in the interface.
 
-`BuildProbeOperator` provides the synchronous state wiring through the same
-`CreateBuildState()` factory used by the task-queue builder. Join only implements
+`BuildProbeOperator` provides the state factory contract used by the builder.
+Join only implements
 that factory and declares its child plans. The builder uses `probe_plan()` and
 `build_plan()` to connect the scheduled phases. It owns scheduling and dependency
 tracking; operators receive neither a scheduler nor an execution graph.
 
-Custom operator implementations must update their `Eval` signature and explicitly
-opt in through `supports_task_execution()`; plugins implementing this interface
-must be rebuilt.
+Custom operator implementations use the unified `Eval` signature. Plugins
+implementing this C++ interface must be rebuilt.
 
 State classes such as `SourceState`, `LimitState`, `UnionState`, `JoinState` and
 `PipelineOperatorState` are separate from operator definitions and `Eval`.
@@ -107,17 +115,20 @@ The external consumer runs the coordinator on first `Next()`:
 Subsequent `Next()` calls enqueue further output pulls without rerunning the
 completed graph. At most one output pull is in flight for a stream.
 
-Workers execute ready tasks and return. They never wait for child futures,
-recursively run queued dependencies, or call the graph coordinator. Nested Joins
-therefore work with one worker without special work-helping logic.
+Workers execute ready tasks and return. They never wait for work queued to the
+same worker pool. Nested Joins in an ordinary graph are connected by dependency
+edges and therefore work with one worker.
 
 ## Demand and failures
 
-Union's sequential child group stays inside one pull pipeline. An unconsumed
-branch is neither initialized nor read, so downstream early termination does
-not trigger errors from an unused branch. Joins inside such a sequential group
-currently execute synchronously inside that group; extracting conditional
-subgraphs while retaining this demand behavior is future work.
+Union creates each child execution only when that branch is demanded. The child
+uses the same builder, graph and execution state, with ready tasks executed
+inline on the current worker. This avoids creating a nested pool or blocking a
+worker on its own pool, and preserves the enclosing transaction's single-worker
+constraint. Nested Joins retain their build/probe dependencies in this local
+graph. An unconsumed branch is neither initialized nor read, so early termination
+does not trigger errors or side effects from an unused branch. Conditional
+graphs are not yet distributed across the enclosing worker pool.
 
 An operator such as Scan can declare that it does not consume its incoming data
 stream. The builder prunes those unused data dependencies while retaining any
@@ -148,8 +159,8 @@ not yet partition scans or hash tables:
 - Dedup and aggregation have no hash exchange or parallel merge phase.
 - The graph has no byte-based memory budget, spill support or cross-query
   admission control. Every execution has its own worker pool.
-- Write/admin operators, exports, arbitrary procedures and GDS operations do not
-  opt in to scheduled execution.
+- Writes use this same execution flow with one worker. Concurrent mutation
+  within a transaction remains outside this prototype's scope.
 
 Each child pipeline has its own profiling state. A scheduled Join's build time
 includes consuming its right pipeline and constructing the table. Child timers
@@ -165,8 +176,10 @@ upstream inputs, empty-result metadata, and nested Join results/profiling at
 1/2/4 workers. Two simultaneous executions reuse the same Join plan with
 independent inputs and states.
 
-The ordinary execution suite and Python streaming/query tests validate the
-synchronous path after moving child-flow construction into the execution layer.
+The ordinary execution suite and Python streaming, query, DDL and transaction
+tests validate the unified path, including commit and rollback behavior.
+Additional scheduler tests cover task order and worker identity with writable
+storage, and nested Join inside an unconsumed-tail sequential group on one worker.
 
 `HashJoinTest.*` compares joins with a nested-loop oracle across duplicate keys,
 empty inputs, both size relationships, multiple chunks and repeated probes of

@@ -140,7 +140,8 @@ TEST(TaskSchedulerTest, ScheduledPullIsLazyOrderedAndStopsOnDestruction) {
           return std::optional<ContextChunk>(MakeChunk(++calls));
         },
         StreamMetadata{{0}});
-    auto stream = pipeline.ExecuteScheduled(storage, std::move(input), {}, 2);
+    auto stream =
+        pipeline.ExecuteStream(storage, std::move(input), {}, nullptr, 2);
     EXPECT_EQ(calls.load(), 0);
     EXPECT_EQ(stream.metadata().output_columns, (std::vector<int>{0}));
     for (int64_t i = 1; i <= 3; ++i) {
@@ -164,38 +165,16 @@ TEST(TaskSchedulerTest, ErrorsAreTerminalAndQueueCanBeDestroyed) {
     ++calls;
     THROW_IO_EXCEPTION("scheduled source error");
   });
-  auto stream = pipeline.ExecuteScheduled(storage, std::move(input), {}, 2);
+  auto stream =
+      pipeline.ExecuteStream(storage, std::move(input), {}, nullptr, 2);
   auto first = stream.Next();
   ASSERT_FALSE(first);
   EXPECT_NE(first.error().ToString().find("scheduled source error"),
             std::string::npos);
   EXPECT_FALSE(stream.Next());
   EXPECT_EQ(calls, 1);
-  auto invalid = pipeline.ExecuteScheduled(storage, {}, {}, 0);
+  auto invalid = pipeline.ExecuteStream(storage, {}, {}, nullptr, 0);
   EXPECT_FALSE(invalid.Next());
-}
-
-TEST(TaskSchedulerTest, UnsupportedOperatorsAreRejectedBeforeEval) {
-  class UnsafeOperator final : public IOperator {
-   public:
-    std::string get_operator_name() const override { return "UnsafeOperator"; }
-    Stream<ContextChunk> Eval(IStorageInterface&, const ParamsMap&,
-                              OperatorInputs, OprTimer*) override {
-      ADD_FAILURE() << "Unsupported operator must not be initialized";
-      return {};
-    }
-  };
-  PropertyGraph graph;
-  GraphView view(graph);
-  StorageReadInterface storage(view, 0);
-  std::vector<std::unique_ptr<IOperator>> operators;
-  operators.push_back(std::make_unique<UnsafeOperator>());
-  Pipeline pipeline(std::move(operators));
-  auto output = pipeline.ExecuteScheduled(storage, {}, {}, 2);
-  auto next = output.Next();
-  ASSERT_FALSE(next);
-  EXPECT_NE(next.error().ToString().find("does not support"),
-            std::string::npos);
 }
 
 class CallbackSource final : public IOperator {
@@ -203,7 +182,6 @@ class CallbackSource final : public IOperator {
   explicit CallbackSource(std::function<result<ContextChunk>()> produce,
                           int* initialized = nullptr)
       : produce_(std::move(produce)), initialized_(initialized) {}
-  bool supports_task_execution() const override { return true; }
   bool consumes_input() const override { return false; }
   std::string get_operator_name() const override { return "CallbackSource"; }
   Stream<ContextChunk> Eval(IStorageInterface&, const ParamsMap&,
@@ -259,7 +237,6 @@ class TestFork final : public IOperator {
  public:
   TestFork(SubPipelineMode mode, Pipeline left, Pipeline right)
       : mode_(mode), left_(std::move(left)), right_(std::move(right)) {}
-  bool supports_task_execution() const override { return true; }
   std::string get_operator_name() const override { return "TestFork"; }
   SubPipelines sub_pipelines() override { return {mode_, {&left_, &right_}}; }
   Stream<ContextChunk> Eval(IStorageInterface&, const ParamsMap&,
@@ -302,13 +279,51 @@ TEST(TaskSchedulerTest, BuilderSplitsForkWithoutOperatorScheduling) {
     }
     return std::optional<ContextChunk>(MakeChunk(input_pulls));
   });
-  auto output = pipeline.ExecuteScheduled(storage, std::move(input), {}, 2);
+  auto output =
+      pipeline.ExecuteStream(storage, std::move(input), {}, nullptr, 2);
   EXPECT_EQ(input_pulls, 0);
   auto result = collect_chunk(std::move(output));
   ASSERT_TRUE(result);
   EXPECT_EQ(started, 2);
   EXPECT_EQ(input_pulls, 4);
   EXPECT_EQ(result->get(0)->get_elem(0).GetValue<int64_t>(), 7);
+}
+
+TEST(TaskSchedulerTest, WritableExecutionUsesOneWorkerAndPreservesTaskOrder) {
+  class WritableStorage final : public StorageReadInterface {
+   public:
+    explicit WritableStorage(GraphView& view) : StorageReadInterface(view, 0) {}
+    bool writable() const override { return true; }
+  };
+  PropertyGraph graph;
+  GraphView view(graph);
+  WritableStorage storage(view);
+  std::mutex mutex;
+  std::vector<int> order;
+  std::vector<std::thread::id> threads;
+  auto record = [&](int step) {
+    std::lock_guard<std::mutex> lock(mutex);
+    order.push_back(step);
+    threads.push_back(std::this_thread::get_id());
+    return MakeChunk(step);
+  };
+  auto pipeline = OneOperator(std::make_unique<TestFork>(
+      SubPipelineMode::kMaterialized,
+      OneOperator(std::make_unique<CallbackSource>([&] { return record(1); })),
+      OneOperator(
+          std::make_unique<CallbackSource>([&] { return record(2); }))));
+  auto input =
+      generate_chunk([&]() -> result<ContextChunk> { return record(0); });
+  auto stream =
+      pipeline.ExecuteStream(storage, std::move(input), {}, nullptr, 4);
+  EXPECT_TRUE(order.empty());
+  auto result = collect_chunk(std::move(stream));
+  ASSERT_TRUE(result) << result.error().ToString();
+  EXPECT_EQ(order, (std::vector<int>{0, 1, 2}));
+  ASSERT_EQ(threads.size(), 3);
+  EXPECT_NE(threads[0], std::this_thread::get_id());
+  EXPECT_EQ(threads[0], threads[1]);
+  EXPECT_EQ(threads[1], threads[2]);
 }
 
 TEST(TaskSchedulerTest, SequentialGroupDoesNotInitializeUnusedBranch) {
@@ -328,7 +343,7 @@ TEST(TaskSchedulerTest, SequentialGroupDoesNotInitializeUnusedBranch) {
           },
           &right_init))));
   {
-    auto output = pipeline.ExecuteScheduled(storage, {}, {}, 2);
+    auto output = pipeline.ExecuteStream(storage, {}, {}, nullptr, 2);
     EXPECT_EQ(left_init, 0);
     EXPECT_EQ(right_init, 0);
     auto next = output.Next();
@@ -352,10 +367,10 @@ TEST(TaskSchedulerTest, FailedCommonInputPreventsBranchesFromRunning) {
       SubPipelineMode::kMaterialized,
       OneOperator(std::make_unique<CallbackSource>(produce)),
       OneOperator(std::make_unique<CallbackSource>(produce))));
-  auto output = pipeline.ExecuteScheduled(
+  auto output = pipeline.ExecuteStream(
       storage,
       error_stream<ContextChunk>(Status::InternalError("bad common input")), {},
-      2);
+      nullptr, 2);
   auto next = output.Next();
   ASSERT_FALSE(next);
   EXPECT_NE(next.error().ToString().find("bad common input"),
@@ -378,7 +393,8 @@ TEST(TaskSchedulerTest, ReplacementSourcePrunesUnusedPipelineGraph) {
   operators.push_back(
       std::make_unique<CallbackSource>([] { return MakeChunk(9); }));
   Pipeline pipeline(std::move(operators));
-  auto output = collect_chunk(pipeline.ExecuteScheduled(storage, {}, {}, 2));
+  auto output =
+      collect_chunk(pipeline.ExecuteStream(storage, {}, {}, nullptr, 2));
   ASSERT_TRUE(output);
   EXPECT_EQ(output->get(0)->get_elem(0).GetValue<int64_t>(), 9);
 }
@@ -392,6 +408,41 @@ void AddJoin(physical::PhysicalPlan& plan, int depth) {
     AddJoin(*join->mutable_left_plan(), depth - 1);
     AddJoin(*join->mutable_right_plan(), depth - 1);
   }
+}
+
+TEST(TaskSchedulerTest, JoinInsideSequentialGroupUsesSameGraphWithoutPoolWait) {
+  PlanParser::get().init();
+  PropertyGraph graph;
+  GraphView view(graph);
+  StorageReadInterface storage(view, 0);
+  physical::PhysicalPlan plan;
+  AddJoin(plan, 2);
+  ContextMeta meta;
+  meta.set(0, DataType::INT64);
+  ops::JoinOprBuilder builder;
+  auto built = builder.Build(graph.schema(), meta, plan, 0);
+  ASSERT_TRUE(built);
+  int unused = 0;
+  auto pipeline = OneOperator(std::make_unique<TestFork>(
+      SubPipelineMode::kSequential, OneOperator(std::move(built->first)),
+      OneOperator(std::make_unique<CallbackSource>(
+          []() -> result<ContextChunk> {
+            return tl::unexpected(Status::InternalError("unused branch"));
+          },
+          &unused))));
+  std::vector<ContextChunk> chunks;
+  chunks.push_back(MakeChunk(1));
+  chunks.push_back(MakeChunk(1));
+  auto output = pipeline.ExecuteStream(
+      storage, stream_from_batches(std::move(chunks)), {}, nullptr, 1);
+  for (int batch = 0; batch < 2; ++batch) {
+    auto next = output.Next();
+    ASSERT_TRUE(next) << next.error().ToString();
+    ASSERT_TRUE(*next);
+    EXPECT_EQ((**next).row_num(), 8);
+    EXPECT_EQ(unused, 0);
+  }
+  // Destroy before the second branch is demanded.
 }
 
 TEST(TaskSchedulerTest, JoinBuildsOnceAndPullsOnlyOneProbeChunk) {
@@ -468,8 +519,7 @@ TEST(TaskSchedulerTest, RealNestedJoinReplaysMultipleChunksAndProfiles) {
   EXPECT_EQ(expected->row_num(), 17);
   for (size_t workers : {1, 2, 4}) {
     OprTimer timer;
-    auto stream =
-        pipeline.ExecuteScheduled(storage, input(), {}, workers, &timer);
+    auto stream = pipeline.ExecuteStream(storage, input(), {}, &timer, workers);
     auto chunks = collect_batches(std::move(stream));
     ASSERT_TRUE(chunks) << chunks.error().ToString();
     ASSERT_EQ(chunks->size(), 3);
@@ -489,8 +539,8 @@ TEST(TaskSchedulerTest, RealNestedJoinReplaysMultipleChunksAndProfiles) {
   auto execute = [&](int64_t value) {
     std::vector<ContextChunk> chunks;
     chunks.push_back(MakeChunk(value));
-    auto output = pipeline.ExecuteScheduled(
-        storage, stream_from_batches(std::move(chunks)), {}, 2);
+    auto output = pipeline.ExecuteStream(
+        storage, stream_from_batches(std::move(chunks)), {}, nullptr, 2);
     return std::async(std::launch::async,
                       [stream = std::move(output)]() mutable {
                         return collect_chunk(std::move(stream));
@@ -521,7 +571,8 @@ TEST(TaskSchedulerTest, ScheduledSinkPreservesEmptyOutputSchema) {
   std::vector<std::unique_ptr<IOperator>> operators;
   operators.push_back(std::move(built->first));
   Pipeline pipeline(std::move(operators));
-  auto output = materialize(pipeline.ExecuteScheduled(storage, {}, {}, 2));
+  auto output =
+      materialize(pipeline.ExecuteStream(storage, {}, {}, nullptr, 2));
   ASSERT_TRUE(output);
   EXPECT_EQ(output->row_num(), 0);
   EXPECT_EQ(output->tag_ids, (std::vector<int>{3, 0, 3}));

@@ -28,11 +28,15 @@
 
 namespace neug::execution {
 
-// Workers execute ready tasks only. Pipeline dependency management belongs to
-// PipelineGraph; tasks never submit or wait for other tasks.
+// Workers execute ready tasks only. PipelineGraph manages dependencies.
+// Conditional groups run local ready tasks inline without waiting on the pool.
 class TaskScheduler {
  public:
-  explicit TaskScheduler(size_t workers) : worker_count_(workers) {
+  // Conditional subgraphs execute ready tasks inline on their current worker.
+  // They use the same graph runner without waiting on the enclosing pool.
+  enum class Mode { kWorkerPool, kInline };
+  explicit TaskScheduler(size_t workers, Mode mode = Mode::kWorkerPool)
+      : worker_count_(workers), mode_(mode) {
     if (workers == 0) {
       throw std::invalid_argument("TaskScheduler needs at least one worker");
     }
@@ -43,10 +47,14 @@ class TaskScheduler {
 
   template <typename F>
   auto Submit(F&& fn) {
-    Start();
     using T = std::invoke_result_t<F>;
     auto task = std::make_shared<std::packaged_task<T()>>(std::forward<F>(fn));
     auto future = task->get_future();
+    if (mode_ == Mode::kInline) {
+      (*task)();
+      return future;
+    }
+    Start();
     {
       std::lock_guard<std::mutex> lock(mutex_);
       if (stopping_) {
@@ -100,6 +108,7 @@ class TaskScheduler {
   }
 
   size_t worker_count_;
+  Mode mode_;
   std::once_flag start_;
   std::mutex mutex_;
   std::condition_variable ready_;

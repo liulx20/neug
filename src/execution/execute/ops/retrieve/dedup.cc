@@ -35,8 +35,6 @@ class OprTimer;
 namespace ops {
 class DedupOpr : public IOperator {
  public:
-  bool supports_task_execution() const override { return true; }
-
   explicit DedupOpr(const std::vector<int32_t>& tag_ids) : tag_ids_(tag_ids) {}
   std::string get_operator_name() const override { return "DedupOpr"; }
 

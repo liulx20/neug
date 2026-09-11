@@ -34,8 +34,6 @@ namespace ops {
 
 class GetVFromEdgesOpr : public IOperator {
  public:
-  bool supports_task_execution() const override { return true; }
-
   GetVFromEdgesOpr(std::unique_ptr<ExprBase>&& pred, const GetVParams& p)
       : pred_(std::move(pred)), v_params_(p) {}
 

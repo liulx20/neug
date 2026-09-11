@@ -123,10 +123,6 @@ class IOperator {
 
   virtual std::string get_operator_name() const = 0;
 
-  // Explicit opt-in: storage being read-only does not make exports, extension
-  // management or arbitrary procedures safe to schedule concurrently.
-  virtual bool supports_task_execution() const { return false; }
-
   virtual Stream<ContextChunk> Eval(IStorageInterface& graph,
                                     const ParamsMap& params,
                                     OperatorInputs inputs, OprTimer* timer) = 0;

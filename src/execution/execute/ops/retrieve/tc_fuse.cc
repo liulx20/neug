@@ -32,8 +32,6 @@ namespace ops {
 template <typename T1>
 class TCOpr : public IOperator {
  public:
-  bool supports_task_execution() const override { return true; }
-
   TCOpr(const physical::EdgeExpand& ee_opr0,
         const physical::EdgeExpand& ee_opr1,
         const physical::EdgeExpand& ee_opr2, const LabelTriplet& label0,

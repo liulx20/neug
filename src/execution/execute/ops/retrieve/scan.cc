@@ -62,7 +62,6 @@ static std::vector<Value> deduplicate_ids(std::vector<Value> values) {
 
 class FilterOidsGPredOpr : public IOperator {
  public:
-  bool supports_task_execution() const override { return true; }
   bool consumes_input() const override { return false; }
 
   FilterOidsGPredOpr(ScanParams params,
@@ -136,7 +135,6 @@ class FilterOidsGPredOpr : public IOperator {
 
 class ScanWithSPredOpr : public IOperator {
  public:
-  bool supports_task_execution() const override { return true; }
   bool consumes_input() const override { return false; }
 
   ScanWithSPredOpr(const ScanParams& scan_params,
@@ -172,7 +170,6 @@ class ScanWithSPredOpr : public IOperator {
 
 class ScanWithGPredOpr : public IOperator {
  public:
-  bool supports_task_execution() const override { return true; }
   bool consumes_input() const override { return false; }
 
   ScanWithGPredOpr(const ScanParams& scan_params,
@@ -281,7 +278,6 @@ neug::result<OpBuildResultT> ScanOprBuilder::Build(
 
 class DummySourceOpr : public IOperator {
  public:
-  bool supports_task_execution() const override { return true; }
   bool consumes_input() const override { return false; }
 
   DummySourceOpr() {}

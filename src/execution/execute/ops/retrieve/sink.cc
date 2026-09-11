@@ -28,8 +28,6 @@ namespace ops {
 
 class SinkOpr : public IOperator {
  public:
-  bool supports_task_execution() const override { return true; }
-
   explicit SinkOpr(const std::vector<int>& tag_ids) : tag_ids_(tag_ids) {}
 
   Stream<ContextChunk> Eval(IStorageInterface& graph, const ParamsMap& params,

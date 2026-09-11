@@ -89,11 +89,6 @@ class JoinOpr : public BuildProbeOperator {
     return {SubPipelineMode::kBuildProbe, {&left_pipeline_, &right_pipeline_}};
   }
   std::string get_operator_name() const override { return "JoinOpr"; }
-  bool supports_task_execution() const override {
-    return left_pipeline_.supports_task_execution() &&
-           right_pipeline_.supports_task_execution();
-  }
-
   std::shared_ptr<BuildProbeState> CreateBuildState(
       Stream<ContextChunk> right) override {
     return std::make_shared<JoinState>(params_, std::move(right));
@@ -214,10 +209,6 @@ class PrimaryKeyJoinOpr : public IOperator {
     return {SubPipelineMode::kStreaming, {&right_pipeline_}};
   }
   std::string get_operator_name() const override { return "PrimaryJoinOpr"; }
-  bool supports_task_execution() const override {
-    return right_pipeline_.supports_task_execution();
-  }
-
   Stream<ContextChunk> Eval(IStorageInterface& graph, const ParamsMap& params,
                             OperatorInputs inputs,
                             neug::execution::OprTimer* timer) override {

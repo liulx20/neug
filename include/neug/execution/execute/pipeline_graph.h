@@ -30,8 +30,8 @@
 namespace neug::execution {
 
 // Execution-owned DAG. Operators declare inputs; the builder creates these
-// nodes. Only the consumer/coordinator calls Execute. Workers never wait for
-// dependency futures or recursively execute another pipeline task.
+// nodes. The coordinator submits ready nodes. Conditional groups use an inline
+// task runner so their coordinator never waits on the enclosing worker pool.
 class PipelineGraph {
  public:
   using NodeId = size_t;

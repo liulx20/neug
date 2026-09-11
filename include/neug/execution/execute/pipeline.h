@@ -35,19 +35,13 @@ class Pipeline {
 
   // Caller keeps this pipeline, storage and timer alive until the stream is
   // consumed or destroyed. Params are captured by value by lazy operators.
+  // All executions use the task graph. Writable storage uses one worker to
+  // preserve transaction sequencing; read-only callers may request more.
   Stream<ContextChunk> ExecuteStream(IStorageInterface& graph,
                                      Stream<ContextChunk> input,
-                                     const ParamsMap& params, OprTimer* timer);
-
-  bool supports_task_execution() const;
-
-  // Experimental read-only task execution. Each Next is a queued pipeline
-  // task; independent Join branches can run concurrently. The caller retains
-  // the pipeline, graph snapshot and timer until this stream is destroyed.
-  Stream<ContextChunk> ExecuteScheduled(IStorageInterface& graph,
-                                        Stream<ContextChunk> input,
-                                        const ParamsMap& params, size_t workers,
-                                        OprTimer* timer = nullptr);
+                                     const ParamsMap& params,
+                                     OprTimer* timer = nullptr,
+                                     size_t workers = 1);
 
   neug::result<Context> Execute(IStorageInterface& graph, Context&& ctx,
                                 const ParamsMap& params, OprTimer* timer);

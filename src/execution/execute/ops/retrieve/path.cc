@@ -223,8 +223,6 @@ struct OrderByLimitSPOp {
 
 class SPOrderByLimitOpr : public IOperator {
  public:
-  bool supports_task_execution() const override { return true; }
-
   SPOrderByLimitOpr(const ShortestPathParams& spp, int limit,
                     const SpecialPredicateConfig& config)
       : spp_(spp), limit_(limit), config_(config) {}
@@ -262,8 +260,6 @@ class SPOrderByLimitOpr : public IOperator {
 
 class SPOrderByLimitWithGPredOpr : public IOperator {
  public:
-  bool supports_task_execution() const override { return true; }
-
   SPOrderByLimitWithGPredOpr(const ShortestPathParams& spp, int limit,
                              std::unique_ptr<ExprBase>&& pred)
       : spp_(spp), limit_(limit), pred_(std::move(pred)) {}
@@ -371,8 +367,6 @@ neug::result<OpBuildResultT> SPOrderByLimitOprBuilder::Build(
 
 class SPSPredOpr : public IOperator {
  public:
-  bool supports_task_execution() const override { return true; }
-
   SPSPredOpr(const ShortestPathParams& spp,
              const SpecialPredicateConfig& config)
       : spp_(spp), config_(config) {}
@@ -404,8 +398,6 @@ class SPSPredOpr : public IOperator {
 
 class SPGPredOpr : public IOperator {
  public:
-  bool supports_task_execution() const override { return true; }
-
   SPGPredOpr(const ShortestPathParams& spp, std::unique_ptr<ExprBase>&& pred)
       : spp_(spp), pred_(std::move(pred)) {}
 
@@ -437,8 +429,6 @@ class SPGPredOpr : public IOperator {
 };
 class SPWithoutPredOpr : public IOperator {
  public:
-  bool supports_task_execution() const override { return true; }
-
   explicit SPWithoutPredOpr(const ShortestPathParams& spp) : spp_(spp) {}
 
   std::string get_operator_name() const override { return "SPWithoutPredOpr"; }
@@ -467,8 +457,6 @@ class SPWithoutPredOpr : public IOperator {
 
 class ASPOpr : public IOperator {
  public:
-  bool supports_task_execution() const override { return true; }
-
   ASPOpr(const neug::Schema& schema, const physical::PathExpand& opr,
          const physical::PhysicalOpr_MetaData& meta,
          const physical::GetV& get_v_opr, int v_alias) {
@@ -537,8 +525,6 @@ class ASPOpr : public IOperator {
 
 class SSSDSPOpr : public IOperator {
  public:
-  bool supports_task_execution() const override { return true; }
-
   SSSDSPOpr(const ShortestPathParams& spp, const ::common::ExprOpr& expr_opr)
       : spp_(spp), expr_opr_(expr_opr) {}
   std::string get_operator_name() const override { return "SSSDSPOpr"; }
@@ -681,8 +667,6 @@ neug::result<OpBuildResultT> SPOprBuilder::Build(
 
 class PathExpandVOpr : public IOperator {
  public:
-  bool supports_task_execution() const override { return true; }
-
   explicit PathExpandVOpr(const PathExpandParams& pep) : pep_(pep) {}
 
   Stream<ContextChunk> Eval(IStorageInterface& graph_interface,
@@ -784,8 +768,6 @@ neug::result<OpBuildResultT> PathExpandVOprBuilder::Build(
 
 class PathExpandOpr : public IOperator {
  public:
-  bool supports_task_execution() const override { return true; }
-
   explicit PathExpandOpr(PathExpandParams pep) : pep_(pep) {}
 
   std::string get_operator_name() const override { return "PathExpandOpr"; }
@@ -810,8 +792,6 @@ class PathExpandOpr : public IOperator {
 
 class PathExpandOprWithPred : public IOperator {
  public:
-  bool supports_task_execution() const override { return true; }
-
   PathExpandOprWithPred(PathExpandParams pep, std::unique_ptr<ExprBase>&& pred)
       : pep_(pep), pred_(std::move(pred)) {}
 
@@ -845,8 +825,6 @@ class PathExpandOprWithPred : public IOperator {
 
 class AnyWeightedShortestPathOpr : public IOperator {
  public:
-  bool supports_task_execution() const override { return true; }
-
   AnyWeightedShortestPathOpr(PathExpandParams pep,
                              std::unique_ptr<ExprBase>&& weight)
       : pep_(pep), weight_(std::move(weight)) {}

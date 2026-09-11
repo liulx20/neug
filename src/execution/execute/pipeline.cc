@@ -24,6 +24,11 @@
 
 namespace neug::execution {
 namespace {
+Stream<ContextChunk> BuildExecution(Pipeline& plan, IStorageInterface& storage,
+                                    Stream<ContextChunk> input,
+                                    const ParamsMap& params, OprTimer* timer,
+                                    size_t workers, TaskScheduler::Mode mode);
+
 Status operator_error(const Status& error, const std::string& name) {
   return Status(error.error_code(), "Execution failed at operator: [" + name +
                                         "], " + error.error_message());
@@ -129,11 +134,10 @@ Stream<ContextChunk> ReadBuffer(const std::shared_ptr<PipelineBuffer>& buffer) {
 
 // Sequential branch groups stay in one pull pipeline. This preserves Union
 // short-circuiting: an unconsumed branch is neither initialized nor executed.
-class InlineBranchState final : public OperatorState {
+class LazyBranchState final : public OperatorState {
  public:
-  InlineBranchState(Pipeline& plan, IStorageInterface& storage,
-                    ParamsMap params, std::shared_ptr<PipelineBuffer> seed,
-                    OprTimer* timer)
+  LazyBranchState(Pipeline& plan, IStorageInterface& storage, ParamsMap params,
+                  std::shared_ptr<PipelineBuffer> seed, OprTimer* timer)
       : plan_(plan),
         storage_(storage),
         params_(std::move(params)),
@@ -145,8 +149,9 @@ class InlineBranchState final : public OperatorState {
       if (!status) {
         return tl::unexpected(status);
       }
-      output_.emplace(
-          plan_.ExecuteStream(storage_, ReadBuffer(seed_), params_, timer_));
+      output_.emplace(BuildExecution(plan_, storage_, ReadBuffer(seed_),
+                                     params_, timer_, 1,
+                                     TaskScheduler::Mode::kInline));
     }
     return output_->Next();
   }
@@ -166,11 +171,11 @@ struct PipelineFragment {
   std::vector<PipelineGraph::NodeId> barriers;
 };
 
-class ScheduledPipelineState final : public OperatorState {
+class PipelineExecutionState final : public OperatorState {
  public:
-  ScheduledPipelineState(size_t workers, std::shared_ptr<PipelineGraph> graph,
-                         PipelineFragment fragment)
-      : scheduler_(workers),
+  PipelineExecutionState(size_t workers, std::shared_ptr<PipelineGraph> graph,
+                         PipelineFragment fragment, TaskScheduler::Mode mode)
+      : scheduler_(workers, mode),
         graph_(std::move(graph)),
         fragment_(std::move(fragment)) {}
   Stream<ContextChunk>::NextResult Next() override {
@@ -179,7 +184,8 @@ class ScheduledPipelineState final : public OperatorState {
       return tl::unexpected(status);
     }
     auto output = scheduler_.Submit([this] { return fragment_.output.Next(); });
-    // Only the external consumer waits. Worker tasks never wait for children.
+    // The external consumer waits for pool work. In a conditional group the
+    // inline task has already completed, so its worker never blocks here.
     return output.get();
   }
 
@@ -195,7 +201,7 @@ class ScheduledPipelineState final : public OperatorState {
 class PipelineBuilder {
  public:
   PipelineBuilder(IStorageInterface& storage, const ParamsMap& params,
-                  PipelineGraph* graph)
+                  PipelineGraph& graph)
       : storage_(storage), params_(params), graph_(graph) {}
 
   PipelineFragment Build(Pipeline& plan, PipelineFragment fragment,
@@ -214,15 +220,15 @@ class PipelineBuilder {
       auto children = op.sub_pipelines();
       OperatorInputs inputs;
       std::shared_ptr<BuildProbeState> build_state;
-      if (children.mode == SubPipelineMode::kBuildProbe && graph_) {
+      if (children.mode == SubPipelineMode::kBuildProbe) {
         if (children.plans.size() != 2) {
           throw std::logic_error("Build/probe requires two inputs");
         }
         auto seed =
             std::make_shared<PipelineBuffer>(std::move(fragment.output));
         auto seed_id =
-            graph_->Add(name + "/input", std::move(fragment.dependencies),
-                        [seed] { return seed->Fill(); });
+            graph_.Add(name + "/input", std::move(fragment.dependencies),
+                       [seed] { return seed->Fill(); });
         auto* left_timer = ChildTimer(current_timer);
         auto* right_timer = ChildTimer(current_timer);
         auto right =
@@ -230,26 +236,26 @@ class PipelineBuilder {
                   {ReadBuffer(seed), {seed_id}, {seed_id}}, right_timer);
         build_state = op.CreateBuildState(std::move(right.output));
         auto build_id =
-            graph_->Add(name + "/build", std::move(right.dependencies),
-                        [state = build_state, current_timer] {
-                          if (current_timer) {
-                            double charged = 0;
-                            StreamTimerScope scope(*current_timer, charged);
-                            return state->Build();
-                          }
-                          return state->Build();
-                        });
+            graph_.Add(name + "/build", std::move(right.dependencies),
+                       [state = build_state, current_timer] {
+                         if (current_timer) {
+                           double charged = 0;
+                           StreamTimerScope scope(*current_timer, charged);
+                           return state->Build();
+                         }
+                         return state->Build();
+                       });
         auto left =
             Build(children.probe_plan(),
                   {ReadBuffer(seed), {build_id}, {build_id}}, left_timer);
         build_state->SetProbeInput(std::move(left.output));
         fragment.dependencies = std::move(left.dependencies);
-      } else if (children.mode == SubPipelineMode::kMaterialized && graph_) {
+      } else if (children.mode == SubPipelineMode::kMaterialized) {
         auto seed =
             std::make_shared<PipelineBuffer>(std::move(fragment.output));
         auto seed_id =
-            graph_->Add(name + "/input", std::move(fragment.dependencies),
-                        [seed] { return seed->Fill(); });
+            graph_.Add(name + "/input", std::move(fragment.dependencies),
+                       [seed] { return seed->Fill(); });
         fragment.dependencies.clear();
         for (size_t child = 0; child < children.plans.size(); ++child) {
           auto branch = Build(*children.plans[child],
@@ -257,9 +263,9 @@ class PipelineBuilder {
                               ChildTimer(current_timer));
           auto result =
               std::make_shared<PipelineBuffer>(std::move(branch.output));
-          auto id = graph_->Add(name + "/branch" + std::to_string(child),
-                                std::move(branch.dependencies),
-                                [result] { return result->Fill(); });
+          auto id = graph_.Add(name + "/branch" + std::to_string(child),
+                               std::move(branch.dependencies),
+                               [result] { return result->Fill(); });
           fragment.dependencies.push_back(id);
           inputs.Add(ReadBuffer(result));
         }
@@ -275,8 +281,8 @@ class PipelineBuilder {
             std::make_shared<PipelineBuffer>(std::move(fragment.output));
         for (auto* child : children.plans) {
           inputs.Add(
-              std::make_shared<InlineBranchState>(
-                  *child, storage_, params_, seed, ChildTimer(current_timer)),
+              std::make_shared<LazyBranchState>(*child, storage_, params_, seed,
+                                                ChildTimer(current_timer)),
               seed->metadata);
         }
       }
@@ -311,7 +317,7 @@ class PipelineBuilder {
   }
   IStorageInterface& storage_;
   const ParamsMap& params_;
-  PipelineGraph* graph_;
+  PipelineGraph& graph_;
 };
 
 result<Context> Pipeline::Execute(IStorageInterface& graph, Context&& ctx,
@@ -320,49 +326,34 @@ result<Context> Pipeline::Execute(IStorageInterface& graph, Context&& ctx,
       ExecuteStream(graph, stream_from_context(std::move(ctx)), params, timer));
 }
 
+namespace {
+Stream<ContextChunk> BuildExecution(Pipeline& plan, IStorageInterface& storage,
+                                    Stream<ContextChunk> input,
+                                    const ParamsMap& params, OprTimer* timer,
+                                    size_t workers, TaskScheduler::Mode mode) {
+  auto graph = std::make_shared<PipelineGraph>();
+  auto fragment = PipelineBuilder(storage, params, *graph)
+                      .Build(plan, {std::move(input), {}, {}}, timer);
+  auto metadata = fragment.output.metadata();
+  return Stream<ContextChunk>(
+      std::make_shared<PipelineExecutionState>(workers, std::move(graph),
+                                               std::move(fragment), mode),
+      std::move(metadata));
+}
+}  // namespace
+
 Stream<ContextChunk> Pipeline::ExecuteStream(IStorageInterface& graph,
                                              Stream<ContextChunk> input,
                                              const ParamsMap& params,
-                                             OprTimer* timer) {
-  return PipelineBuilder(graph, params, nullptr)
-      .Build(*this, {std::move(input), {}, {}}, timer)
-      .output;
-}
-
-bool Pipeline::supports_task_execution() const {
-  return std::all_of(operators_.begin(), operators_.end(), [](const auto& op) {
-    return op->supports_task_execution();
-  });
-}
-
-Stream<ContextChunk> Pipeline::ExecuteScheduled(IStorageInterface& graph,
-                                                Stream<ContextChunk> input,
-                                                const ParamsMap& params,
-                                                size_t workers,
-                                                OprTimer* timer) {
-  if (graph.writable() || !graph.readable()) {
-    return error_stream<ContextChunk>(
-        Status(StatusCode::ERR_INVALID_ARGUMENT,
-               "Scheduled execution requires a read-only snapshot"));
-  }
-  if (!supports_task_execution()) {
-    return error_stream<ContextChunk>(Status(
-        StatusCode::ERR_INVALID_ARGUMENT,
-        "Pipeline contains an operator that does not support task execution"));
-  }
+                                             OprTimer* timer, size_t workers) {
   if (workers == 0) {
     return error_stream<ContextChunk>(
         Status(StatusCode::ERR_INVALID_ARGUMENT,
-               "Scheduled execution requires at least one worker"));
+               "Execution requires at least one worker"));
   }
-  auto execution_graph = std::make_shared<PipelineGraph>();
-  auto fragment = PipelineBuilder(graph, params, execution_graph.get())
-                      .Build(*this, {std::move(input), {}, {}}, timer);
-  auto metadata = fragment.output.metadata();
-  return Stream<ContextChunk>(
-      std::make_shared<ScheduledPipelineState>(
-          workers, std::move(execution_graph), std::move(fragment)),
-      std::move(metadata));
+  return BuildExecution(*this, graph, std::move(input), params, timer,
+                        graph.writable() ? 1 : workers,
+                        TaskScheduler::Mode::kWorkerPool);
 }
 
 neug::result<std::unique_ptr<OprTimer>> Pipeline::explain_tree(

@@ -30,8 +30,6 @@ namespace ops {
 
 class ProjectOpr : public IOperator {
  public:
-  bool supports_task_execution() const override { return true; }
-
   ProjectOpr(std::vector<std::pair<int, int>>&& select_columns_mapping,
              bool is_append)
       : is_append_(is_append),
@@ -164,8 +162,6 @@ neug::result<OpBuildResultT> ProjectOprBuilder::Build(
 
 class ProjectOrderByOprBeta : public IOperator {
  public:
-  bool supports_task_execution() const override { return true; }
-
   ProjectOrderByOprBeta(
       std::vector<std::unique_ptr<ProjectExprBuilderBase>>&& expr_builders,
       std::vector<std::unique_ptr<ProjectExprBuilderBase>>&&

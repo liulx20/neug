@@ -32,8 +32,6 @@ namespace ops {
 
 class GroupByOpr : public IOperator {
  public:
-  bool supports_task_execution() const override { return true; }
-
   GroupByOpr(std::vector<std::pair<int, int>>&& mappings,
              std::vector<physical::GroupBy_AggFunc>&& aggrs)
       : mappings_(std::move(mappings)), aggrs_(std::move(aggrs)) {}

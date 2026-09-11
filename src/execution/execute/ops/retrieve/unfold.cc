@@ -46,8 +46,6 @@ const DataType& getListLikeChildType(const DataType& type) {
 
 class UnfoldOpr : public IOperator {
  public:
-  bool supports_task_execution() const override { return true; }
-
   explicit UnfoldOpr(std::optional<int32_t> key,
                      std::unique_ptr<neug::execution::ExprBase> expr, int alias)
       : key_(key), expr_(std::move(expr)), alias_(alias) {}

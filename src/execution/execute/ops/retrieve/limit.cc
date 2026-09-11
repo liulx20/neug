@@ -63,8 +63,6 @@ class LimitState final : public OperatorState {
 
 class LimitOpr : public IOperator {
  public:
-  bool supports_task_execution() const override { return true; }
-
   explicit LimitOpr(const algebra::Limit& opr) {
     lower_ = 0;
     upper_ = std::numeric_limits<size_t>::max();

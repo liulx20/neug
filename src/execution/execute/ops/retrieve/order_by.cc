@@ -28,8 +28,6 @@ namespace ops {
 
 class OrderByOpr : public IOperator {
  public:
-  bool supports_task_execution() const override { return true; }
-
   OrderByOpr(std::vector<std::pair<int32_t, bool>> keys, int lower, int upper)
       : keys_(std::move(keys)), lower_(lower), upper_(upper) {}
 
