@@ -71,9 +71,9 @@ class FilterOidsGPredOpr : public IOperator {
       : params_(params), oids_(oids), pred_(std::move(pred)) {}
 
   Stream<ContextChunk> Eval(IStorageInterface& graph, const ParamsMap& params,
-                            Stream<ContextChunk>&& input,
-                            neug::execution::OprTimer* timer,
-                            OperatorInputs branches) override {
+                            OperatorInputs inputs,
+                            neug::execution::OprTimer* timer) override {
+    auto input = inputs.TakeSingle();
     return defer_stream(
         std::move(input),
         [this, &graph, params,
@@ -146,9 +146,9 @@ class ScanWithSPredOpr : public IOperator {
   std::string get_operator_name() const override { return "ScanWithSPredOpr"; }
 
   Stream<ContextChunk> Eval(IStorageInterface& graph, const ParamsMap& params,
-                            Stream<ContextChunk>&& input,
-                            neug::execution::OprTimer* timer,
-                            OperatorInputs branches) override {
+                            OperatorInputs inputs,
+                            neug::execution::OprTimer* timer) override {
+    auto input = inputs.TakeSingle();
     return defer_stream(
         std::move(input),
         [this, &graph, params,
@@ -179,9 +179,9 @@ class ScanWithGPredOpr : public IOperator {
                    std::unique_ptr<neug::execution::ExprBase> pred)
       : scan_params_(scan_params), pred_(std::move(pred)) {}
   Stream<ContextChunk> Eval(IStorageInterface& graph, const ParamsMap& params,
-                            Stream<ContextChunk>&& input,
-                            neug::execution::OprTimer* timer,
-                            OperatorInputs branches) override {
+                            OperatorInputs inputs,
+                            neug::execution::OprTimer* timer) override {
+    auto input = inputs.TakeSingle();
     return defer_stream(
         std::move(input),
         [this, &graph, params,
@@ -287,10 +287,9 @@ class DummySourceOpr : public IOperator {
   DummySourceOpr() {}
 
   Stream<ContextChunk> Eval(IStorageInterface& graph_interface,
-                            const ParamsMap& params,
-                            Stream<ContextChunk>&& input,
-                            neug::execution::OprTimer* timer,
-                            OperatorInputs branches) override {
+                            const ParamsMap& params, OperatorInputs inputs,
+                            neug::execution::OprTimer* timer) override {
+    auto input = inputs.TakeSingle();
     return defer_stream(
         std::move(input),
         [this, &graph_interface, params,

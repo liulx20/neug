@@ -36,10 +36,22 @@ or destroyed. There is no Python/SQL switch in this prototype.
 - `kSequential`: child streams are consumed one after another on demand. Union
   uses this mode.
 
-`Eval` receives `OperatorInputs`, prepared by the builder. It has no scheduler or
-execution-graph argument. Custom operator implementations must update their
-signature and explicitly opt in through `supports_task_execution()`; plugins
-implementing this interface must be rebuilt.
+`Eval(storage, params, inputs, timer)` receives one `OperatorInputs` object
+prepared by the builder. Ordinary operators use `TakeSingle()`, variadic
+operators such as Union use `TakeAll()`, and build/probe operators use
+`TakeBuildProbe()` with named `probe` and `build` streams. Taking inputs
+transfers their ownership; fixed-arity access checks the number of inputs.
+There is no separate upstream/branches pair in the interface.
+
+`BuildProbeOperator` provides the synchronous state wiring through the same
+`CreateBuildState()` factory used by the task-queue builder. Join only implements
+that factory and declares its child plans. The builder uses `probe_plan()` and
+`build_plan()` to connect the scheduled phases. It owns scheduling and dependency
+tracking; operators receive neither a scheduler nor an execution graph.
+
+Custom operator implementations must update their `Eval` signature and explicitly
+opt in through `supports_task_execution()`; plugins implementing this interface
+must be rebuilt.
 
 State classes such as `SourceState`, `LimitState`, `UnionState`, `JoinState` and
 `PipelineOperatorState` are separate from operator definitions and `Eval`.

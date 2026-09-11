@@ -31,7 +31,8 @@ class OprTimer;
 namespace ops {
 class UnionState final : public OperatorState {
  public:
-  explicit UnionState(OperatorInputs inputs) : inputs_(std::move(inputs)) {}
+  explicit UnionState(std::vector<Stream<ContextChunk>> inputs)
+      : inputs_(std::move(inputs)) {}
   Stream<ContextChunk>::NextResult Next() override {
     while (index_ < inputs_.size()) {
       GS_AUTO(next, inputs_[index_].Next());
@@ -45,7 +46,7 @@ class UnionState final : public OperatorState {
   }
 
  private:
-  OperatorInputs inputs_;
+  std::vector<Stream<ContextChunk>> inputs_;
   size_t index_ = 0;
 };
 
@@ -69,13 +70,13 @@ class UnionOpr : public IOperator {
   }
 
   Stream<ContextChunk> Eval(IStorageInterface& graph, const ParamsMap& params,
-                            Stream<ContextChunk>&& input,
-                            neug::execution::OprTimer* timer,
-                            OperatorInputs branches) override {
+                            OperatorInputs inputs,
+                            neug::execution::OprTimer* timer) override {
+    auto streams = inputs.TakeAll();
     auto metadata =
-        branches.empty() ? input.metadata() : branches[0].metadata();
+        streams.empty() ? StreamMetadata{} : streams.front().metadata();
     return Stream<ContextChunk>(
-        std::make_shared<UnionState>(std::move(branches)), std::move(metadata));
+        std::make_shared<UnionState>(std::move(streams)), std::move(metadata));
   }
 
   void build_explain_children(OprTimer* parent_timer, const ParamsMap& params,

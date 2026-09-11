@@ -76,7 +76,7 @@ class JoinState final : public BuildProbeState {
   std::unique_ptr<JoinTable> table_;
 };
 
-class JoinOpr : public IOperator {
+class JoinOpr : public BuildProbeOperator {
  public:
   JoinOpr(neug::execution::Pipeline&& left_pipeline,
           neug::execution::Pipeline&& right_pipeline,
@@ -92,19 +92,6 @@ class JoinOpr : public IOperator {
   bool supports_task_execution() const override {
     return left_pipeline_.supports_task_execution() &&
            right_pipeline_.supports_task_execution();
-  }
-
-  Stream<ContextChunk> Eval(IStorageInterface& graph, const ParamsMap& params,
-                            Stream<ContextChunk>&& input,
-                            neug::execution::OprTimer* timer,
-                            OperatorInputs branches) override {
-    if (branches.size() != 2) {
-      return error_stream<ContextChunk>(
-          Status::InternalError("Join requires two inputs"));
-    }
-    auto state = CreateBuildState(std::move(branches[1]));
-    state->SetProbeInput(std::move(branches[0]));
-    return Stream<ContextChunk>(std::move(state));
   }
 
   std::shared_ptr<BuildProbeState> CreateBuildState(
@@ -232,15 +219,11 @@ class PrimaryKeyJoinOpr : public IOperator {
   }
 
   Stream<ContextChunk> Eval(IStorageInterface& graph, const ParamsMap& params,
-                            Stream<ContextChunk>&& input,
-                            neug::execution::OprTimer* timer,
-                            OperatorInputs branches) override {
-    if (branches.size() != 1) {
-      return error_stream<ContextChunk>(
-          Status::InternalError("PK Join requires one input"));
-    }
+                            OperatorInputs inputs,
+                            neug::execution::OprTimer* timer) override {
+    auto input = inputs.TakeSingle();
     return map_chunks(
-        std::move(branches[0]),
+        std::move(input),
         [this, &graph](ContextChunk&& chunk) -> result<ContextChunk> {
           return Join::pk_join(graph, std::move(chunk), labels_, tag_, alias_);
         });

@@ -84,8 +84,7 @@ class ExtensionInstallOpr : public IOperator {
     return "ExtensionInstallOpr";
   }
   Stream<ContextChunk> Eval(IStorageInterface& graph, const ParamsMap& params,
-                            Stream<ContextChunk>&& input, OprTimer* timer,
-                            OperatorInputs branches) override;
+                            OperatorInputs inputs, OprTimer* timer) override;
 
  private:
   std::string extension_name_;
@@ -98,8 +97,7 @@ class ExtensionLoadOpr : public IOperator {
   ~ExtensionLoadOpr() override = default;
   std::string get_operator_name() const override { return "ExtensionLoadOpr"; }
   Stream<ContextChunk> Eval(IStorageInterface& graph, const ParamsMap& params,
-                            Stream<ContextChunk>&& input, OprTimer* timer,
-                            OperatorInputs branches) override;
+                            OperatorInputs inputs, OprTimer* timer) override;
 
  private:
   std::string extension_name_;
@@ -114,8 +112,7 @@ class ExtensionUninstallOpr : public IOperator {
     return "ExtensionUninstallOpr";
   }
   Stream<ContextChunk> Eval(IStorageInterface& graph, const ParamsMap& params,
-                            Stream<ContextChunk>&& input, OprTimer* timer,
-                            OperatorInputs branches) override;
+                            OperatorInputs inputs, OprTimer* timer) override;
 
  private:
   std::string extension_name_;
@@ -123,9 +120,9 @@ class ExtensionUninstallOpr : public IOperator {
 
 Stream<ContextChunk> ExtensionInstallOpr::Eval(IStorageInterface& graph,
                                                const ParamsMap& params,
-                                               Stream<ContextChunk>&& input,
-                                               OprTimer* timer,
-                                               OperatorInputs branches) {
+                                               OperatorInputs inputs,
+                                               OprTimer* timer) {
+  auto input = inputs.TakeSingle();
   return defer_stream(
       std::move(input),
       [this, &graph, params,
@@ -146,9 +143,9 @@ Stream<ContextChunk> ExtensionInstallOpr::Eval(IStorageInterface& graph,
 
 Stream<ContextChunk> ExtensionLoadOpr::Eval(IStorageInterface& graph,
                                             const ParamsMap& params,
-                                            Stream<ContextChunk>&& input,
-                                            OprTimer* timer,
-                                            OperatorInputs branches) {
+                                            OperatorInputs inputs,
+                                            OprTimer* timer) {
+  auto input = inputs.TakeSingle();
   return defer_stream(
       std::move(input),
       [this, &graph, params,
@@ -175,9 +172,9 @@ Stream<ContextChunk> ExtensionLoadOpr::Eval(IStorageInterface& graph,
 
 Stream<ContextChunk> ExtensionUninstallOpr::Eval(IStorageInterface& graph,
                                                  const ParamsMap& params,
-                                                 Stream<ContextChunk>&& input,
-                                                 OprTimer* timer,
-                                                 OperatorInputs branches) {
+                                                 OperatorInputs inputs,
+                                                 OprTimer* timer) {
+  auto input = inputs.TakeSingle();
   return defer_stream(
       std::move(input),
       [this, &graph, params,

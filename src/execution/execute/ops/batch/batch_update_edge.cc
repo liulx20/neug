@@ -45,8 +45,7 @@ class UpdateEdgeOpr : public IOperator {
   std::string get_operator_name() const override { return "UpdateEdgeOpr"; }
 
   Stream<ContextChunk> Eval(IStorageInterface& graph, const ParamsMap& params,
-                            Stream<ContextChunk>&& input, OprTimer* timer,
-                            OperatorInputs branches) override;
+                            OperatorInputs inputs, OprTimer* timer) override;
 
  private:
   edge_data_vec_t edge_data_;
@@ -54,9 +53,9 @@ class UpdateEdgeOpr : public IOperator {
 
 Stream<ContextChunk> UpdateEdgeOpr::Eval(IStorageInterface& graph_interface,
                                          const ParamsMap& params,
-                                         Stream<ContextChunk>&& input,
-                                         OprTimer* timer,
-                                         OperatorInputs branches) {
+                                         OperatorInputs inputs,
+                                         OprTimer* timer) {
+  auto input = inputs.TakeSingle();
   return defer_stream(
       std::move(input),
       [this, &graph_interface, params,

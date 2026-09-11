@@ -226,8 +226,8 @@ class PipelineBuilder {
         auto* left_timer = ChildTimer(current_timer);
         auto* right_timer = ChildTimer(current_timer);
         auto right =
-            Build(*children.plans[1], {ReadBuffer(seed), {seed_id}, {seed_id}},
-                  right_timer);
+            Build(children.build_plan(),
+                  {ReadBuffer(seed), {seed_id}, {seed_id}}, right_timer);
         build_state = op.CreateBuildState(std::move(right.output));
         auto build_id =
             graph_->Add(name + "/build", std::move(right.dependencies),
@@ -240,7 +240,7 @@ class PipelineBuilder {
                           return state->Build();
                         });
         auto left =
-            Build(*children.plans[0],
+            Build(children.probe_plan(),
                   {ReadBuffer(seed), {build_id}, {build_id}}, left_timer);
         build_state->SetProbeInput(std::move(left.output));
         fragment.dependencies = std::move(left.dependencies);
@@ -261,7 +261,7 @@ class PipelineBuilder {
                                 std::move(branch.dependencies),
                                 [result] { return result->Fill(); });
           fragment.dependencies.push_back(id);
-          inputs.push_back(ReadBuffer(result));
+          inputs.Add(ReadBuffer(result));
         }
       } else if (children.mode == SubPipelineMode::kStreaming) {
         if (children.plans.size() != 1) {
@@ -269,21 +269,23 @@ class PipelineBuilder {
         }
         fragment = Build(*children.plans[0], std::move(fragment),
                          ChildTimer(current_timer));
-        inputs.push_back(std::move(fragment.output));
+        inputs.Add(std::move(fragment.output));
       } else if (!children.plans.empty()) {
         auto seed =
             std::make_shared<PipelineBuffer>(std::move(fragment.output));
         for (auto* child : children.plans) {
-          inputs.emplace_back(
+          inputs.Add(
               std::make_shared<InlineBranchState>(
                   *child, storage_, params_, seed, ChildTimer(current_timer)),
               seed->metadata);
         }
       }
-      auto output = build_state
-                        ? Stream<ContextChunk>(std::move(build_state))
-                        : op.Eval(storage_, params_, std::move(fragment.output),
-                                  current_timer, std::move(inputs));
+      if (children.mode == SubPipelineMode::kNone) {
+        inputs.Add(std::move(fragment.output));
+      }
+      auto output = build_state ? Stream<ContextChunk>(std::move(build_state))
+                                : op.Eval(storage_, params_, std::move(inputs),
+                                          current_timer);
       auto metadata = output.metadata();
       fragment.output = Stream<ContextChunk>(
           std::make_shared<PipelineOperatorState>(std::move(output), name,

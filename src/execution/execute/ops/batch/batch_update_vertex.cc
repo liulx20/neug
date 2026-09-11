@@ -41,8 +41,7 @@ class UpdateVertexOpr : public IOperator {
                                        ContextChunk&& chunk, OprTimer* timer);
 
   Stream<ContextChunk> Eval(IStorageInterface& graph, const ParamsMap& params,
-                            Stream<ContextChunk>&& input, OprTimer* timer,
-                            OperatorInputs branches) override;
+                            OperatorInputs inputs, OprTimer* timer) override;
 
  private:
   // No alias is produced in this operator.
@@ -117,9 +116,9 @@ neug::result<ContextChunk> UpdateVertexOpr::eval_impl(
 
 Stream<ContextChunk> UpdateVertexOpr::Eval(IStorageInterface& graph_interface,
                                            const ParamsMap& params,
-                                           Stream<ContextChunk>&& input,
-                                           OprTimer* timer,
-                                           OperatorInputs branches) {
+                                           OperatorInputs inputs,
+                                           OprTimer* timer) {
+  auto input = inputs.TakeSingle();
   return defer_stream(
       std::move(input),
       [this, &graph_interface, params,

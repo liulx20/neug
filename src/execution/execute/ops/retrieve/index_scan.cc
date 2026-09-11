@@ -29,8 +29,8 @@ class IndexScanOpr final : public IOperator {
       : input{std::move(input)}, function{function} {}
 
   Stream<ContextChunk> Eval(IStorageInterface& graph, const ParamsMap& params,
-                            Stream<ContextChunk>&& upstream, OprTimer* timer,
-                            OperatorInputs branches) override {
+                            OperatorInputs inputs, OprTimer* timer) override {
+    auto upstream = inputs.TakeSingle();
     return defer_stream(
         std::move(upstream),
         [this, &graph, params, timer](

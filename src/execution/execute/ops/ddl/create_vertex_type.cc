@@ -39,8 +39,8 @@ class CreateVertexTypeOpr : public IOperator {
   }
 
   Stream<ContextChunk> Eval(IStorageInterface& graph, const ParamsMap& params,
-                            Stream<ContextChunk>&& input, OprTimer* timer,
-                            OperatorInputs branches) override {
+                            OperatorInputs inputs, OprTimer* timer) override {
+    auto input = inputs.TakeSingle();
     return defer_stream(
         std::move(input),
         [this, &graph, params,

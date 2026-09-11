@@ -76,10 +76,9 @@ class TCOpr : public IOperator {
   std::string get_operator_name() const override { return "TCOpr"; }
 
   Stream<ContextChunk> Eval(IStorageInterface& graph_interface,
-                            const ParamsMap& params,
-                            Stream<ContextChunk>&& input,
-                            neug::execution::OprTimer* timer,
-                            OperatorInputs branches) override {
+                            const ParamsMap& params, OperatorInputs inputs,
+                            neug::execution::OprTimer* timer) override {
+    auto input = inputs.TakeSingle();
     return map_chunks(std::move(input),
                       [this, &graph_interface, params,
                        timer](ContextChunk&& chunk) -> result<ContextChunk> {

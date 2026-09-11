@@ -55,9 +55,9 @@ class UnfoldOpr : public IOperator {
   std::string get_operator_name() const override { return "UnfoldOpr"; }
 
   Stream<ContextChunk> Eval(IStorageInterface& graph, const ParamsMap& params,
-                            Stream<ContextChunk>&& input,
-                            neug::execution::OprTimer* timer,
-                            OperatorInputs branches) override {
+                            OperatorInputs inputs,
+                            neug::execution::OprTimer* timer) override {
+    auto input = inputs.TakeSingle();
     return map_chunks(
         std::move(input),
         [this, &graph, params,

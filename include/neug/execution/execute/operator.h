@@ -14,6 +14,7 @@
  */
 #pragma once
 
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -29,7 +30,43 @@ namespace neug {
 namespace execution {
 
 class Pipeline;
-using OperatorInputs = std::vector<Stream<ContextChunk>>;
+struct BuildProbeInputs {
+  Stream<ContextChunk> probe;
+  Stream<ContextChunk> build;
+};
+
+class OperatorInputs {
+ public:
+  template <typename... Args>
+  void Add(Args&&... args) {
+    streams_.emplace_back(std::forward<Args>(args)...);
+  }
+
+  Stream<ContextChunk> TakeSingle() {
+    if (streams_.size() != 1) {
+      throw std::logic_error("Operator requires one input");
+    }
+    auto stream = std::move(streams_.front());
+    streams_.clear();
+    return stream;
+  }
+
+  BuildProbeInputs TakeBuildProbe() {
+    if (streams_.size() != 2) {
+      throw std::logic_error("Operator requires probe and build inputs");
+    }
+    BuildProbeInputs ports{std::move(streams_[0]), std::move(streams_[1])};
+    streams_.clear();
+    return ports;
+  }
+
+  std::vector<Stream<ContextChunk>> TakeAll() {
+    return std::exchange(streams_, {});
+  }
+
+ private:
+  std::vector<Stream<ContextChunk>> streams_;
+};
 
 // Declares data dependencies, never scheduling operations. Materialized inputs
 // form pipeline barriers. Sequential inputs retain demand-driven consumption.
@@ -43,6 +80,22 @@ enum class SubPipelineMode {
 struct SubPipelines {
   SubPipelineMode mode = SubPipelineMode::kNone;
   std::vector<Pipeline*> plans;
+
+  Pipeline& probe_plan() const {
+    CheckBuildProbe();
+    return *plans[0];
+  }
+  Pipeline& build_plan() const {
+    CheckBuildProbe();
+    return *plans[1];
+  }
+
+ private:
+  void CheckBuildProbe() const {
+    if (mode != SubPipelineMode::kBuildProbe || plans.size() != 2) {
+      throw std::logic_error("Build/probe requires two plans");
+    }
+  }
 };
 
 // Execution-owned blocking build phase followed by a streaming probe phase.
@@ -76,13 +129,24 @@ class IOperator {
 
   virtual Stream<ContextChunk> Eval(IStorageInterface& graph,
                                     const ParamsMap& params,
-                                    Stream<ContextChunk>&& input,
-                                    OprTimer* timer,
-                                    OperatorInputs branches = {}) = 0;
+                                    OperatorInputs inputs, OprTimer* timer) = 0;
 
   virtual void build_explain_children(OprTimer* parent_timer,
                                       const ParamsMap& params,
                                       IStorageInterface& graph) {}
+};
+
+// Both execution modes create the same state. Only the pipeline builder
+// decides whether its build phase runs as a separate task.
+class BuildProbeOperator : public IOperator {
+ public:
+  Stream<ContextChunk> Eval(IStorageInterface&, const ParamsMap&,
+                            OperatorInputs inputs, OprTimer*) final {
+    auto ports = inputs.TakeBuildProbe();
+    auto state = CreateBuildState(std::move(ports.build));
+    state->SetProbeInput(std::move(ports.probe));
+    return Stream<ContextChunk>(std::move(state));
+  }
 };
 
 using OpBuildResultT = std::pair<std::unique_ptr<IOperator>, ContextMeta>;

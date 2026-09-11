@@ -37,9 +37,9 @@ class CreateEdgeOpr : public IOperator {
         properties_(std::move(properties)) {}
 
   Stream<ContextChunk> Eval(IStorageInterface& graph_interface,
-                            const ParamsMap& params,
-                            Stream<ContextChunk>&& input, OprTimer* timer,
-                            OperatorInputs branches) override {
+                            const ParamsMap& params, OperatorInputs inputs,
+                            OprTimer* timer) override {
+    auto input = inputs.TakeSingle();
     return defer_stream(
         std::move(input),
         [this, &graph_interface, params,

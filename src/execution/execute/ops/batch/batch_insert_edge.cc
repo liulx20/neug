@@ -107,8 +107,7 @@ class BatchInsertEdgeOpr : public IOperator {
   }
 
   Stream<ContextChunk> Eval(IStorageInterface& graph, const ParamsMap& params,
-                            Stream<ContextChunk>&& input, OprTimer* timer,
-                            OperatorInputs branches) override;
+                            OperatorInputs inputs, OprTimer* timer) override;
 
  private:
   physical::EdgeType edge_type_;
@@ -118,7 +117,8 @@ class BatchInsertEdgeOpr : public IOperator {
 
 Stream<ContextChunk> BatchInsertEdgeOpr::Eval(
     IStorageInterface& graph_interface, const ParamsMap& params,
-    Stream<ContextChunk>&& input, OprTimer* timer, OperatorInputs branches) {
+    OperatorInputs inputs, OprTimer* timer) {
+  auto input = inputs.TakeSingle();
   return defer_stream(
       std::move(input),
       [this, &graph_interface, params,

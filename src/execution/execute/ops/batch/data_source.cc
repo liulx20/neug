@@ -94,8 +94,8 @@ class DataSourceOpr : public IOperator {
   std::string get_operator_name() const override { return "DataSourceOpr"; }
 
   Stream<ContextChunk> Eval(IStorageInterface& graph, const ParamsMap& params,
-                            Stream<ContextChunk>&& input, OprTimer* timer,
-                            OperatorInputs branches) override {
+                            OperatorInputs inputs, OprTimer* timer) override {
+    auto input = inputs.TakeSingle();
     return Stream<ContextChunk>(std::make_shared<SourceState>(
         std::move(input), *sharedState, params, readFunction));
   }

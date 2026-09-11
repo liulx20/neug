@@ -77,9 +77,9 @@ class LimitOpr : public IOperator {
   std::string get_operator_name() const override { return "LimitOpr"; }
 
   Stream<ContextChunk> Eval(IStorageInterface& graph, const ParamsMap& params,
-                            Stream<ContextChunk>&& input,
-                            neug::execution::OprTimer* timer,
-                            OperatorInputs branches) override {
+                            OperatorInputs inputs,
+                            neug::execution::OprTimer* timer) override {
+    auto input = inputs.TakeSingle();
     auto metadata = input.metadata();
 
     return Stream<ContextChunk>(

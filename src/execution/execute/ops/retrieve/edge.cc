@@ -105,10 +105,9 @@ class EdgeExpandVWithEPCmpOpr : public IOperator {
   }
 
   Stream<ContextChunk> Eval(IStorageInterface& graph_interface,
-                            const ParamsMap& params,
-                            Stream<ContextChunk>&& input,
-                            neug::execution::OprTimer* timer,
-                            OperatorInputs branches) override {
+                            const ParamsMap& params, OperatorInputs inputs,
+                            neug::execution::OprTimer* timer) override {
+    auto input = inputs.TakeSingle();
     return map_chunks(
         std::move(input),
         [this, &graph_interface, params,
@@ -153,10 +152,9 @@ class EdgeExpandVOpr : public IOperator {
   std::string get_operator_name() const override { return "EdgeExpandVOpr"; }
 
   Stream<ContextChunk> Eval(IStorageInterface& graph_interface,
-                            const ParamsMap& params,
-                            Stream<ContextChunk>&& input,
-                            neug::execution::OprTimer* timer,
-                            OperatorInputs branches) override {
+                            const ParamsMap& params, OperatorInputs inputs,
+                            neug::execution::OprTimer* timer) override {
+    auto input = inputs.TakeSingle();
     return map_chunks(
         std::move(input),
         [this, &graph_interface, params,
@@ -199,10 +197,9 @@ class EdgeExpandEWithSPredOpr : public IOperator {
   }
 
   Stream<ContextChunk> Eval(IStorageInterface& graph_interface,
-                            const ParamsMap& params,
-                            Stream<ContextChunk>&& input,
-                            neug::execution::OprTimer* timer,
-                            OperatorInputs branches) override {
+                            const ParamsMap& params, OperatorInputs inputs,
+                            neug::execution::OprTimer* timer) override {
+    auto input = inputs.TakeSingle();
     return map_chunks(
         std::move(input),
         [this, &graph_interface, params,
@@ -232,10 +229,9 @@ class EdgeExpandEOpr : public IOperator {
   std::string get_operator_name() const override { return "EdgeExpandEOpr"; }
 
   Stream<ContextChunk> Eval(IStorageInterface& graph_interface,
-                            const ParamsMap& params,
-                            Stream<ContextChunk>&& input,
-                            neug::execution::OprTimer* timer,
-                            OperatorInputs branches) override {
+                            const ParamsMap& params, OperatorInputs inputs,
+                            neug::execution::OprTimer* timer) override {
+    auto input = inputs.TakeSingle();
     return map_chunks(
         std::move(input),
         [this, &graph_interface, params,
@@ -277,10 +273,9 @@ class EdgeExpandVWithSPVertexPredOpr : public IOperator {
   }
 
   Stream<ContextChunk> Eval(IStorageInterface& graph_interface,
-                            const ParamsMap& params,
-                            Stream<ContextChunk>&& input,
-                            neug::execution::OprTimer* timer,
-                            OperatorInputs branches) override {
+                            const ParamsMap& params, OperatorInputs inputs,
+                            neug::execution::OprTimer* timer) override {
+    auto input = inputs.TakeSingle();
     return map_chunks(
         std::move(input),
         [this, &graph_interface, params,
@@ -311,10 +306,9 @@ class EdgeExpandVWithGPVertexPredOpr : public IOperator {
   }
 
   Stream<ContextChunk> Eval(IStorageInterface& graph_interface,
-                            const ParamsMap& params,
-                            Stream<ContextChunk>&& input,
-                            neug::execution::OprTimer* timer,
-                            OperatorInputs branches) override {
+                            const ParamsMap& params, OperatorInputs inputs,
+                            neug::execution::OprTimer* timer) override {
+    auto input = inputs.TakeSingle();
     return map_chunks(
         std::move(input),
         [this, &graph_interface, params,
@@ -343,10 +337,9 @@ class EdgeExpandDegreeOpr : public IOperator {
   EdgeExpandDegreeOpr(const EdgeExpandParams& eep) : eep_(eep) {}
 
   Stream<ContextChunk> Eval(IStorageInterface& graph_interface,
-                            const ParamsMap& params,
-                            Stream<ContextChunk>&& input,
-                            neug::execution::OprTimer* timer,
-                            OperatorInputs branches) override {
+                            const ParamsMap& params, OperatorInputs inputs,
+                            neug::execution::OprTimer* timer) override {
+    auto input = inputs.TakeSingle();
     return map_chunks(
         std::move(input),
         [this, &graph_interface, params,
@@ -553,10 +546,9 @@ class ExpandCountOpr : public IOperator {
   ExpandCountOpr(const EdgeExpandParams& eep) : eep_(eep) {}
 
   Stream<ContextChunk> Eval(IStorageInterface& graph_interface,
-                            const ParamsMap& params,
-                            Stream<ContextChunk>&& input,
-                            neug::execution::OprTimer* timer,
-                            OperatorInputs branches) override {
+                            const ParamsMap& params, OperatorInputs inputs,
+                            neug::execution::OprTimer* timer) override {
+    auto input = inputs.TakeSingle();
     return map_chunks(
         std::move(input),
         [this, &graph_interface, params,

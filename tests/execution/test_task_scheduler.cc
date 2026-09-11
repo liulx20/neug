@@ -180,8 +180,7 @@ TEST(TaskSchedulerTest, UnsupportedOperatorsAreRejectedBeforeEval) {
    public:
     std::string get_operator_name() const override { return "UnsafeOperator"; }
     Stream<ContextChunk> Eval(IStorageInterface&, const ParamsMap&,
-                              Stream<ContextChunk>&&, OprTimer*,
-                              OperatorInputs) override {
+                              OperatorInputs, OprTimer*) override {
       ADD_FAILURE() << "Unsupported operator must not be initialized";
       return {};
     }
@@ -208,8 +207,7 @@ class CallbackSource final : public IOperator {
   bool consumes_input() const override { return false; }
   std::string get_operator_name() const override { return "CallbackSource"; }
   Stream<ContextChunk> Eval(IStorageInterface&, const ParamsMap&,
-                            Stream<ContextChunk>&&, OprTimer*,
-                            OperatorInputs) override {
+                            OperatorInputs, OprTimer*) override {
     if (initialized_) {
       ++*initialized_;
     }
@@ -229,7 +227,7 @@ Pipeline OneOperator(std::unique_ptr<IOperator> op) {
 
 class TestForkState final : public OperatorState {
  public:
-  TestForkState(SubPipelineMode mode, OperatorInputs inputs)
+  TestForkState(SubPipelineMode mode, std::vector<Stream<ContextChunk>> inputs)
       : mode_(mode), inputs_(std::move(inputs)) {}
   Stream<ContextChunk>::NextResult Next() override {
     if (mode_ == SubPipelineMode::kMaterialized) {
@@ -253,7 +251,7 @@ class TestForkState final : public OperatorState {
 
  private:
   SubPipelineMode mode_;
-  OperatorInputs inputs_;
+  std::vector<Stream<ContextChunk>> inputs_;
   size_t index_ = 0;
 };
 
@@ -265,10 +263,9 @@ class TestFork final : public IOperator {
   std::string get_operator_name() const override { return "TestFork"; }
   SubPipelines sub_pipelines() override { return {mode_, {&left_, &right_}}; }
   Stream<ContextChunk> Eval(IStorageInterface&, const ParamsMap&,
-                            Stream<ContextChunk>&&, OprTimer*,
-                            OperatorInputs inputs) override {
+                            OperatorInputs inputs, OprTimer*) override {
     return Stream<ContextChunk>(
-        std::make_shared<TestForkState>(mode_, std::move(inputs)));
+        std::make_shared<TestForkState>(mode_, inputs.TakeAll()));
   }
 
  private:
@@ -412,21 +409,21 @@ TEST(TaskSchedulerTest, JoinBuildsOnceAndPullsOnlyOneProbeChunk) {
   int left_pulls = 0;
   int right_pulls = 0;
   OperatorInputs inputs;
-  inputs.emplace_back([&]() -> Stream<ContextChunk>::NextResult {
+  inputs.Add([&]() -> Stream<ContextChunk>::NextResult {
     EXPECT_EQ(right_pulls, 3);
     if (++left_pulls == 3) {
       return tl::unexpected(Status::InternalError("later probe failure"));
     }
     return std::optional<ContextChunk>(MakeChunk(1));
   });
-  inputs.emplace_back([&]() -> Stream<ContextChunk>::NextResult {
+  inputs.Add([&]() -> Stream<ContextChunk>::NextResult {
     EXPECT_EQ(left_pulls, 0);
     if (++right_pulls == 3) {
       return std::optional<ContextChunk>{};
     }
     return std::optional<ContextChunk>(MakeChunk(1));
   });
-  auto output = built->first->Eval(storage, {}, {}, nullptr, std::move(inputs));
+  auto output = built->first->Eval(storage, {}, std::move(inputs), nullptr);
   EXPECT_EQ(right_pulls, 0);
   for (int expected = 1; expected <= 2; ++expected) {
     auto next = output.Next();
