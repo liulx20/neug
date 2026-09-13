@@ -229,11 +229,57 @@ TEST(HashJoinTest, GenericInnerJoinSkipsNullKeysAndKeepsDuplicateMatches) {
     chunk.set(right ? 5 : 2, payload.finish());
     return chunk;
   };
-  auto result =
-      Join::join(make(false), make(true), Params(false, JoinKind::kInnerJoin));
-  ASSERT_TRUE(result);
-  Check(*result, {{0, 0}, {0, 2}, {2, 0}, {2, 2}, {3, 3}},
-        JoinKind::kInnerJoin);
+  for (size_t partitions : {1, 3, 8}) {
+    auto table = JoinTable::Prepare(
+        make(true), Params(false, JoinKind::kInnerJoin), partitions);
+    std::vector<std::future<Status>> builds;
+    for (size_t part = 0; part < partitions; ++part) {
+      builds.push_back(std::async(std::launch::async, [&, part] {
+        return table->BuildPartition(part);
+      }));
+    }
+    for (auto& build : builds) {
+      ASSERT_TRUE(build.get());
+    }
+    ASSERT_TRUE(table->Finalize());
+    auto result = table->Probe(make(false));
+    ASSERT_TRUE(result);
+    Check(*result, {{0, 0}, {0, 2}, {2, 0}, {2, 2}, {3, 3}},
+          JoinKind::kInnerJoin);
+  }
+}
+
+TEST(HashJoinTest, HashPartitionsPreserveSkewedAndMissingKeyOrder) {
+  for (size_t partitions : {1, 3, 8}) {
+    for (bool dual : {false, true}) {
+      for (auto kind : {JoinKind::kInnerJoin, JoinKind::kLeftOuterJoin,
+                        JoinKind::kSemiJoin, JoinKind::kAntiJoin}) {
+        for (size_t size : {0, 1, 127}) {
+          auto right = Rows(size, true);
+          for (auto& row : right) {
+            row.first = {0, 7};
+            row.second = {1, 2};
+          }
+          auto table = JoinTable::Prepare(VertexChunk(right, true),
+                                          Params(dual, kind), partitions);
+          std::vector<std::future<Status>> builds;
+          for (size_t part = 0; part < partitions; ++part) {
+            builds.push_back(std::async(std::launch::async, [&, part] {
+              return table->BuildPartition(part);
+            }));
+          }
+          for (auto& build : builds) {
+            ASSERT_TRUE(build.get());
+          }
+          ASSERT_TRUE(table->Finalize());
+          auto left = Rows(19, false);
+          auto output = table->Probe(VertexChunk(left, false));
+          ASSERT_TRUE(output);
+          Check(*output, Expected(left, right, dual, kind), kind);
+        }
+      }
+    }
+  }
 }
 }  // namespace
 }  // namespace neug::execution

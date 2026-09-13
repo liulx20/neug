@@ -40,11 +40,17 @@ struct JoinTable::Impl {
     flat_hash_map<VertexRecord, sel_vec_t> single;
     flat_hash_map<vertex_pair, sel_vec_t> dual;
     flat_hash_map<std::string, sel_vec_t> generic;
+    sel_vec_t rows;
+    std::vector<std::pair<std::string, sel_t>> keys;
     bool built = false;
   };
   std::vector<std::unique_ptr<Tables>> partitions;
-  Tables table;
   bool finalized = false;
+
+  template <typename Map, typename Key>
+  size_t Partition(const Key& key) const {
+    return typename Map::hasher{}(key) % partitions.size();
+  }
 
   std::optional<std::string> Key(const ContextChunk& chunk, size_t row,
                                  const std::vector<int>& columns,
@@ -96,6 +102,32 @@ struct JoinTable::Impl {
         vertex_keys == 1) {
       vertex_keys = 0;
     }
+    if (partitions.size() == 1) {
+      return;
+    }
+    // Route in input order so duplicate matches keep their original order.
+    // Each build task owns one bucket and never mutates another bucket's table.
+    for (size_t row = 0; row < right.row_num(); ++row) {
+      size_t partition;
+      if (vertex_keys == 1) {
+        partition = Partition<decltype(Tables::single)>(
+            Vertex(right, params.right_columns[0], row));
+      } else if (vertex_keys == 2) {
+        partition = Partition<decltype(Tables::dual)>(
+            vertex_pair{Vertex(right, params.right_columns[0], row),
+                        Vertex(right, params.right_columns[1], row)});
+      } else {
+        auto key = Key(right, row, params.right_columns,
+                       params.join_type == JoinKind::kInnerJoin);
+        if (!key) {
+          continue;
+        }
+        partition = Partition<decltype(Tables::generic)>(*key);
+        partitions[partition]->keys.emplace_back(std::move(*key), row);
+        continue;
+      }
+      partitions[partition]->rows.push_back(row);
+    }
   }
 
   void BuildPartition(size_t partition) {
@@ -107,12 +139,13 @@ struct JoinTable::Impl {
       target.built = true;
       return;
     }
-    auto count = partitions.size();
-    auto width = right.row_num() / count;
-    auto remainder = right.row_num() % count;
-    auto begin = width * partition + std::min(partition, remainder);
-    auto end = begin + width + (partition < remainder ? 1 : 0);
-    for (size_t row = begin; row < end; ++row) {
+    for (auto& entry : target.keys) {
+      target.generic[std::move(entry.first)].push_back(entry.second);
+    }
+    decltype(target.keys){}.swap(target.keys);
+    auto count = partitions.size() == 1 ? right.row_num() : target.rows.size();
+    for (size_t index = 0; index < count; ++index) {
+      auto row = partitions.size() == 1 ? index : target.rows[index];
       if (vertex_keys == 1) {
         target.single[Vertex(right, params.right_columns[0], row)].push_back(
             row);
@@ -129,6 +162,7 @@ struct JoinTable::Impl {
         }
       }
     }
+    sel_vec_t{}.swap(target.rows);
     target.built = true;
   }
 
@@ -152,15 +186,18 @@ struct JoinTable::Impl {
       }
       const sel_vec_t* matches = nullptr;
       if (vertex_keys == 1) {
-        auto found =
-            table.single.find(Vertex(left, params.left_columns[0], row));
+        auto key = Vertex(left, params.left_columns[0], row);
+        const auto& table =
+            *partitions[Partition<decltype(Tables::single)>(key)];
+        auto found = table.single.find(key);
         if (found != table.single.end()) {
           matches = &found->second;
         }
       } else if (vertex_keys == 2) {
-        auto found =
-            table.dual.find({Vertex(left, params.left_columns[0], row),
-                             Vertex(left, params.left_columns[1], row)});
+        vertex_pair key{Vertex(left, params.left_columns[0], row),
+                        Vertex(left, params.left_columns[1], row)};
+        const auto& table = *partitions[Partition<decltype(Tables::dual)>(key)];
+        auto found = table.dual.find(key);
         if (found != table.dual.end()) {
           matches = &found->second;
         }
@@ -169,6 +206,8 @@ struct JoinTable::Impl {
         if (!key) {
           continue;
         }
+        const auto& table =
+            *partitions[Partition<decltype(Tables::generic)>(*key)];
         auto found = table.generic.find(*key);
         if (found != table.generic.end()) {
           matches = &found->second;
@@ -240,21 +279,7 @@ Status JoinTable::Finalize() {
       return Status::InternalError("Join build partition is unfinished");
     }
   }
-  auto merge = [](auto& output, auto& input) {
-    for (auto& entry : input) {
-      auto& rows = output[entry.first];
-      rows.insert(rows.end(), entry.second.begin(), entry.second.end());
-    }
-  };
-  // Merge in input-range order to retain duplicate-match order. The merge is
-  // a single finalizer after every local table has finished construction.
-  impl_->table = std::move(*impl_->partitions.front());
-  for (size_t i = 1; i < impl_->partitions.size(); ++i) {
-    merge(impl_->table.single, impl_->partitions[i]->single);
-    merge(impl_->table.dual, impl_->partitions[i]->dual);
-    merge(impl_->table.generic, impl_->partitions[i]->generic);
-  }
-  impl_->partitions.clear();
+  // Publication barrier only: probe routes to the immutable hash buckets.
   impl_->finalized = true;
   return Status::OK();
 }

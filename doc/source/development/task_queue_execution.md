@@ -146,19 +146,24 @@ Input pipeline -> shared input buffer
                          |
                  materialized right rows
                          | prepare
-                parallel local hash tables
-                         | finalize / merge
-                  immutable hash table
+                parallel hash-partition tables
+                         | finalize / publish
+                  immutable hash partitions
                          | build complete
                 left source range allocation
                          | multiple workers
                 local transforms -> Join probe -> downstream
 ```
 
-The right input is materialized once. Build tasks use disjoint contiguous row
-ranges and independent hash tables. A finalizer merges those tables in range
-order before unlocking probe work. Its published table is reused for every left
-chunk. Table merging is currently serial.
+The right input is materialized once. Preparation routes row IDs by join-key hash
+into buckets in input order; generic encoded keys are retained until their bucket
+is built to avoid encoding twice. Independent build tasks construct one table per
+bucket. Finalization only verifies completion and publishes the tables; it does
+not merge them. Every probe row hashes its key to the corresponding immutable
+table. Multiple probe workers can read the same bucket safely. Probe chunks stay
+in left-input order rather than being physically rearranged by bucket.
+Partition preparation is currently serial, and skewed keys can concentrate build
+work in one bucket. A single worker builds directly without routing buffers.
 Inner, left outer, semi and anti joins use right-side hash lookup. Cartesian
 Join retains the right rows without hashing; primary-key Join remains a separate
 lookup implementation. Probe results follow left row order, with duplicate
@@ -267,8 +272,9 @@ Primary-key Join currently ends a morsel step.
 
 - Scan/Filter/Project and eligible Join probe chains partition actual input data.
   Index scans and other source types have not all been converted to range sources.
-- Join builds local hash tables concurrently and merges them serially. There is
-  no hash exchange, partition-local probe routing or spill implementation.
+- Join builds hash buckets concurrently and routes probe lookups by key. Build
+  rows are still collected first; there is no streaming build exchange or spill.
+  Probe concurrency still depends on the left pipeline's range-source support.
 - Aggregation, dedup and sorting retain their global execution kernels.
 - Conditional Union branches use the same ready queue and worker pool, preserving
   unused-branch laziness.

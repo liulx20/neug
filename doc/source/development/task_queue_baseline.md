@@ -156,3 +156,23 @@ downstream operator, and verify that the freed lane starts another range. A
 second test blocks the first range and checks that later work cannot exceed the
 slot budget. Limit and failure tests hold another range blocked and check that
 EOF/error waits for draining without successfully finalizing the source.
+
+## Hash-partitioned Join follow-up
+
+The Join build now routes keys to independent hash buckets. Build tasks no longer
+need a serial table merge, and probe workers route each lookup to its bucket.
+The same 1m-row benchmark (5 repetitions, 1/2/4 workers) produced these medians:
+
+| Join implementation | 1 worker | 2 workers | 4 workers |
+| --- | ---: | ---: | ---: |
+| Incremental morsels, range tables then merge | 202.878 ms | 133.792 ms | 99.352 ms |
+| Incremental morsels, hash buckets | 198.273 ms | 130.906 ms | 97.697 ms |
+
+These small differences are not strong evidence of a throughput improvement.
+The structural change removes table merging; it does not remove collected build
+rows or serial partition preparation. Skewed keys still concentrate build work.
+The single-worker path skips partition buffering. All query row counts and
+checksums match the preceding incremental-morsel baseline. Runs used the same
+settings above, with no concurrent builds or tests.
+
+Raw samples: [hash partitions, 1m rows](benchmarks/task_queue_hash_partitions_1m.json).

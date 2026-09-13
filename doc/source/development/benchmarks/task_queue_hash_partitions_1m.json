@@ -1,0 +1,157 @@
+{
+  "platform": "macOS-13.2.1-arm64-arm-64bit",
+  "logical_cpus": 10,
+  "rows": 1000000,
+  "repeats": 5,
+  "timing": "execute only, includes task pool, materialization and native serialization; excludes Python row iteration, warm plan cache, no PROFILE",
+  "queries": {
+    "filter_project": {
+      "query": "MATCH (n:parallel_item) WHERE n.id % 3 = 0 RETURN n.id, n.id * 7 + n.grp",
+      "result_rows": 333334,
+      "sha256": "8faa7f825a27a6a97814258b571add2127851c2de1e849a8cbf2e217e64b2793",
+      "workers": {
+        "1": {
+          "median_ms": 82.000583,
+          "samples_ms": [
+            82.000583,
+            82.882792,
+            81.950083,
+            82.47825,
+            81.414917
+          ]
+        },
+        "2": {
+          "median_ms": 51.789958,
+          "samples_ms": [
+            52.19975,
+            51.385042,
+            51.373208,
+            51.789958,
+            52.001333
+          ]
+        },
+        "4": {
+          "median_ms": 37.370417,
+          "samples_ms": [
+            38.152666,
+            37.370417,
+            37.288958,
+            37.403917,
+            37.042458
+          ]
+        }
+      }
+    },
+    "hash_join": {
+      "query": "MATCH (a:parallel_item), (b:parallel_item) WHERE a.grp = b.grp AND b.id < 17 RETURN a.id, b.id",
+      "result_rows": 1000000,
+      "sha256": "b43a5d06d7c986ca6e51d2b6a92078523134d0936ce7e3eee1dcb0f183f7b18c",
+      "workers": {
+        "1": {
+          "median_ms": 198.273,
+          "samples_ms": [
+            198.417042,
+            198.799875,
+            198.052584,
+            198.256458,
+            198.273
+          ]
+        },
+        "2": {
+          "median_ms": 130.90575,
+          "samples_ms": [
+            132.150916,
+            129.920375,
+            134.778834,
+            130.783667,
+            130.90575
+          ]
+        },
+        "4": {
+          "median_ms": 97.696708,
+          "samples_ms": [
+            97.600708,
+            97.696708,
+            98.939042,
+            97.396542,
+            98.163708
+          ]
+        }
+      }
+    },
+    "group_sum": {
+      "query": "MATCH (n:parallel_item) RETURN n.grp, sum(n.id)",
+      "result_rows": 17,
+      "sha256": "69d0093b0e840c3fc79cab3608afe96c03fa87d5ffe556074fe1e0a7c0c3d344",
+      "workers": {
+        "1": {
+          "median_ms": 93.980667,
+          "samples_ms": [
+            94.510292,
+            97.719458,
+            93.980667,
+            92.936417,
+            91.710541
+          ]
+        },
+        "2": {
+          "median_ms": 71.876833,
+          "samples_ms": [
+            74.3835,
+            74.255458,
+            71.337583,
+            71.876833,
+            71.81825
+          ]
+        },
+        "4": {
+          "median_ms": 66.317291,
+          "samples_ms": [
+            68.725917,
+            66.317291,
+            65.56075,
+            66.085708,
+            67.111833
+          ]
+        }
+      }
+    },
+    "limit_10": {
+      "query": "MATCH (n:parallel_item) RETURN n.id LIMIT 10",
+      "result_rows": 10,
+      "sha256": "e16be58a09795fdfcef17455a2f04981300b8ff55f3789f3b28dcb77203359d1",
+      "workers": {
+        "1": {
+          "median_ms": 0.194667,
+          "samples_ms": [
+            0.20975,
+            0.212041,
+            0.194667,
+            0.189583,
+            0.188458
+          ]
+        },
+        "2": {
+          "median_ms": 0.249917,
+          "samples_ms": [
+            0.289334,
+            0.229083,
+            0.249917,
+            0.267833,
+            0.233917
+          ]
+        },
+        "4": {
+          "median_ms": 0.273292,
+          "samples_ms": [
+            0.273292,
+            0.264792,
+            0.282667,
+            0.274667,
+            0.252875
+          ]
+        }
+      }
+    }
+  }
+}
