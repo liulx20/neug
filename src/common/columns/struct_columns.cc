@@ -17,6 +17,21 @@
 #include "neug/common/columns/columns_utils.h"
 
 namespace neug {
+std::shared_ptr<IContextColumn> StructColumn::union_col(
+    std::shared_ptr<IContextColumn> other) const {
+  CHECK(type_ == other->elem_type());
+  StructColumnBuilder builder(type_);
+  builder.reserve(size() + other->size());
+  for (const IContextColumn* source :
+       {static_cast<const IContextColumn*>(this),
+        static_cast<const IContextColumn*>(other.get())}) {
+    for (size_t row = 0; row < source->size(); ++row) {
+      builder.push_back_elem(source->get_elem(row));
+    }
+  }
+  return builder.finish();
+}
+
 std::shared_ptr<IContextColumn> StructColumn::shuffle(
     const sel_vec_t& offsets) const {
   std::vector<std::shared_ptr<IContextColumn>> shuffled_children;

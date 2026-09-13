@@ -34,6 +34,8 @@ class IEdgeColumn : public IContextColumn {
   }
 
   virtual EdgeRecord get_edge(size_t idx) const = 0;
+  std::shared_ptr<IContextColumn> union_col(
+      std::shared_ptr<IContextColumn> other) const override;
 
   inline Value get_elem(size_t idx) const override {
     if (is_optional() && !has_value(idx)) {

@@ -139,8 +139,15 @@ std::pair<std::shared_ptr<IContextColumn>, sel_vec_t> expand_vertex_impl(
   std::vector<std::tuple<label_t, label_t, Direction>> label_dirs =
       get_label_dirs(input_label, graph.schema(), labels, dir);
   if (label_dirs.empty()) {
-    MLVertexColumnBuilder builder;
-    return std::make_pair(builder.finish(), sel_vec_t());
+    MLVertexColumnBuilderOpt builder({});
+    sel_vec_t offsets;
+    if constexpr (is_optional) {
+      for (size_t i = 0; i < input.size(); ++i) {
+        builder.push_back_null();
+        offsets.push_back(i);
+      }
+    }
+    return std::make_pair(builder.finish(), std::move(offsets));
   }
   MSVertexColumnBuilder builder(std::get<0>(label_dirs[0]));
   sel_vec_t offsets;
@@ -243,8 +250,15 @@ std::pair<std::shared_ptr<IContextColumn>, sel_vec_t> expand_vertex_impl(
     }
   }
   if (nbr_labels.size() == 0) {
-    MLVertexColumnBuilder builder;
-    return std::make_pair(builder.finish(), sel_vec_t());
+    MLVertexColumnBuilderOpt builder({});
+    sel_vec_t offsets;
+    if constexpr (is_optional) {
+      for (size_t i = 0; i < input.size(); ++i) {
+        builder.push_back_null();
+        offsets.push_back(i);
+      }
+    }
+    return std::make_pair(builder.finish(), std::move(offsets));
   }
   if (input_labels.size() == 1) {
     vector_t<bool> matched;
@@ -652,8 +666,15 @@ std::pair<std::shared_ptr<IContextColumn>, sel_vec_t> expand_vertex_impl(
     }
   }
   if (nbr_labels.empty()) {
-    MLVertexColumnBuilder builder;
-    return std::make_pair(builder.finish(), sel_vec_t());
+    MLVertexColumnBuilderOpt builder({});
+    sel_vec_t offsets;
+    if constexpr (is_optional) {
+      for (size_t i = 0; i < input.size(); ++i) {
+        builder.push_back_null();
+        offsets.push_back(i);
+      }
+    }
+    return std::make_pair(builder.finish(), std::move(offsets));
   }
   std::vector<std::vector<CsrView>> views(label_num);
   for (auto v_label : input_labels) {
@@ -778,8 +799,15 @@ std::pair<std::shared_ptr<IContextColumn>, sel_vec_t> expand_edge_impl(
   std::vector<std::tuple<label_t, label_t, Direction>> label_dirs =
       get_label_dirs(input_label, graph.schema(), labels, dir);
   if (label_dirs.empty()) {
-    MSEdgeColumnBuilder builder;
-    return std::make_pair(builder.finish(), sel_vec_t());
+    BDMLEdgeColumnBuilder builder(labels);
+    sel_vec_t offsets;
+    if constexpr (is_optional) {
+      for (size_t i = 0; i < input.size(); ++i) {
+        builder.push_back_null();
+        offsets.push_back(i);
+      }
+    }
+    return std::make_pair(builder.finish(), std::move(offsets));
   }
   MSEdgeColumnBuilder builder;
   sel_vec_t offsets;

@@ -37,22 +37,23 @@ struct ScanVertexSPOp {
   template <typename PRED_T>
   static neug::result<ContextChunk> eval_with_predicate(
       const PRED_T& pred, const IStorageInterface& graph, ContextChunk&& chunk,
-      const ScanParams& params) {
-    return Scan::scan_vertex<PRED_T>(std::move(chunk), graph, params, pred);
+      const ScanParams& params, size_t begin, size_t end) {
+    return Scan::scan_vertex<PRED_T>(std::move(chunk), graph, params, pred,
+                                     begin, end);
   }
 };
 
 neug::result<ContextChunk> Scan::scan_vertex_with_special_vertex_predicate(
     ContextChunk&& chunk, const IStorageInterface& graph,
     const ScanParams& params, const SpecialPredicateConfig& config,
-    const ParamsMap& query_params) {
+    const ParamsMap& query_params, size_t begin, size_t end) {
   std::set<label_t> expected_labels;
   for (auto label : params.tables) {
     expected_labels.insert(label);
   }
-  return dispatch_vertex_predicate<ScanVertexSPOp>(graph, expected_labels,
-                                                   config, query_params, graph,
-                                                   std::move(chunk), params);
+  return dispatch_vertex_predicate<ScanVertexSPOp>(
+      graph, expected_labels, config, query_params, graph, std::move(chunk),
+      params, begin, end);
 }
 
 }  // namespace execution

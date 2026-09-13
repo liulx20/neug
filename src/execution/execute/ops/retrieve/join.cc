@@ -38,18 +38,32 @@ namespace ops {
 // Build data belongs to this execution, independently of the cached plan.
 class JoinState final : public BuildProbeState {
  public:
-  JoinState(const JoinParams& params, Stream<ContextChunk> right)
-      : params_(params), right_(std::move(right)) {}
+  JoinState(const JoinParams& params, Stream<ContextChunk> right,
+            size_t partitions)
+      : params_(params), right_(std::move(right)), partitions_(partitions) {}
 
-  Status Build() override {
+  Status PrepareBuild() override {
     if (!table_) {
       auto right = collect_chunk(std::move(right_));
       if (!right) {
         return right.error();
       }
-      table_ = std::make_unique<JoinTable>(std::move(*right), params_);
+      table_ = JoinTable::Prepare(std::move(*right), params_, partitions_);
     }
     return Status::OK();
+  }
+
+  size_t BuildPartitions() const override { return ready_ ? 0 : partitions_; }
+  Status BuildPartition(size_t partition) override {
+    return table_->BuildPartition(partition);
+  }
+  Status FinalizeBuild() override {
+    auto status = table_->Finalize();
+    ready_ = status.ok();
+    return status;
+  }
+  result<ContextChunk> ProbeChunk(ContextChunk chunk) const override {
+    return table_->Probe(std::move(chunk));
   }
 
   void SetProbeInput(Stream<ContextChunk> input) override {
@@ -74,6 +88,8 @@ class JoinState final : public BuildProbeState {
   Stream<ContextChunk> left_;
   Stream<ContextChunk> right_;
   std::unique_ptr<JoinTable> table_;
+  size_t partitions_;
+  bool ready_ = false;
 };
 
 class JoinOpr : public BuildProbeOperator {
@@ -89,9 +105,9 @@ class JoinOpr : public BuildProbeOperator {
     return {SubPipelineMode::kBuildProbe, {&left_pipeline_, &right_pipeline_}};
   }
   std::string get_operator_name() const override { return "JoinOpr"; }
-  std::shared_ptr<BuildProbeState> CreateBuildState(
-      Stream<ContextChunk> right) override {
-    return std::make_shared<JoinState>(params_, std::move(right));
+  std::shared_ptr<BuildProbeState> CreateBuildState(Stream<ContextChunk> right,
+                                                    size_t workers) override {
+    return std::make_shared<JoinState>(params_, std::move(right), workers);
   }
 
   void build_explain_children(OprTimer* parent_timer, const ParamsMap& params,

@@ -20,6 +20,7 @@
 
 #include "neug/execution/common/params_map.h"
 #include "neug/execution/common/stream.h"
+#include "neug/execution/execute/morsel.h"
 #include "neug/execution/utils/opr_timer.h"
 #include "neug/generated/proto/plan/physical.pb.h"
 #include "neug/storages/graph/graph_interface.h"
@@ -102,9 +103,29 @@ struct SubPipelines {
 // The pipeline builder controls when Build runs and connects the probe input.
 class BuildProbeState : public OperatorState {
  public:
-  virtual Status Build() = 0;
+  virtual Status PrepareBuild() = 0;
+  virtual size_t BuildPartitions() const = 0;
+  virtual Status BuildPartition(size_t partition) = 0;
+  virtual Status FinalizeBuild() = 0;
+  virtual result<ContextChunk> ProbeChunk(ContextChunk chunk) const = 0;
+
+  Status Build() {
+    auto status = PrepareBuild();
+    if (!status) {
+      return status;
+    }
+    for (size_t i = 0; i < BuildPartitions(); ++i) {
+      status = BuildPartition(i);
+      if (!status) {
+        return status;
+      }
+    }
+    return FinalizeBuild();
+  }
   virtual void SetProbeInput(Stream<ContextChunk> input) = 0;
 };
+
+enum class PipelineBehavior { kGlobal, kChunkLocal, kMorselSource };
 
 class IOperator {
  public:
@@ -112,8 +133,18 @@ class IOperator {
 
   virtual SubPipelines sub_pipelines() { return {}; }
 
+  // Chunk-local operators may be instantiated independently for each work
+  // range. Global state (Limit, distinct, aggregation...) creates a boundary.
+  virtual PipelineBehavior pipeline_behavior() const {
+    return PipelineBehavior::kGlobal;
+  }
+  virtual std::unique_ptr<MorselSource> CreateMorselSource(
+      IStorageInterface&, const ParamsMap&, Stream<ContextChunk>) {
+    throw std::logic_error("Operator has no morsel source");
+  }
+
   virtual std::shared_ptr<BuildProbeState> CreateBuildState(
-      Stream<ContextChunk> input) {
+      Stream<ContextChunk> input, size_t workers) {
     throw std::logic_error("Operator has no build phase");
   }
 
@@ -132,6 +163,18 @@ class IOperator {
                                       IStorageInterface& graph) {}
 };
 
+class MorselSourceOperator : public IOperator {
+ public:
+  PipelineBehavior pipeline_behavior() const final {
+    return PipelineBehavior::kMorselSource;
+  }
+  Stream<ContextChunk> Eval(IStorageInterface&, const ParamsMap&,
+                            OperatorInputs, OprTimer*) final {
+    return error_stream<ContextChunk>(
+        Status::InternalError("Morsel source requires pipeline source wiring"));
+  }
+};
+
 // Both execution modes create the same state. Only the pipeline builder
 // decides whether its build phase runs as a separate task.
 class BuildProbeOperator : public IOperator {
@@ -139,7 +182,7 @@ class BuildProbeOperator : public IOperator {
   Stream<ContextChunk> Eval(IStorageInterface&, const ParamsMap&,
                             OperatorInputs inputs, OprTimer*) final {
     auto ports = inputs.TakeBuildProbe();
-    auto state = CreateBuildState(std::move(ports.build));
+    auto state = CreateBuildState(std::move(ports.build), 1);
     state->SetProbeInput(std::move(ports.probe));
     return Stream<ContextChunk>(std::move(state));
   }

@@ -30,6 +30,9 @@ namespace ops {
 
 class ProjectOpr : public IOperator {
  public:
+  PipelineBehavior pipeline_behavior() const override {
+    return PipelineBehavior::kChunkLocal;
+  }
   ProjectOpr(std::vector<std::pair<int, int>>&& select_columns_mapping,
              bool is_append)
       : is_append_(is_append),

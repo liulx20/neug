@@ -30,10 +30,16 @@ class JoinTable {
  public:
   JoinTable(ContextChunk right, const JoinParams& params);
   ~JoinTable();
+  static std::unique_ptr<JoinTable> Prepare(ContextChunk right,
+                                            const JoinParams& params,
+                                            size_t partitions);
+  Status BuildPartition(size_t partition);
+  Status Finalize();
   result<ContextChunk> Probe(ContextChunk left) const;
 
  private:
   struct Impl;
+  explicit JoinTable(std::unique_ptr<Impl> impl);
   std::unique_ptr<Impl> impl_;
 };
 

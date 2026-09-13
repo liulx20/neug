@@ -36,9 +36,15 @@ struct JoinTable::Impl {
   ContextChunk right;
   JoinParams params;
   size_t vertex_keys = 0;
-  flat_hash_map<VertexRecord, sel_vec_t> single;
-  flat_hash_map<vertex_pair, sel_vec_t> dual;
-  flat_hash_map<std::string, sel_vec_t> generic;
+  struct Tables {
+    flat_hash_map<VertexRecord, sel_vec_t> single;
+    flat_hash_map<vertex_pair, sel_vec_t> dual;
+    flat_hash_map<std::string, sel_vec_t> generic;
+    bool built = false;
+  };
+  std::vector<std::unique_ptr<Tables>> partitions;
+  Tables table;
+  bool finalized = false;
 
   std::optional<std::string> Key(const ContextChunk& chunk, size_t row,
                                  const std::vector<int>& columns,
@@ -60,8 +66,14 @@ struct JoinTable::Impl {
     return static_cast<const IVertexColumn&>(*chunk.get(alias)).get_vertex(row);
   }
 
-  Impl(ContextChunk input, const JoinParams& config)
+  Impl(ContextChunk input, const JoinParams& config, size_t partition_count)
       : right(std::move(input)), params(config) {
+    if (partition_count == 0) {
+      THROW_INVALID_ARGUMENT_EXCEPTION("Join requires a build partition");
+    }
+    for (size_t i = 0; i < partition_count; ++i) {
+      partitions.push_back(std::make_unique<Tables>());
+    }
     if (params.left_columns.size() != params.right_columns.size()) {
       THROW_INVALID_ARGUMENT_EXCEPTION("Join columns size mismatch");
     }
@@ -84,21 +96,40 @@ struct JoinTable::Impl {
         vertex_keys == 1) {
       vertex_keys = 0;
     }
-    for (size_t row = 0; row < right.row_num(); ++row) {
+  }
+
+  void BuildPartition(size_t partition) {
+    auto& target = *partitions.at(partition);
+    if (target.built) {
+      return;
+    }
+    if (params.join_type == JoinKind::kTimesJoin) {
+      target.built = true;
+      return;
+    }
+    auto count = partitions.size();
+    auto width = right.row_num() / count;
+    auto remainder = right.row_num() % count;
+    auto begin = width * partition + std::min(partition, remainder);
+    auto end = begin + width + (partition < remainder ? 1 : 0);
+    for (size_t row = begin; row < end; ++row) {
       if (vertex_keys == 1) {
-        single[Vertex(right, params.right_columns[0], row)].push_back(row);
+        target.single[Vertex(right, params.right_columns[0], row)].push_back(
+            row);
       } else if (vertex_keys == 2) {
-        dual[{Vertex(right, params.right_columns[0], row),
-              Vertex(right, params.right_columns[1], row)}]
+        target
+            .dual[{Vertex(right, params.right_columns[0], row),
+                   Vertex(right, params.right_columns[1], row)}]
             .push_back(row);
       } else {
         auto key = Key(right, row, params.right_columns,
                        params.join_type == JoinKind::kInnerJoin);
         if (key) {
-          generic[*key].push_back(row);
+          target.generic[*key].push_back(row);
         }
       }
     }
+    target.built = true;
   }
 
   ContextChunk Probe(ContextChunk left) const {
@@ -121,14 +152,16 @@ struct JoinTable::Impl {
       }
       const sel_vec_t* matches = nullptr;
       if (vertex_keys == 1) {
-        auto found = single.find(Vertex(left, params.left_columns[0], row));
-        if (found != single.end()) {
+        auto found =
+            table.single.find(Vertex(left, params.left_columns[0], row));
+        if (found != table.single.end()) {
           matches = &found->second;
         }
       } else if (vertex_keys == 2) {
-        auto found = dual.find({Vertex(left, params.left_columns[0], row),
-                                Vertex(left, params.left_columns[1], row)});
-        if (found != dual.end()) {
+        auto found =
+            table.dual.find({Vertex(left, params.left_columns[0], row),
+                             Vertex(left, params.left_columns[1], row)});
+        if (found != table.dual.end()) {
           matches = &found->second;
         }
       } else {
@@ -136,8 +169,8 @@ struct JoinTable::Impl {
         if (!key) {
           continue;
         }
-        auto found = generic.find(*key);
-        if (found != generic.end()) {
+        auto found = table.generic.find(*key);
+        if (found != table.generic.end()) {
           matches = &found->second;
         }
       }
@@ -182,9 +215,53 @@ struct JoinTable::Impl {
 };
 
 JoinTable::JoinTable(ContextChunk right, const JoinParams& params)
-    : impl_(std::make_unique<Impl>(std::move(right), params)) {}
+    : impl_(std::make_unique<Impl>(std::move(right), params, 1)) {
+  impl_->BuildPartition(0);
+  Finalize();
+}
+JoinTable::JoinTable(std::unique_ptr<Impl> impl) : impl_(std::move(impl)) {}
 JoinTable::~JoinTable() = default;
+std::unique_ptr<JoinTable> JoinTable::Prepare(ContextChunk right,
+                                              const JoinParams& params,
+                                              size_t partitions) {
+  return std::unique_ptr<JoinTable>(new JoinTable(
+      std::make_unique<Impl>(std::move(right), params, partitions)));
+}
+Status JoinTable::BuildPartition(size_t partition) {
+  impl_->BuildPartition(partition);
+  return Status::OK();
+}
+Status JoinTable::Finalize() {
+  if (impl_->finalized) {
+    return Status::OK();
+  }
+  for (const auto& partition : impl_->partitions) {
+    if (!partition->built) {
+      return Status::InternalError("Join build partition is unfinished");
+    }
+  }
+  auto merge = [](auto& output, auto& input) {
+    for (auto& entry : input) {
+      auto& rows = output[entry.first];
+      rows.insert(rows.end(), entry.second.begin(), entry.second.end());
+    }
+  };
+  // Merge in input-range order to retain duplicate-match order. The merge is
+  // a single finalizer after every local table has finished construction.
+  impl_->table = std::move(*impl_->partitions.front());
+  for (size_t i = 1; i < impl_->partitions.size(); ++i) {
+    merge(impl_->table.single, impl_->partitions[i]->single);
+    merge(impl_->table.dual, impl_->partitions[i]->dual);
+    merge(impl_->table.generic, impl_->partitions[i]->generic);
+  }
+  impl_->partitions.clear();
+  impl_->finalized = true;
+  return Status::OK();
+}
 result<ContextChunk> JoinTable::Probe(ContextChunk left) const {
+  if (!impl_->finalized) {
+    return tl::unexpected(Status::InternalError("Join table is not ready"));
+  }
   return impl_->Probe(std::move(left));
 }
 

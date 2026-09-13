@@ -14,6 +14,7 @@
  */
 #include <gtest/gtest.h>
 
+#include <future>
 #include <optional>
 #include <vector>
 
@@ -169,6 +170,43 @@ TEST(HashJoinTest, BuildTableIsReusableAcrossProbeChunks) {
         auto output = table.Probe(VertexChunk(left, false));
         ASSERT_TRUE(output);
         Check(*output, Expected(left, right, dual, kind), kind);
+      }
+    }
+  }
+}
+
+TEST(HashJoinTest, ParallelBuildFinalizesBeforeConcurrentProbe) {
+  for (bool dual : {false, true}) {
+    for (auto kind : {JoinKind::kInnerJoin, JoinKind::kLeftOuterJoin,
+                      JoinKind::kSemiJoin, JoinKind::kAntiJoin}) {
+      auto right = Rows(17, true);
+      auto table =
+          JoinTable::Prepare(VertexChunk(right, true), Params(dual, kind), 4);
+      EXPECT_FALSE(table->Finalize());
+      EXPECT_FALSE(table->Probe(VertexChunk(Rows(1, false), false)));
+      std::vector<std::future<Status>> builds;
+      for (size_t part = 0; part < 4; ++part) {
+        builds.push_back(std::async(std::launch::async, [&, part] {
+          return table->BuildPartition(part);
+        }));
+      }
+      for (auto& build : builds) {
+        ASSERT_TRUE(build.get());
+      }
+      ASSERT_TRUE(table->Finalize());
+      ASSERT_TRUE(table->Finalize());
+      std::vector<std::future<result<ContextChunk>>> probes;
+      for (size_t count : {0, 1, 9, 17}) {
+        probes.push_back(std::async(std::launch::async, [&, count] {
+          return table->Probe(VertexChunk(Rows(count, false), false));
+        }));
+      }
+      size_t counts[] = {0, 1, 9, 17};
+      for (size_t i = 0; i < probes.size(); ++i) {
+        auto result = probes[i].get();
+        ASSERT_TRUE(result);
+        Check(*result, Expected(Rows(counts[i], false), right, dual, kind),
+              kind);
       }
     }
   }

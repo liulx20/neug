@@ -533,7 +533,7 @@ class ExpandCountOpr : public IOperator {
                             const ParamsMap& params, OperatorInputs inputs,
                             neug::execution::OprTimer* timer) override {
     auto input = inputs.TakeSingle();
-    return map_chunks(
+    return reduce_stream(
         std::move(input),
         [this, &graph_interface, params,
          timer](ContextChunk&& chunk) -> result<ContextChunk> {

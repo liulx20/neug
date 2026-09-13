@@ -69,6 +69,12 @@ class OprTimer {
 
   void add_num_tuples(uint64_t num) { numTuples_ += num; }
 
+  // Worker-local counters do not contain the plan's child profiling tree.
+  void add_local_metrics(const OprTimer& local) {
+    time_ += local.time_;
+    numTuples_ += local.numTuples_;
+  }
+
   ~OprTimer() = default;
 
   OprTimer* next() { return next_.get(); }

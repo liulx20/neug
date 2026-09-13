@@ -133,7 +133,67 @@ class FilterOidsGPredOpr : public IOperator {
   std::unique_ptr<neug::execution::ExprBase> pred_;
 };
 
-class ScanWithSPredOpr : public IOperator {
+// Shared physical ranges, with MVCC checks performed by each local reader.
+class VertexMorselSource final : public MorselSource {
+ public:
+  using ReadRange = std::function<result<ContextChunk>(size_t, size_t, size_t)>;
+  using ReaderFactory = std::function<ReadRange()>;
+  VertexMorselSource(const IStorageInterface& storage, const ScanParams& params,
+                     ReaderFactory factory)
+      : factory_(std::move(factory)) {
+    const auto& graph = dynamic_cast<const StorageReadInterface&>(storage);
+    for (auto label : params.tables) {
+      sizes_.push_back(graph.GetVertexSet(label).size());
+    }
+  }
+  result<std::optional<Morsel>> Pick() override {
+    if (partition_ == sizes_.size()) {
+      return std::optional<Morsel>{};
+    }
+    auto end = std::min(begin_ + size_t{4096}, sizes_[partition_]);
+    Morsel work{partition_, begin_, end, nullptr};
+    begin_ = end;
+    if (end == sizes_[partition_]) {
+      ++partition_;
+      begin_ = 0;
+    }
+    return std::optional<Morsel>(work);
+  }
+  std::unique_ptr<MorselReader> CreateReader() override {
+    class Reader final : public MorselReader {
+     public:
+      explicit Reader(ReadRange read) : read_(std::move(read)) {}
+      void Start(const Morsel& work) override {
+        work_ = work;
+        done_ = false;
+      }
+      result<std::optional<ContextChunk>> Next() override {
+        if (done_) {
+          return std::optional<ContextChunk>{};
+        }
+        auto end = std::min(work_.begin + size_t{1024}, work_.end);
+        GS_AUTO(chunk, read_(work_.partition, work_.begin, end));
+        work_.begin = end;
+        done_ = end == work_.end;
+        return std::optional<ContextChunk>(std::move(chunk));
+      }
+
+     private:
+      ReadRange read_;
+      Morsel work_;
+      bool done_ = true;
+    };
+    return std::make_unique<Reader>(factory_());
+  }
+
+ private:
+  ReaderFactory factory_;
+  std::vector<size_t> sizes_;
+  size_t partition_ = 0;
+  size_t begin_ = 0;
+};
+
+class ScanWithSPredOpr : public MorselSourceOperator {
  public:
   bool consumes_input() const override { return false; }
 
@@ -143,23 +203,19 @@ class ScanWithSPredOpr : public IOperator {
 
   std::string get_operator_name() const override { return "ScanWithSPredOpr"; }
 
-  Stream<ContextChunk> Eval(IStorageInterface& graph, const ParamsMap& params,
-                            OperatorInputs inputs,
-                            neug::execution::OprTimer* timer) override {
-    auto input = inputs.TakeSingle();
-    return defer_stream(
-        std::move(input),
-        [this, &graph, params,
-         timer](Stream<ContextChunk>&& input) mutable -> Stream<ContextChunk> {
-          return generate_chunk(
-              [this, &graph, params, timer]() -> result<ContextChunk> {
-                ContextChunk chunk;
-
-                {
-                  return Scan::scan_vertex_with_special_vertex_predicate(
-                      std::move(chunk), graph, scan_params_, config_, params);
-                }
-              });
+  std::unique_ptr<MorselSource> CreateMorselSource(
+      IStorageInterface& graph, const ParamsMap& params,
+      Stream<ContextChunk>) override {
+    return std::make_unique<VertexMorselSource>(
+        graph, scan_params_, [this, &graph, params] {
+          return [this, &graph, params](size_t partition, size_t begin,
+                                        size_t end) {
+            ScanParams range;
+            range.alias = scan_params_.alias;
+            range.tables = {scan_params_.tables[partition]};
+            return Scan::scan_vertex_with_special_vertex_predicate(
+                ContextChunk{}, graph, range, config_, params, begin, end);
+          };
         });
   }
 
@@ -168,39 +224,33 @@ class ScanWithSPredOpr : public IOperator {
   SpecialPredicateConfig config_;
 };
 
-class ScanWithGPredOpr : public IOperator {
+class ScanWithGPredOpr : public MorselSourceOperator {
  public:
   bool consumes_input() const override { return false; }
 
   ScanWithGPredOpr(const ScanParams& scan_params,
                    std::unique_ptr<neug::execution::ExprBase> pred)
       : scan_params_(scan_params), pred_(std::move(pred)) {}
-  Stream<ContextChunk> Eval(IStorageInterface& graph, const ParamsMap& params,
-                            OperatorInputs inputs,
-                            neug::execution::OprTimer* timer) override {
-    auto input = inputs.TakeSingle();
-    return defer_stream(
-        std::move(input),
-        [this, &graph, params,
-         timer](Stream<ContextChunk>&& input) mutable -> Stream<ContextChunk> {
-          return generate_chunk(
-              [this, &graph, params, timer]() -> result<ContextChunk> {
-                ContextChunk chunk;
-
-                if (pred_ == nullptr) {
-                  {
-                    return Scan::scan_vertex(std::move(chunk), graph,
-                                             scan_params_, DummyPred());
-                  }
-                } else {
-                  auto pred = pred_->bind(&graph, params);
-                  GeneralPred pred_wrapper(std::move(pred));
-                  {
-                    return Scan::scan_vertex(std::move(chunk), graph,
-                                             scan_params_, pred_wrapper);
-                  }
-                }
-              });
+  std::unique_ptr<MorselSource> CreateMorselSource(
+      IStorageInterface& graph, const ParamsMap& params,
+      Stream<ContextChunk>) override {
+    return std::make_unique<VertexMorselSource>(
+        graph, scan_params_, [this, &graph, params] {
+          auto predicate =
+              pred_ ? std::make_shared<GeneralPred>(pred_->bind(&graph, params))
+                    : nullptr;
+          return [this, &graph, predicate](size_t partition, size_t begin,
+                                           size_t end) {
+            ScanParams range;
+            range.alias = scan_params_.alias;
+            range.tables = {scan_params_.tables[partition]};
+            if (predicate) {
+              return Scan::scan_vertex(ContextChunk{}, graph, range, *predicate,
+                                       begin, end);
+            }
+            return Scan::scan_vertex(ContextChunk{}, graph, range, DummyPred(),
+                                     begin, end);
+          };
         });
   }
   std::string get_operator_name() const override { return "ScanWithGPredOpr"; }

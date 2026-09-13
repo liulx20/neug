@@ -30,17 +30,18 @@ namespace execution {
 class Scan {
  public:
   template <typename PRED_T>
-  static neug::result<ContextChunk> scan_vertex(ContextChunk&& chunk,
-                                                const IStorageInterface& gi,
-                                                const ScanParams& params,
-                                                const PRED_T& predicate) {
+  static neug::result<ContextChunk> scan_vertex(
+      ContextChunk&& chunk, const IStorageInterface& gi,
+      const ScanParams& params, const PRED_T& predicate, size_t begin = 0,
+      size_t end = std::numeric_limits<size_t>::max()) {
     const auto& graph = dynamic_cast<const StorageReadInterface&>(gi);
     MSVertexColumnBuilder builder(params.tables[0]);
     for (auto label : params.tables) {
       auto vertices = graph.GetVertexSet(label);
       builder.start_label(label);
-      for (auto vid : vertices) {
-        if (predicate(label, vid)) {
+      auto limit = std::min(end, vertices.size());
+      for (size_t vid = begin; vid < limit; ++vid) {
+        if (vertices.valid(vid) && predicate(label, vid)) {
           builder.push_back_opt(vid);
         }
       }
@@ -52,7 +53,8 @@ class Scan {
   static neug::result<ContextChunk> scan_vertex_with_special_vertex_predicate(
       ContextChunk&& chunk, const IStorageInterface& graph,
       const ScanParams& params, const SpecialPredicateConfig& config,
-      const ParamsMap& query_params);
+      const ParamsMap& query_params, size_t begin = 0,
+      size_t end = std::numeric_limits<size_t>::max());
 
   template <typename PRED_T>
   static neug::result<ContextChunk> filter_oids(

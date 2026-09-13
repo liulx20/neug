@@ -45,6 +45,9 @@ class StructColumn : public IContextColumn {
   std::shared_ptr<IContextColumn> optional_shuffle(
       const sel_vec_t& offsets) const override;
 
+  std::shared_ptr<IContextColumn> union_col(
+      std::shared_ptr<IContextColumn> other) const override;
+
   const DataType& elem_type() const override { return type_; }
   Value get_elem(size_t idx) const override;
 

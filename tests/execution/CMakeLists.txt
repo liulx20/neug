@@ -1,6 +1,7 @@
 add_neug_test(
 	execution_test
 	test_stream.cc
+	test_morsel_execution.cc
 	test_hash_join.cc
 	test_task_scheduler.cc
 	test_logical_expr.cc

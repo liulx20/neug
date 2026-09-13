@@ -14,6 +14,7 @@
  */
 #pragma once
 
+#include <chrono>
 #include <condition_variable>
 #include <deque>
 #include <functional>
@@ -60,10 +61,44 @@ class TaskScheduler {
       if (stopping_) {
         throw std::runtime_error("TaskScheduler is stopped");
       }
-      tasks_.emplace_back([task] { (*task)(); });
+      if (current_ == this) {
+        // Finish the current step's child work before unrelated ready nodes.
+        // This also preserves serial transaction order with one worker.
+        tasks_.emplace_front([task] { (*task)(); });
+      } else {
+        tasks_.emplace_back([task] { (*task)(); });
+      }
     }
     ready_.notify_one();
     return future;
+  }
+
+  size_t concurrency() const {
+    return mode_ == Mode::kInline ? 1 : worker_count_;
+  }
+
+  // Pipeline-step coordination can run on a pool worker. While waiting for
+  // its finite work batch, that worker helps the queue instead of occupying a
+  // thread that its children need. SQL operators never call this interface.
+  template <typename T>
+  T Wait(std::future<T>& future) {
+    while (current_ == this && future.wait_for(std::chrono::seconds(0)) !=
+                                   std::future_status::ready) {
+      std::function<void()> task;
+      {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (!tasks_.empty()) {
+          task = std::move(tasks_.front());
+          tasks_.pop_front();
+        }
+      }
+      if (task) {
+        task();
+      } else {
+        future.wait_for(std::chrono::milliseconds(1));
+      }
+    }
+    return future.get();
   }
 
  private:
@@ -80,6 +115,7 @@ class TaskScheduler {
     });
   }
   void Run() {
+    current_ = this;
     while (true) {
       std::function<void()> task;
       {
@@ -107,6 +143,7 @@ class TaskScheduler {
     }
   }
 
+  inline static thread_local TaskScheduler* current_ = nullptr;
   size_t worker_count_;
   Mode mode_;
   std::once_flag start_;

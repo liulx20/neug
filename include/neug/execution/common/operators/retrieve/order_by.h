@@ -45,13 +45,11 @@ class OrderBy {
         queue.pop();
       }
     }
-    for (size_t k = 0; k < low; ++k) {
-      queue.pop();
-    }
-    offsets.resize(queue.size());
-    size_t idx = queue.size();
-
-    while (!queue.empty()) {
+    // The heap exposes the largest selected row first. Keep the final
+    // high-low rows, then discard the low smallest rows remaining in the heap.
+    offsets.resize(queue.size() > low ? queue.size() - low : 0);
+    size_t idx = offsets.size();
+    while (idx != 0) {
       offsets[--idx] = queue.top();
       queue.pop();
     }
@@ -79,13 +77,11 @@ class OrderBy {
       }
     }
     sel_vec_t offsets;
-    for (size_t k = 0; k < low; ++k) {
-      queue.pop();
-    }
-    offsets.resize(queue.size());
-    size_t idx = queue.size();
-
-    while (!queue.empty()) {
+    // The heap exposes the largest selected row first. Keep the final
+    // high-low rows, then discard the low smallest rows remaining in the heap.
+    offsets.resize(queue.size() > low ? queue.size() - low : 0);
+    size_t idx = offsets.size();
+    while (idx != 0) {
       offsets[--idx] = queue.top();
       queue.pop();
     }

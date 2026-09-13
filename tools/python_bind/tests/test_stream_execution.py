@@ -155,3 +155,60 @@ def test_cross_batch_skip_and_topk(empty_db, tmp_path):
         [3],
     ]
     assert list(conn.execute(f"{source} RETURN id LIMIT 0")) == []
+
+
+def test_morsel_scan_visibility_and_global_operators(empty_db, tmp_path):
+    _, conn = empty_db
+    path = tmp_path / "morsel_nodes.csv"
+    size = 5003
+    path.write_text("id|grp\n" + "".join(f"{i}|{i % 17}\n" for i in range(size)))
+    conn.execute("CREATE NODE TABLE item(id INT64, grp INT64, PRIMARY KEY(id))")
+    conn.execute(f'COPY item FROM "{path}" (batch_size=1500)')
+    conn.execute("MATCH (n:item) WHERE n.id % 13 = 0 DELETE n")
+    visible = [i for i in range(size) if i % 13 != 0]
+    assert list(conn.execute("MATCH (n:item) RETURN count(n), sum(n.id)")) == [
+        [len(visible), sum(visible)]
+    ]
+    assert list(
+        conn.execute("MATCH (n:item) RETURN n.id ORDER BY n.id SKIP 1020 LIMIT 19")
+    ) == [[i] for i in visible[1020:1039]]
+    assert (
+        list(
+            conn.execute("MATCH (n:item) RETURN n.id ORDER BY n.id SKIP 6000 LIMIT 19")
+        )
+        == []
+    )
+    assert list(
+        conn.execute("MATCH (n:item) RETURN DISTINCT n.grp ORDER BY n.grp")
+    ) == [[i] for i in range(17)]
+
+
+def test_morsel_hash_join_matches_across_ranges(empty_db, tmp_path):
+    _, conn = empty_db
+    path = tmp_path / "join_nodes.csv"
+    size = 5003
+    path.write_text("id|grp\n" + "".join(f"{i}|{i % 17}\n" for i in range(size)))
+    conn.execute("CREATE NODE TABLE item(id INT64, grp INT64, PRIMARY KEY(id))")
+    conn.execute("CREATE NODE TABLE dim(id INT64, grp INT64, PRIMARY KEY(id))")
+    conn.execute(f'COPY item FROM "{path}" (batch_size=1500)')
+    for i in range(5):
+        conn.execute(f"CREATE (:dim {{id: {i}, grp: {i % 3}}})")
+    pairs = [
+        (left, right)
+        for left in range(size)
+        for right in range(5)
+        if left % 17 == right % 3
+    ]
+    assert list(
+        conn.execute(
+            "MATCH (l:item), (r:dim) WHERE l.grp = r.grp "
+            "RETURN count(*), sum(l.id + r.id)"
+        )
+    ) == [[len(pairs), sum(left + right for left, right in pairs)]]
+    unmatched = sum(1 for left in range(size) if left % 17 >= 3)
+    assert list(
+        conn.execute(
+            "MATCH (l:item) OPTIONAL MATCH (r:dim) WHERE l.grp = r.grp "
+            "RETURN count(l), count(r)"
+        )
+    ) == [[len(pairs) + unmatched, len(pairs)]]

@@ -31,6 +31,9 @@ namespace ops {
 
 class SelectIdNeOpr : public IOperator {
  public:
+  PipelineBehavior pipeline_behavior() const override {
+    return PipelineBehavior::kChunkLocal;
+  }
   explicit SelectIdNeOpr(std::unique_ptr<neug::execution::ExprBase>&& pred,
                          int tag, const std::string& prop_name,
                          const std::string& param_name)
@@ -102,6 +105,9 @@ class SelectIdNeOpr : public IOperator {
 
 class SelectOpr : public IOperator {
  public:
+  PipelineBehavior pipeline_behavior() const override {
+    return PipelineBehavior::kChunkLocal;
+  }
   explicit SelectOpr(std::unique_ptr<neug::execution::ExprBase>&& expr)
       : pred_(std::move(expr)) {}
 

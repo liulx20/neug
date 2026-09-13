@@ -30,7 +30,8 @@ its transaction owner. There is no Python/SQL worker-count switch yet.
 | `IOperator` | Plan configuration, input declarations and kernel selection |
 | `OperatorState` | One execution's inputs, cursors and intermediate data |
 | `PipelineBuilder` | Connect operator inputs and construct subpipeline boundaries |
-| `PipelineFragment` | Output stream, prerequisite nodes and enclosing fork barriers |
+| `PipelineFragment` | Output stream, prerequisite nodes, fork barriers and current morsel step |
+| `MorselPipelineState` | Shared source allocation, local readers, transforms and bounded output waves |
 | `PipelineGraph` | Dependency counts, ready nodes, completion notifications and failures |
 | `TaskScheduler` | Worker pool and queue of runnable tasks |
 | `PipelineExecutionState` | Own the graph, worker pool and final output pipeline |
@@ -66,9 +67,11 @@ State classes such as `SourceState`, `LimitState`, `UnionState`, `JoinState` and
 `Stream<ContextChunk>` owns them through `OperatorState`.
 
 For example, `JoinOpr` holds Join parameters and child plans. Its independent
-`JoinState` holds its input streams and a reusable `JoinTable`. `Build()` consumes
-only the right input and constructs the hash table once; `Next()` probes one
-left chunk and returns its matches. It has no futures, queue or dependency
+`JoinState` holds its input streams and a reusable `JoinTable`. The builder calls
+`PrepareBuild()`, schedules `BuildPartition()` tasks, then calls `FinalizeBuild()`.
+After publication, `ProbeChunk()` reads the immutable table from local pipeline
+tasks. `Next()` provides chunk-wise probing when the probe input is behind a
+global boundary. It has no futures, queue or dependency
 counters.
 The execution layer owns common-input caches and materialized branch buffers.
 
@@ -81,14 +84,21 @@ Input pipeline -> shared input buffer
                          |
                    right pipeline
                          |
-                 right data + hash table
+                 materialized right rows
+                         | prepare
+                parallel local hash tables
+                         | finalize / merge
+                  immutable hash table
                          | build complete
-                   left pipeline
-                         | one chunk at a time
-                   Join probe -> downstream
+                left source range allocation
+                         | multiple workers
+                local transforms -> Join probe -> downstream
 ```
 
-The right input is materialized once. Its table is reused for every left chunk.
+The right input is materialized once. Build tasks use disjoint contiguous row
+ranges and independent hash tables. A finalizer merges those tables in range
+order before unlocking probe work. Its published table is reused for every left
+chunk. Table merging is currently serial.
 Inner, left outer, semi and anti joins use right-side hash lookup. Cartesian
 Join retains the right rows without hashing; primary-key Join remains a separate
 lookup implementation. Probe results follow left row order, with duplicate
@@ -115,9 +125,13 @@ The external consumer runs the coordinator on first `Next()`:
 Subsequent `Next()` calls enqueue further output pulls without rerunning the
 completed graph. At most one output pull is in flight for a stream.
 
-Workers execute ready tasks and return. They never wait for work queued to the
-same worker pool. Nested Joins in an ordinary graph are connected by dependency
-edges and therefore work with one worker.
+A pipeline-step coordinator may itself run on a worker. When it waits for its
+finite batch of morsel tasks, it helps execute queued work. Tasks submitted from
+a worker go to the front of the queue, ahead of unrelated ready graph nodes.
+This allows the same execution flow to make progress with one worker and keeps
+serial transaction work ordered. Only the execution runtime uses this mechanism;
+SQL operators do not submit or wait for tasks. Nested Join build phases remain
+connected by dependency edges.
 
 ## Demand and failures
 
@@ -145,27 +159,78 @@ The worker pool starts on first demand. Thread-start failures also pass through
 without starting further output pulls. There is no mid-call cancellation or
 preemption of a running synchronous kernel.
 
-## Scope
+## Morsel pipelines
 
-This prototype parallelizes independent materialized child pipelines. It does
-not yet partition scans or hash tables:
+`pipeline_behavior()` declares a source, a chunk-local transform, or a global
+boundary. The default is global, so an operator must explicitly opt into local
+execution. The builder groups a source and adjacent local transforms into one
+`MorselPipelineState`:
 
-- Linear Scan/Filter/Project chains run on a worker as synchronous pull chains.
-- Join materializes only its right result; its left result is probed by chunk.
-  Shared upstream input is still buffered for both branches. One build task and
-  one probe consumer execute each Join; neither phase is partitioned across
-  workers. One probe chunk can still produce a large result for duplicate keys.
-- Aggregation and sorting remain blocking kernels within a pipeline task.
-- Dedup and aggregation have no hash exchange or parallel merge phase.
-- The graph has no byte-based memory budget, spill support or cross-query
-  admission control. Every execution has its own worker pool.
-- Writes use this same execution flow with one worker. Concurrent mutation
-  within a transaction remains outside this prototype's scope.
+```text
+shared source: Pick() -> range 0, range 1, ...
+                         | dynamically claimed
+worker-local reader -> Filter -> Project -> optional Join probe
+                         | completed range outputs
+               ordered, bounded output wave
+                         |
+                global Limit / aggregate / sort
+```
 
-Each child pipeline has its own profiling state. A scheduled Join's build time
-includes consuming its right pipeline and constructing the table. Child timers
-also record their own execution; the probe phase is measured on output pulls.
-Concurrent child durations must not be summed to interpret query wall time.
+Scan allocates ranges of physical vertex positions, including deleted positions;
+its readers check visibility and return only live rows. Ranges contain up to
+4096 positions and readers produce chunks of up to 1024 rows/positions. The
+allocation cursor is protected by the step, while each logical worker lane has
+its own reader and predicate binding. Filter and ordinary Project run in the
+same task for that range. Operator plan objects remain shared and immutable.
+Per-morsel transform state is constructed separately for each task's work.
+
+DataSource wraps the existing supplier in `ChunkMorselSource`. Reading/decoding
+supplier batches is serialized during allocation, then ranges of decoded rows
+can be processed by different workers. This does not yet provide parallel file
+reading or CSV decoding. Incoming execution dependencies are consumed before
+starting source allocation.
+
+Each wave submits one task per worker. A task handles at most two morsels (one
+with a single worker), claiming the next available range after finishing its
+current range. Workers are not permanently assigned to a subpipeline. Completed
+outputs are ordered by allocation sequence; all submitted tasks finish before
+that wave is exposed. The next wave starts only when its outputs are demanded.
+Thus an early Limit can avoid later waves, but may still cause bounded read-ahead
+within the current wave. Output expansion, such as duplicate Join matches, is
+not bounded by the input range size.
+
+Source exhaustion and completion are distinct: `Finalize()` runs only after
+allocation reaches EOF and all in-flight ranges complete successfully. Errors
+are delivered in allocation order through `Next()`; a failed wave drains its
+submitted tasks and does not finalize successfully. Early termination does not
+call the source's successful-completion finalizer.
+
+Ordinary Join attaches its probe kernel to the left morsel step when possible.
+If the left input ends at a global boundary or reads a shared materialized input,
+probing remains a single stream consumer. Global Limit, DISTINCT, aggregation,
+sort/TopK and fused expansion-count operators are not cloned per worker.
+Primary-key Join currently ends a morsel step.
+
+## Scope and profiling
+
+- Scan/Filter/Project and eligible Join probe chains partition actual input data.
+  Index scans and other source types have not all been converted to range sources.
+- Join builds local hash tables concurrently and merges them serially. There is
+  no hash exchange, partition-local probe routing or spill implementation.
+- Aggregation, dedup and sorting retain their global execution kernels.
+- Conditional Union child graphs remain inline, preserving unused-branch laziness.
+- The graph has no byte-based memory budget or cross-query admission control.
+  Every execution has its own worker pool; writes use the same flow with one worker.
+- `Stream` remains the result/error interface and a bridge between local kernels.
+  Tasks run ranges through a pipeline segment, rather than scheduling each `Next()`
+  or each operator as an individual task. This is not compiled kernel fusion.
+
+Each worker lane has independent profiling counters. The step merges counters
+only after all wave tasks complete, without merging or modifying the plan's child
+timer tree from worker tasks. Join build time includes consuming the right input,
+local table construction and finalization; child timers also record their own
+work. Sum of concurrent task durations is not query wall time. Read-ahead can
+make upstream row counts exceed the rows ultimately consumed by a Limit.
 
 ## Validation
 
@@ -186,3 +251,11 @@ empty inputs, both size relationships, multiple chunks and repeated probes of
 the same table. `JoinBuildsOnceAndPullsOnlyOneProbeChunk` checks that the real
 operator consumes the build input once, pulls one left chunk per result, and
 reports a later left-input error only when that chunk is requested.
+
+`MorselExecutionTest.*` checks dynamic range allocation and real worker overlap,
+ordered local transformations, a single global Limit, deferred errors, source
+finalization, and real partitioned Join build/probe with profiling.
+`HashJoinTest.ParallelBuildFinalizesBeforeConcurrentProbe` checks the publication
+barrier and concurrent probing against a nested-loop oracle. Python regressions
+exercise scans over 5003 rows, deleted-row visibility, global ordering/dedup and
+joins across range boundaries.

@@ -125,7 +125,7 @@ std::shared_ptr<IContextColumn> SLVertexColumn::union_col(
       MSVertexColumnBuilder builder(label());
       if (is_optional_ || other->is_optional()) {
         for (auto v : vertices_) {
-          if (v == std::numeric_limits<vid_t>::max()) {
+          if (v != std::numeric_limits<vid_t>::max()) {
             builder.push_back_opt(v);
           } else {
             builder.push_back_null();
@@ -154,10 +154,18 @@ std::shared_ptr<IContextColumn> SLVertexColumn::union_col(
   labels_set.insert(label_);
   MLVertexColumnBuilderOpt builder(labels_set);
   for (auto v : vertices_) {
-    builder.push_back_vertex({label_, v});
+    if (v != std::numeric_limits<vid_t>::max()) {
+      builder.push_back_vertex({label_, v});
+    } else {
+      builder.push_back_null();
+    }
   }
   for (size_t i = 0; i < col->size(); ++i) {
-    builder.push_back_vertex(col->get_vertex(i));
+    if (col->has_value(i)) {
+      builder.push_back_vertex(col->get_vertex(i));
+    } else {
+      builder.push_back_null();
+    }
   }
   return builder.finish();
 }

@@ -16,6 +16,25 @@
 #include "neug/common/columns/edge_columns.h"
 
 namespace neug {
+std::shared_ptr<IContextColumn> IEdgeColumn::union_col(
+    std::shared_ptr<IContextColumn> other) const {
+  CHECK(other->column_type() == ContextColumnType::kEdge);
+  const auto& column = static_cast<const IEdgeColumn&>(*other);
+  auto labels = get_labels();
+  for (const auto& label : column.get_labels()) {
+    if (std::find(labels.begin(), labels.end(), label) == labels.end()) {
+      labels.push_back(label);
+    }
+  }
+  BDMLEdgeColumnBuilder builder(labels);
+  builder.reserve(size() + column.size());
+  for (const IEdgeColumn* source : {this, &column}) {
+    for (size_t row = 0; row < source->size(); ++row) {
+      builder.push_back_elem(source->get_elem(row));
+    }
+  }
+  return builder.finish();
+}
 
 std::shared_ptr<IContextColumn> SDSLEdgeColumn::shuffle(
     const sel_vec_t& offsets) const {

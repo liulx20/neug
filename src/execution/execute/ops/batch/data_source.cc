@@ -77,7 +77,7 @@ class SourceState final : public OperatorState {
   bool initialized_ = false;
 };
 
-class DataSourceOpr : public IOperator {
+class DataSourceOpr : public MorselSourceOperator {
  private:
   std::shared_ptr<reader::ReadSharedState> sharedState;
   function::ReadFunction* readFunction;
@@ -91,11 +91,23 @@ class DataSourceOpr : public IOperator {
 
   std::string get_operator_name() const override { return "DataSourceOpr"; }
 
-  Stream<ContextChunk> Eval(IStorageInterface& graph, const ParamsMap& params,
-                            OperatorInputs inputs, OprTimer* timer) override {
-    auto input = inputs.TakeSingle();
-    return Stream<ContextChunk>(std::make_shared<SourceState>(
-        std::move(input), *sharedState, params, readFunction));
+  std::unique_ptr<MorselSource> CreateMorselSource(
+      IStorageInterface&, const ParamsMap& params,
+      Stream<ContextChunk> input) override {
+    // Finish dependencies before workers enter the supplier's allocation lock.
+    while (true) {
+      auto next = input.Next();
+      if (!next) {
+        return std::make_unique<ChunkMorselSource>(
+            error_stream<ContextChunk>(next.error()));
+      }
+      if (!*next) {
+        break;
+      }
+    }
+    return std::make_unique<ChunkMorselSource>(
+        Stream<ContextChunk>(std::make_shared<SourceState>(
+            Stream<ContextChunk>{}, *sharedState, params, readFunction)));
   }
 };
 
