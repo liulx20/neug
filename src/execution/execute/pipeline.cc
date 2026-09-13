@@ -15,7 +15,9 @@
 
 #include "neug/execution/execute/pipeline.h"
 #include <algorithm>
+#include <atomic>
 #include <deque>
+#include <map>
 #include <memory>
 #include <optional>
 #include "neug/execution/execute/task_scheduler.h"
@@ -155,6 +157,8 @@ class KernelChain {
 struct PipelineTask {
   virtual ~PipelineTask() = default;
   virtual bool Advance(QueueExecution&) = 0;
+  virtual void Completed() {}
+  virtual void Cancel() {}
   std::vector<PipelineTask*> gates;
   std::vector<PipelineTask*> waiters;
   bool queued = false;
@@ -185,23 +189,24 @@ class QueueExecution {
   // All graph, mailbox and readiness changes happen on the consumer thread.
   // A completion event publishes worker writes before Advance resumes a task.
   template <typename F>
-  void Submit(PipelineTask& owner, F work) {
+  void Submit(PipelineTask& owner, F work, PipelineTask* resume = nullptr) {
     ++owner.running;
     ++active_;
     try {
-      scheduler_.Submit([this, &owner, work = std::move(work)]() mutable {
-        auto captured = CaptureWork([&]() -> result<bool> {
-          auto status = work();
-          if (!status) {
-            return tl::unexpected(status);
-          }
-          return true;
-        });
-        std::lock_guard<std::mutex> lock(mutex_);
-        completed_.push_back(
-            {&owner, captured ? Status::OK() : captured.error()});
-        ready_.notify_one();
-      });
+      scheduler_.Submit(
+          [this, &owner, resume, work = std::move(work)]() mutable {
+            auto captured = CaptureWork([&]() -> result<bool> {
+              auto status = work();
+              if (!status) {
+                return tl::unexpected(status);
+              }
+              return true;
+            });
+            std::lock_guard<std::mutex> lock(mutex_);
+            completed_.push_back(
+                {&owner, resume, captured ? Status::OK() : captured.error()});
+            ready_.notify_one();
+          });
     } catch (...) {
       --owner.running;
       --active_;
@@ -289,6 +294,9 @@ class QueueExecution {
   void Drain() {
     // No further demand is issued. All submitted tasks finish before state,
     // storage references or profiling pointers can be released by the caller.
+    for (auto& task : tasks_) {
+      task->Cancel();
+    }
     while (active_) {
       Receive(true);
     }
@@ -313,13 +321,17 @@ class QueueExecution {
       ready_.wait(lock, [&] { return !completed_.empty(); });
     }
     for (auto& event : completed_) {
-      --event.first->running;
+      --event.owner->running;
       --active_;
-      if (!event.first->running) {
-        Enqueue(*event.first);
+      if (!event.owner->running) {
+        event.owner->Completed();
+        Enqueue(*event.owner);
       }
-      if (!event.second && !error_) {
-        error_ = event.second;
+      if (event.resume) {
+        Enqueue(*event.resume);
+      }
+      if (!event.status && !error_) {
+        error_ = event.status;
       }
     }
     completed_.clear();
@@ -331,7 +343,12 @@ class QueueExecution {
   std::deque<PipelineTask*> runnable_;
   std::mutex mutex_;
   std::condition_variable ready_;
-  std::vector<std::pair<PipelineTask*, Status>> completed_;
+  struct Completion {
+    PipelineTask* owner;
+    PipelineTask* resume;
+    Status status;
+  };
+  std::vector<Completion> completed_;
   size_t active_ = 0;
   std::optional<Status> error_;
 };
@@ -409,6 +426,7 @@ class MorselPipelineTask final : public PipelineTask {
     transforms_.push_back(std::move(transform));
   }
 
+  void Cancel() override { cancelled_ = true; }
   bool Advance(QueueExecution& execution) override {
     if (!source_) {
       execution.Submit(*this, [this] {
@@ -417,37 +435,94 @@ class MorselPipelineTask final : public PipelineTask {
         if (!source_) {
           return Status::InternalError("Missing morsel source");
         }
-        workers_.resize(worker_count_);
         return Status::OK();
       });
       return true;
     }
-    if (wave_) {
-      wave_ = false;
-      execution.Submit(*this, [this] { return FinishWave(); });
+    if (workers_.empty()) {
+      for (size_t lane = 0; lane < worker_count_; ++lane) {
+        workers_.push_back(execution.Add<LocalState>(*this));
+      }
+    }
+    auto ready = completed_ranges_.find(deliver_sequence_);
+    if (ready != completed_ranges_.end()) {
+      auto output = std::move(ready->second);
+      completed_ranges_.erase(ready);
+      ++deliver_sequence_;
+      if (!output) {
+        pending.emplace_back(tl::unexpected(output.error()));
+        finished = true;
+        return true;
+      }
+      Publish(*this, std::move(*output));
+      // Refill only while serving demand, never from completion callbacks.
+      // A single worker retains exact pull-through behavior for sequential IO.
+      if (worker_count_ > 1) {
+        FillSlots(execution);
+      }
       return true;
     }
-    wave_ = true;
-    wave_outputs_.clear();
-    wave_outputs_.resize(workers_.size());
-    for (size_t lane = 0; lane < workers_.size(); ++lane) {
-      execution.Submit(*this, [this, lane] {
-        wave_outputs_[lane] = RunTask(lane);
-        return Status::OK();
+    if (exhausted_ && in_flight_ == 0) {
+      execution.Submit(*this, [this] {
+        auto status = source_->Finalize();
+        finished = true;
+        return status;
       });
+      return true;
     }
-    return true;
+    return FillSlots(execution);
   }
 
  private:
-  struct Output {
-    size_t sequence;
-    result<std::vector<ContextChunk>> output;
-  };
-  struct LocalState {
+  struct LocalState final : public PipelineTask {
+    explicit LocalState(MorselPipelineTask& owner) : owner(owner) {}
+    bool Advance(QueueExecution&) override { return false; }
+    void Completed() override {
+      --owner.in_flight_;
+      for (size_t i = 0; i < timers.size(); ++i) {
+        if (owner.timers_[i]) {
+          owner.timers_[i]->add_local_metrics(*timers[i]);
+        }
+      }
+      if (sequence) {
+        owner.completed_ranges_.emplace(*sequence, std::move(result));
+        sequence.reset();
+      }
+    }
+    MorselPipelineTask& owner;
     std::unique_ptr<MorselReader> reader;
     std::vector<std::unique_ptr<OprTimer>> timers;
+    std::optional<size_t> sequence;
+    KernelResult result = ChunkBatch{};
   };
+
+  bool FillSlots(QueueExecution& execution) {
+    bool submitted = false;
+    for (auto* local : workers_) {
+      if (exhausted_ || failed_ ||
+          in_flight_ + completed_ranges_.size() >= worker_count_) {
+        break;
+      }
+      if (local->running) {
+        continue;
+      }
+      ++in_flight_;
+      try {
+        execution.Submit(
+            *local,
+            [this, local] {
+              RunTask(*local);
+              return Status::OK();
+            },
+            this);
+      } catch (...) {
+        --in_flight_;
+        throw;
+      }
+      submitted = true;
+    }
+    return submitted;
+  }
 
   result<std::vector<ContextChunk>> RunMorsel(LocalState& local,
                                               const Morsel& work) {
@@ -462,6 +537,9 @@ class MorselPipelineTask final : public PipelineTask {
     KernelChain chain(std::move(steps));
     ChunkBatch output;
     while (true) {
+      if (cancelled_) {
+        return ChunkBatch{};
+      }
       TimerUnit clock;
       auto* timer = local.timers[0].get();
       if (timer) {
@@ -492,8 +570,7 @@ class MorselPipelineTask final : public PipelineTask {
     return output;
   }
 
-  std::vector<Output> RunTask(size_t lane) {
-    auto& local = workers_[lane];
+  void RunTask(LocalState& local) {
     local.timers.clear();
     for (size_t i = 0; i < names_.size(); ++i) {
       auto timer = timers_[i] ? std::make_unique<OprTimer>() : nullptr;
@@ -502,83 +579,47 @@ class MorselPipelineTask final : public PipelineTask {
       }
       local.timers.push_back(std::move(timer));
     }
-    std::vector<Output> outputs;
-    for (size_t count = 0; count < (workers_.size() == 1 ? 1 : 2); ++count) {
-      size_t sequence;
-      result<std::optional<Morsel>> work = std::optional<Morsel>{};
-      {
-        std::lock_guard<std::mutex> lock(pick_mutex_);
-        if (exhausted_) {
-          break;
-        }
-        work = CaptureWork([&] { return source_->Pick(); });
-        sequence = next_sequence_++;
-        if (!work || !*work) {
-          exhausted_ = true;
-        }
+    result<std::optional<Morsel>> work = std::optional<Morsel>{};
+    {
+      std::lock_guard<std::mutex> lock(pick_mutex_);
+      if (exhausted_ || failed_ || cancelled_) {
+        return;
       }
+      work = CaptureWork([&] { return source_->Pick(); });
+      if (work && !*work) {
+        exhausted_ = true;
+        return;
+      }
+      local.sequence = next_sequence_++;
       if (!work) {
-        outputs.push_back({sequence, tl::unexpected(work.error())});
-        break;
-      }
-      if (!*work) {
-        break;
-      }
-      auto output = CaptureWork([&] { return RunMorsel(local, **work); });
-      outputs.push_back({sequence, std::move(output)});
-    }
-    return outputs;
-  }
-
-  Status FinishWave() {
-    std::vector<Output> outputs;
-    for (auto& lane : wave_outputs_) {
-      for (auto& item : lane) {
-        outputs.push_back(std::move(item));
+        failed_ = true;
       }
     }
-    wave_outputs_.clear();
-    for (auto& worker : workers_) {
-      for (size_t i = 0; i < timers_.size(); ++i) {
-        if (timers_[i]) {
-          timers_[i]->add_local_metrics(*worker.timers[i]);
-        }
-      }
+    if (!work) {
+      local.result = tl::unexpected(work.error());
+      return;
     }
-    std::sort(outputs.begin(), outputs.end(),
-              [](const Output& a, const Output& b) {
-                return a.sequence < b.sequence;
-              });
-    for (auto& item : outputs) {
-      if (!item.output) {
-        pending.emplace_back(tl::unexpected(item.output.error()));
-        finished = true;
-        return Status::OK();
-      }
-      Publish(*this, std::move(*item.output));
+    local.result = CaptureWork([&] { return RunMorsel(local, **work); });
+    if (!local.result) {
+      failed_ = true;
     }
-    if (exhausted_) {
-      auto status = source_->Finalize();
-      finished = true;
-      if (!status) {
-        pending.emplace_back(tl::unexpected(status));
-      }
-    }
-    return Status::OK();
   }
 
   size_t worker_count_;
-  bool wave_ = false;
-  std::vector<std::vector<Output>> wave_outputs_;
   SourceFactory factory_;
   std::unique_ptr<MorselSource> source_;
   std::vector<std::string> names_;
   std::vector<OprTimer*> timers_;
   std::vector<Transform> transforms_;
-  std::vector<LocalState> workers_;
+  std::vector<LocalState*> workers_;
   std::mutex pick_mutex_;
-  bool exhausted_ = false;
+  std::atomic<bool> exhausted_{false};
+  std::atomic<bool> failed_{false};
+  std::atomic<bool> cancelled_{false};
   size_t next_sequence_ = 0;
+  size_t deliver_sequence_ = 0;
+  size_t in_flight_ = 0;
+  std::map<size_t, KernelResult> completed_ranges_;
 };
 
 // Materialization is explicit only at replay/build barriers. This node drains

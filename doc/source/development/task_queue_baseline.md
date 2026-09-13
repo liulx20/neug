@@ -115,3 +115,44 @@ budget, row order, empty batches, nulls, sparse aliases, head identity and neste
 column serialization compared with a sequential reference. The Python suite
 covers per-query workers, queries, import/export, transactions and local
 connections; HTTP-server tests are excluded because that build option is off.
+
+## Follow-up: incremental ordered range delivery
+
+The next change removes wave-wide publication. Each completed morsel publishes
+its result independently through a completion event. The next range in input
+order can reach downstream operators while later tasks are still running. A
+slow earlier range still holds back later rows; ordering is preserved.
+
+W worker lanes share W in-flight/completed-result slots. A delivered range frees
+a slot that can be refilled while downstream demand is active. The current
+range's output is separate, so at most W+1 source ranges are retained. Paused
+consumers do not replenish slots from completion callbacks. Cancellation stops
+allocation and is checked between reader chunks; running storage calls are
+still drained. This does not introduce a byte-based memory budget.
+
+Using the unchanged script, machine and 7/5 repetition counts, the local
+end-to-end median milliseconds were:
+
+| Rows | Query | Balanced merges: 4 workers | Incremental delivery: 4 workers |
+| --- | --- | ---: | ---: |
+| 100k | filter_project | 3.604 | 3.270 |
+| 100k | hash_join | 8.270 | 8.098 |
+| 100k | group_sum | 5.362 | 4.858 |
+| 100k | limit_10 | 0.326 | 0.309 |
+| 1m | filter_project | 40.881 | 38.570 |
+| 1m | hash_join | 101.946 | 99.352 |
+| 1m | group_sum | 72.272 | 67.925 |
+| 1m | limit_10 | 0.312 | 0.280 |
+
+Raw samples: [100k rows](benchmarks/task_queue_incremental_100k.json),
+[1m rows](benchmarks/task_queue_incremental_1m.json). Query result checksums and
+row counts match the previous baseline. Builds and tests did not run concurrently
+with these measurements. Small latency differences should not be treated as a
+general performance guarantee; the benchmark measures full-result execution,
+not first-row latency under skew.
+
+Deterministic tests hold a later range blocked while the first passes through a
+downstream operator, and verify that the freed lane starts another range. A
+second test blocks the first range and checks that later work cannot exceed the
+slot budget. Limit and failure tests hold another range blocked and check that
+EOF/error waits for draining without successfully finalizing the source.

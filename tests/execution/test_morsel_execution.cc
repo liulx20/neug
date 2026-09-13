@@ -15,6 +15,7 @@
 #include <gtest/gtest.h>
 #include <atomic>
 #include <condition_variable>
+#include <future>
 #include <mutex>
 #include <set>
 #include <thread>
@@ -38,6 +39,8 @@ struct Observation {
   size_t finalized = 0;
   bool require_overlap = false;
   int64_t fail_at = -1;
+  int64_t block_at = -1;
+  bool release = false;
 };
 
 class RangeSource final : public MorselSource {
@@ -69,6 +72,12 @@ class RangeSource final : public MorselSource {
           EXPECT_TRUE(
               observed_.ready.wait_for(lock, std::chrono::seconds(3),
                                        [&] { return observed_.started >= 2; }));
+        }
+        if (observed_.block_at >= 0 &&
+            work.begin == size_t(observed_.block_at)) {
+          EXPECT_TRUE(
+              observed_.ready.wait_for(lock, std::chrono::seconds(5),
+                                       [&] { return observed_.release; }));
         }
       }
       result<std::optional<ContextChunk>> Next() override {
@@ -173,6 +182,180 @@ class JoinWithSources final : public BuildProbeOperator {
   std::unique_ptr<IOperator> kernel_;
   Pipeline left_, right_;
 };
+
+TEST(MorselExecutionTest, DeliversBeforeLaterRangeAndRefillsBoundedSlots) {
+  class Forward final : public IOperator {
+   public:
+    std::string get_operator_name() const override { return "Forward"; }
+    Kernel CreateState(IStorageInterface&, const ParamsMap&,
+                       OprTimer*) override {
+      return make_chunk_kernel(
+          [](ContextChunk input) -> result<ContextChunk> { return input; });
+    }
+  };
+  PropertyGraph graph;
+  GraphView view(graph);
+  StorageReadInterface storage(view, 0);
+  Observation observed;
+  observed.require_overlap = true;
+  observed.block_at = 11;
+  std::vector<std::unique_ptr<IOperator>> operators;
+  operators.push_back(std::make_unique<RangeSourceOpr>(110, observed));
+  operators.push_back(std::make_unique<Forward>());
+  Pipeline pipeline(std::move(operators));
+  OprTimer timer;
+  auto reader = pipeline.ExecuteReader(storage, {}, {}, &timer, 2);
+  auto first = std::async(std::launch::async, [&] { return reader.Next(); });
+  auto status = first.wait_for(std::chrono::seconds(1));
+  EXPECT_EQ(status, std::future_status::ready);
+  {
+    std::unique_lock<std::mutex> lock(observed.mutex);
+    // The freed lane can process another range while the second stays blocked.
+    if (status == std::future_status::ready) {
+      EXPECT_TRUE(observed.ready.wait_for(lock, std::chrono::seconds(1), [&] {
+        return observed.started >= 3;
+      }));
+      EXPECT_LE(observed.started, 3);
+    }
+    observed.release = true;
+    observed.ready.notify_all();
+  }
+  auto chunk = first.get();
+  ASSERT_TRUE(chunk);
+  ASSERT_TRUE(*chunk);
+  size_t expected = 0;
+  auto check = [&](const ContextChunk& value) {
+    for (size_t row = 0; row < value.row_num(); ++row) {
+      EXPECT_EQ(value.get(0)->get_elem(row).GetValue<int64_t>(), expected++);
+    }
+  };
+  check(**chunk);
+  while (true) {
+    auto next = reader.Next();
+    ASSERT_TRUE(next);
+    if (!*next) {
+      break;
+    }
+    check(**next);
+  }
+  EXPECT_EQ(expected, 110);
+  EXPECT_EQ(observed.finalized, 1);
+  auto profile = OprTimer::ToProfileResult(&timer);
+  EXPECT_EQ(profile.operators(0).output_rows(), 110);
+}
+
+TEST(MorselExecutionTest, SlowFirstRangeBoundsOutOfOrderResults) {
+  PropertyGraph graph;
+  GraphView view(graph);
+  StorageReadInterface storage(view, 0);
+  Observation observed;
+  observed.require_overlap = true;
+  observed.block_at = 0;
+  std::vector<std::unique_ptr<IOperator>> operators;
+  operators.push_back(std::make_unique<RangeSourceOpr>(1100, observed));
+  Pipeline pipeline(std::move(operators));
+  auto reader = pipeline.ExecuteReader(storage, {}, {}, nullptr, 4);
+  auto first = std::async(std::launch::async, [&] { return reader.Next(); });
+  {
+    std::unique_lock<std::mutex> lock(observed.mutex);
+    EXPECT_TRUE(observed.ready.wait_for(lock, std::chrono::seconds(1),
+                                        [&] { return observed.started == 4; }));
+  }
+  EXPECT_EQ(first.wait_for(std::chrono::milliseconds(20)),
+            std::future_status::timeout);
+  {
+    std::lock_guard<std::mutex> lock(observed.mutex);
+    EXPECT_EQ(observed.started, 4);
+    observed.release = true;
+    observed.ready.notify_all();
+  }
+  auto chunk = first.get();
+  ASSERT_TRUE(chunk);
+  ASSERT_TRUE(*chunk);
+  EXPECT_EQ((**chunk).get(0)->get_elem(0).GetValue<int64_t>(), 0);
+}
+
+TEST(MorselExecutionTest, ErrorStopsRefillAndDrainsBlockedRange) {
+  PropertyGraph graph;
+  GraphView view(graph);
+  StorageReadInterface storage(view, 0);
+  Observation observed;
+  observed.require_overlap = true;
+  observed.block_at = 11;
+  observed.fail_at = 0;
+  std::vector<std::unique_ptr<IOperator>> operators;
+  operators.push_back(std::make_unique<RangeSourceOpr>(1100, observed));
+  Pipeline pipeline(std::move(operators));
+  auto reader = pipeline.ExecuteReader(storage, {}, {}, nullptr, 2);
+  auto first = std::async(std::launch::async, [&] { return reader.Next(); });
+  {
+    std::unique_lock<std::mutex> lock(observed.mutex);
+    EXPECT_TRUE(observed.ready.wait_for(lock, std::chrono::seconds(1),
+                                        [&] { return observed.started == 2; }));
+  }
+  EXPECT_EQ(first.wait_for(std::chrono::milliseconds(20)),
+            std::future_status::timeout);
+  {
+    std::lock_guard<std::mutex> lock(observed.mutex);
+    EXPECT_EQ(observed.started, 2);
+    observed.release = true;
+    observed.ready.notify_all();
+  }
+  auto failure = first.get();
+  ASSERT_FALSE(failure);
+  EXPECT_NE(failure.error().ToString().find("range read failed"),
+            std::string::npos);
+  EXPECT_FALSE(reader.Next());
+  EXPECT_EQ(observed.finalized, 0);
+  EXPECT_EQ(observed.started, 2);
+}
+
+TEST(MorselExecutionTest, EarlyStopDrainsLaterRangeWithoutFinalizingSource) {
+  PropertyGraph graph;
+  GraphView view(graph);
+  StorageReadInterface storage(view, 0);
+  Observation observed;
+  observed.require_overlap = true;
+  observed.block_at = 11;
+  physical::PhysicalPlan plan;
+  auto* range =
+      plan.add_plan()->mutable_opr()->mutable_limit()->mutable_range();
+  range->set_lower(0);
+  range->set_upper(1);
+  ops::LimitOprBuilder builder;
+  auto limit = builder.Build(Schema(), ContextMeta(), plan, 0);
+  ASSERT_TRUE(limit);
+  std::vector<std::unique_ptr<IOperator>> operators;
+  operators.push_back(std::make_unique<RangeSourceOpr>(1100, observed));
+  operators.push_back(std::move(limit->first));
+  Pipeline pipeline(std::move(operators));
+  auto reader = pipeline.ExecuteReader(storage, {}, {}, nullptr, 2);
+  auto first = std::async(std::launch::async, [&] { return reader.Next(); });
+  auto status = first.wait_for(std::chrono::seconds(1));
+  EXPECT_EQ(status, std::future_status::ready);
+  if (status != std::future_status::ready) {
+    std::lock_guard<std::mutex> lock(observed.mutex);
+    observed.release = true;
+    observed.ready.notify_all();
+  }
+  auto chunk = first.get();
+  ASSERT_TRUE(chunk);
+  ASSERT_TRUE(*chunk);
+  EXPECT_EQ((**chunk).row_num(), 1);
+  auto done = std::async(std::launch::async, [&] { return reader.Next(); });
+  EXPECT_EQ(done.wait_for(std::chrono::milliseconds(20)),
+            std::future_status::timeout);
+  {
+    std::lock_guard<std::mutex> lock(observed.mutex);
+    observed.release = true;
+    observed.ready.notify_all();
+  }
+  auto eof = done.get();
+  ASSERT_TRUE(eof);
+  EXPECT_FALSE(*eof);
+  EXPECT_EQ(observed.finalized, 0);
+  EXPECT_LE(observed.started, 3);
+}
 
 TEST(MorselExecutionTest, JoinBuildAndProbeUsePartitionedSources) {
   PlanParser::get().init();

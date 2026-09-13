@@ -43,7 +43,7 @@ See [the latency baseline](task_queue_baseline.md) for measurements and limitati
 | `OperatorState` | One execution's inputs, cursors and intermediate data |
 | `PipelineBuilder` | Connect operator inputs and construct subpipeline boundaries |
 | `PipelineFragment` | Output task, result columns, fork barriers and current segment |
-| `MorselPipelineTask` | Shared source allocation, local readers, transforms and bounded output waves |
+| `MorselPipelineTask` | Shared source allocation, local readers, transforms and bounded ordered task completion |
 | `QueueExecution` | Dependency gates, ready queue, one-slot mailboxes, completion events and failures |
 | `TaskScheduler` | Worker pool and queue of runnable tasks |
 | `QueryResultReader` | External result access and ownership of the execution |
@@ -94,7 +94,7 @@ Each boundary has a one-slot mailbox. A consumer waiting for input registers
 with its producer and suspends. Publishing a chunk or completing a dependency
 puts the waiting consumer on the ready queue. Consuming a chunk does not
 prefetch the next one: another upstream task runs only when the downstream
-requests more data. Completed work within a kernel invocation or morsel wave
+requests more data. Completed work within a kernel invocation or morsel
 can retain multiple chunks, so the mailbox capacity is not a byte memory limit.
 The coordinator runs on the thread calling `Next()`; no additional coordinator
 thread or polling scan over the task graph is required.
@@ -212,7 +212,7 @@ shared source: Pick() -> range 0, range 1, ...
                          | dynamically claimed
 worker-local reader -> Filter -> Project -> optional Join probe
                          | completed range outputs
-               ordered, bounded output wave
+               ordered, bounded completed ranges
                          |
                 global Limit / aggregate / sort
 ```
@@ -231,20 +231,31 @@ can be processed by different workers. This does not yet provide parallel file
 reading or CSV decoding. Incoming execution dependencies are consumed before
 starting source allocation.
 
-Each wave submits one task per worker. A task handles at most two morsels (one
-with a single worker), claiming the next available range after finishing its
-current range. Workers are not permanently assigned to a subpipeline. Completed
-outputs are ordered by allocation sequence; all submitted tasks finish before
-that wave is exposed. The next wave starts only when its outputs are demanded.
-Thus an early Limit can avoid later waves, but may still cause bounded read-ahead
-within the current wave. Output expansion, such as duplicate Join matches, is
-not bounded by the input range size.
+Each source submits at most W range tasks for W workers. Completion publishes
+that lane's result and profiling counters to the coordinator and wakes the
+source task. Results are indexed by allocation sequence. The next contiguous
+result can be delivered immediately, even while another range is still running;
+a slow earlier range still holds back later results to preserve row order.
 
-Source exhaustion and completion are distinct: `Finalize()` runs only after
-allocation reaches EOF and all in-flight ranges complete successfully. Errors
-are delivered in allocation order through `Next()`; a failed wave drains its
-submitted tasks and does not finalize successfully. Early termination does not
-call the source's successful-completion finalizer.
+Active tasks and completed results share W slots. Delivering a range frees a
+slot; while serving downstream demand the source can refill it so workers overlap
+with downstream processing. The currently delivered range is retained separately,
+giving at most W+1 source ranges in flight or buffered. The one-worker case
+retains exact demand-driven reading without speculative refill. Completion
+callbacks never submit replacement work, so pausing consumption cannot create
+unbounded read-ahead. A task handles one morsel and each lane owns its reader.
+
+The limit counts ranges, not bytes or output rows. One range may produce several
+chunks or a large Join result. Global kernels and explicit replay/build buffers
+still retain their required inputs independently of this limit.
+
+Source exhaustion and completion are distinct. `Finalize()` runs only when EOF
+has been observed, all allocated ranges have completed successfully and their
+ordered outputs have been delivered. A failed range stops allocation; errors
+are delivered in allocation order through `Next()`. Error/EOF handling and reader
+destruction stop new work and drain submitted tasks. Cancellation is checked
+before allocation and between reader chunks; it does not interrupt a blocking
+storage call. Early termination does not call the source's successful finalizer.
 
 Ordinary Join attaches its probe kernel to the left morsel step when possible.
 If the left input ends at a global boundary or reads a shared materialized input,
@@ -267,9 +278,9 @@ Primary-key Join currently ends a morsel step.
   boundaries exchange chunks through mailboxes. Tasks run a kernel segment or
   source range; local operator fusion is an interpreted loop, not compiled code.
 
-Each worker lane has independent profiling counters. The step merges counters
-only after all wave tasks complete, without merging or modifying the plan's child
-timer tree from worker tasks. Join build time includes merging the collected right rows, local table
+Each worker lane has independent profiling counters. Completion events merge
+counters on the coordinator after that individual task finishes, including
+during cancellation draining. Worker tasks never modify the plan's timer tree. Join build time includes merging the collected right rows, local table
 construction and finalization; right-side pipeline tasks record their own work
 without charging queue waits to the Join. Sum of concurrent task durations is not query wall time. Read-ahead can
 make upstream row counts exceed the rows ultimately consumed by a Limit.
@@ -306,9 +317,20 @@ kernels over multiple chunks and verifies processing order and one completion
 per state. COPY tests cover late input errors and rollback across batches;
 export tests verify column order across the Context-based extension ABI boundary.
 
-`PausedConsumerDoesNotStartAnotherWave` verifies bounded source read-ahead and
+`PausedConsumerDoesNotRefillCompletedSlots` verifies bounded source read-ahead and
 no work after consumer cancellation. `FailureWaitsForOtherSubmittedBranch`
 holds one branch in flight while its sibling fails and verifies that the error
 is not returned before draining. `LimitDoesNotDemandNextUnionBranch` checks that
 normal EOF after a Limit does not initialize the unused Union tail, with both
 one and four workers.
+
+`DeliversBeforeLaterRangeAndRefillsBoundedSlots` holds a later range blocked and
+verifies delivery through a downstream operator and reuse of the freed lane.
+`SlowFirstRangeBoundsOutOfOrderResults` blocks the first range and verifies that
+completed later ranges cannot grow beyond the slot budget.
+`EarlyStopDrainsLaterRangeWithoutFinalizingSource` verifies that Limit exposes
+its row before the slow range finishes, then drains it before returning EOF.
+
+`ErrorStopsRefillAndDrainsBlockedRange` holds a later task blocked while an earlier
+one fails, and verifies terminal error propagation, draining and no successful
+source finalization.

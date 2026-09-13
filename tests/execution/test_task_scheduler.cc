@@ -62,10 +62,10 @@ TEST(TaskSchedulerTest, ScheduledPullIsLazyOrderedAndStopsOnDestruction) {
       ASSERT_TRUE(*next);
       EXPECT_EQ((**next).get(0)->get_elem(0).GetValue<int64_t>(), i);
       EXPECT_GE(calls.load(), i);
-      EXPECT_LE(calls.load(), 4);
+      EXPECT_LE(calls.load(), i + 2);
     }
   }
-  EXPECT_LE(calls.load(), 4);
+  EXPECT_LE(calls.load(), 5);
 }
 
 TEST(TaskSchedulerTest, ErrorsAreTerminalAndQueueCanBeDestroyed) {
@@ -446,15 +446,20 @@ TEST(TaskSchedulerTest, ScheduledSinkPreservesEmptyOutputSchema) {
   EXPECT_EQ(output->tag_ids, (std::vector<int>{3, 0, 3}));
 }
 
-TEST(TaskSchedulerTest, PausedConsumerDoesNotStartAnotherWave) {
+TEST(TaskSchedulerTest, PausedConsumerDoesNotRefillCompletedSlots) {
   PropertyGraph graph;
   GraphView view(graph);
   StorageReadInterface storage(view, 0);
   for (size_t workers : {1, 4}) {
     std::atomic<int> read{0};
+    std::mutex mutex;
+    std::condition_variable ready;
     auto pipeline =
         PrependInput(Pipeline{}, [&]() -> QueryResultReader::NextResult {
-          return std::optional<ContextChunk>(MakeChunk(++read));
+          std::lock_guard<std::mutex> lock(mutex);
+          auto value = ++read;
+          ready.notify_all();
+          return std::optional<ContextChunk>(MakeChunk(value));
         });
     {
       auto reader = pipeline.ExecuteReader(storage, {}, {}, nullptr, workers);
@@ -462,8 +467,12 @@ TEST(TaskSchedulerTest, PausedConsumerDoesNotStartAnotherWave) {
       auto first = reader.Next();
       ASSERT_TRUE(first);
       ASSERT_TRUE(*first);
-      int paused = read;
-      EXPECT_LE(paused, workers == 1 ? 1 : 8);
+      const int paused = workers == 1 ? 1 : workers + 1;
+      {
+        std::unique_lock<std::mutex> lock(mutex);
+        EXPECT_TRUE(ready.wait_for(lock, std::chrono::seconds(1),
+                                   [&] { return read == paused; }));
+      }
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
       EXPECT_EQ(read, paused);
     }
