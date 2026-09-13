@@ -36,52 +36,36 @@ class CreateEdgeOpr : public IOperator {
         src_dst_tags_(src_dst_tags),
         properties_(std::move(properties)) {}
 
-  Stream<ContextChunk> Eval(IStorageInterface& graph_interface,
-                            const ParamsMap& params, OperatorInputs inputs,
-                            OprTimer* timer) override {
-    auto input = inputs.TakeSingle();
-    return defer_stream(
-        std::move(input),
-        [this, &graph_interface, params,
-         timer](Stream<ContextChunk>&& input) mutable -> Stream<ContextChunk> {
-          // Finish reading before mutation; downstream cancellation must not
-          // skip writes.
-          return reduce_stream(
-              std::move(input),
-              [this, &graph_interface, params,
-               timer](ContextChunk&& chunk) -> result<ContextChunk> {
-                const StorageReadInterface* graph_ptr = nullptr;
-                if (graph_interface.readable()) {
-                  graph_ptr = dynamic_cast<const StorageReadInterface*>(
-                      &graph_interface);
-                }
-                std::vector<std::vector<
-                    std::pair<std::string, std::unique_ptr<BindedExprBase>>>>
-                    expr_properties;
-                for (size_t i = 0; i < labels_.size(); ++i) {
-                  const auto& props = properties_[i];
-                  std::vector<
-                      std::pair<std::string, std::unique_ptr<BindedExprBase>>>
-                      expr_props;
-                  for (const auto& [prop, prop_value] : props) {
-                    auto expr = prop_value->bind(graph_ptr, params);
-                    expr_props.emplace_back(prop, std::move(expr));
-                  }
-                  expr_properties.emplace_back(std::move(expr_props));
-                }
-                // TODO(liulx20,zhanglei): CREATE on bundled edges may detach or
-                // grow CSR storage, leaving edge-property pointers in other
-                // chunks stale. Preserve the chunk-oriented apply_chunks path
-                // for now; track a compatible fix at
-                // https://github.com/alibaba/neug/issues/927.
-                {
-                  return CreateEdge::insert_edge(
-                      dynamic_cast<StorageInsertInterface&>(graph_interface),
-                      std::move(chunk), labels_, src_dst_tags_,
-                      std::move(expr_properties), alias_);
-                }
-              });
-        });
+  Kernel CreateState(IStorageInterface& graph_interface,
+                     const ParamsMap& params, OprTimer* timer) override {
+    return make_global_kernel([this, &graph_interface, params,
+                               timer](ContextChunk&& chunk)
+                                  -> result<ContextChunk> {
+      const StorageReadInterface* graph_ptr = nullptr;
+      if (graph_interface.readable()) {
+        graph_ptr = dynamic_cast<const StorageReadInterface*>(&graph_interface);
+      }
+      std::vector<
+          std::vector<std::pair<std::string, std::unique_ptr<BindedExprBase>>>>
+          expr_properties;
+      for (size_t i = 0; i < labels_.size(); ++i) {
+        const auto& props = properties_[i];
+        std::vector<std::pair<std::string, std::unique_ptr<BindedExprBase>>>
+            expr_props;
+        for (const auto& [prop, prop_value] : props) {
+          auto expr = prop_value->bind(graph_ptr, params);
+          expr_props.emplace_back(prop, std::move(expr));
+        }
+        expr_properties.emplace_back(std::move(expr_props));
+      }
+
+      {
+        return CreateEdge::insert_edge(
+            dynamic_cast<StorageInsertInterface&>(graph_interface),
+            std::move(chunk), labels_, src_dst_tags_,
+            std::move(expr_properties), alias_);
+      }
+    });
   }
   std::string get_operator_name() const override { return "CreateEdgeOpr"; }
 

@@ -28,34 +28,21 @@ class OprTimer;
 namespace ops {
 class LimitState final : public OperatorState {
  public:
-  LimitState(Stream<ContextChunk> input, size_t lower, size_t upper)
-      : input_(std::move(input)),
-        skip_(lower),
-        remaining_(upper > lower ? upper - lower : 0) {}
-  Stream<ContextChunk>::NextResult Next() override {
-    if (done_) {
-      return std::optional<ContextChunk>{};
-    }
-    GS_AUTO(next, input_.Next());
-    if (!next) {
-      return std::optional<ContextChunk>{};
-    }
-    ContextChunk chunk = std::move(*next);
+  LimitState(size_t lower, size_t upper)
+      : skip_(lower), remaining_(upper > lower ? upper - lower : 0) {}
+  KernelResult Process(ContextChunk chunk) override {
     auto rows = chunk.row_num();
     auto begin = std::min(skip_, rows);
     skip_ -= begin;
     auto count = std::min(remaining_, rows - begin);
     remaining_ -= count;
     GS_AUTO(output, Limit::limit(std::move(chunk), begin, begin + count));
-    if (remaining_ == 0) {
-      done_ = true;
-      input_ = Stream<ContextChunk>();
-    }
-    return std::optional<ContextChunk>(std::move(output));
+    done_ = remaining_ == 0;
+    return one_chunk(std::move(output));
   }
+  bool Finished() const override { return done_; }
 
  private:
-  Stream<ContextChunk> input_;
   size_t skip_;
   size_t remaining_;
   bool done_ = false;
@@ -74,15 +61,9 @@ class LimitOpr : public IOperator {
 
   std::string get_operator_name() const override { return "LimitOpr"; }
 
-  Stream<ContextChunk> Eval(IStorageInterface& graph, const ParamsMap& params,
-                            OperatorInputs inputs,
-                            neug::execution::OprTimer* timer) override {
-    auto input = inputs.TakeSingle();
-    auto metadata = input.metadata();
-
-    return Stream<ContextChunk>(
-        std::make_shared<LimitState>(std::move(input), lower_, upper_),
-        std::move(metadata));
+  Kernel CreateState(IStorageInterface& graph, const ParamsMap& params,
+                     neug::execution::OprTimer* timer) override {
+    return std::make_unique<LimitState>(lower_, upper_);
   }
 
  private:

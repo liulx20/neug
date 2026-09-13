@@ -46,34 +46,43 @@ its transaction owner. There is no Python/SQL worker-count switch yet.
 - `kSequential`: child streams are consumed one after another on demand. Union
   uses this mode.
 
-`Eval(storage, params, inputs, timer)` receives one `OperatorInputs` object
-prepared by the builder. Ordinary operators use `TakeSingle()`, variadic
-operators such as Union use `TakeAll()`, and build/probe operators use
-`TakeBuildProbe()` with named `probe` and `build` streams. Taking inputs
-transfers their ownership; fixed-arity access checks the number of inputs.
-There is no separate upstream/branches pair in the interface.
+`CreateState(storage, params, timer)` creates a `Kernel` owning one execution's
+`OperatorState`. Its interface is deliberately independent of input transport:
 
-`BuildProbeOperator` provides the state factory contract used by the builder.
-Join only implements
-that factory and declares its child plans. The builder uses `probe_plan()` and
-`build_plan()` to connect the scheduled phases. It owns scheduling and dependency
-tracking; operators receive neither a scheduler nor an execution graph.
+```cpp
+KernelResult Process(ContextChunk chunk); // zero or more output chunks
+KernelResult Finalize();                  // called once when input completes
+bool Finished() const;                    // early stop, for example Limit
+```
 
-Custom operator implementations use the unified `Eval` signature. Plugins
-implementing this C++ interface must be rebuilt.
+The driver supplies input and forwards output. An operator cannot read its
+upstream, execute child plans, submit work or wait for tasks. Ordinary transforms
+use `make_chunk_kernel`; global kernels accumulate input through `Process` and
+produce results in `Finalize`. Commands that must stabilize edge pointers retain
+batch boundaries until finalization. Source operators have a separate
+`CreateMorselSource` factory. Join's independent build state receives prepared
+right-side data and exposes build/finalize/probe kernels to the builder.
 
-State classes such as `SourceState`, `LimitState`, `UnionState`, `JoinState` and
-`PipelineOperatorState` are separate from operator definitions and `Eval`.
-`Stream<ContextChunk>` owns them through `OperatorState`.
+`KernelChain` runs adjacent operators with an iterative loop. `LinearPipelineState`
+keeps global states across batches, forwards completion in pipeline order and
+stops upstream work when a kernel finishes early. A morsel task uses the same
+kernel driver for its local segment. No per-operator Stream or recursive
+`Next()` chain is constructed. `Eval`, `OperatorInputs`, `map_chunks`,
+`defer_stream`, `reduce_stream`, `generate_chunk` and `prepend_chunk` have been
+removed. Plugins implementing the C++ operator interface must be rebuilt.
 
-For example, `JoinOpr` holds Join parameters and child plans. Its independent
-`JoinState` holds its input streams and a reusable `JoinTable`. The builder calls
-`PrepareBuild()`, schedules `BuildPartition()` tasks, then calls `FinalizeBuild()`.
-After publication, `ProbeChunk()` reads the immutable table from local pipeline
-tasks. `Next()` provides chunk-wise probing when the probe input is behind a
-global boundary. It has no futures, queue or dependency
-counters.
-The execution layer owns common-input caches and materialized branch buffers.
+`Stream<ContextChunk>` remains a result-reader adapter at execution/pipeline
+boundaries. It reports chunks, EOF and terminal errors; it does not own or wire
+SQL operator states. Union's branch cursor and shared-input readers belong to
+the execution runtime. Ordinary Join probes a published table using `ProbeChunk`
+in both local and global segments, without a second pull-based Join path.
+
+COPY's insert state receives chunks from the driver. For each chunk it passes a
+finite `BatchChunkSupplier` to the storage API, and accumulates result cardinality
+until `Finalize`. The supplier maps columns but never calls into the execution
+pipeline. This increases storage API call frequency compared with passing one
+supplier for the entire input, while preserving bounded input buffering and the
+transaction's existing commit/rollback boundary. All writes still use one worker.
 
 ## Ordinary Join graph
 
@@ -221,7 +230,7 @@ Primary-key Join currently ends a morsel step.
 - Conditional Union child graphs remain inline, preserving unused-branch laziness.
 - The graph has no byte-based memory budget or cross-query admission control.
   Every execution has its own worker pool; writes use the same flow with one worker.
-- `Stream` remains the result/error interface and a bridge between local kernels.
+- `Stream` remains the result/error interface at pipeline boundaries.
   Tasks run ranges through a pipeline segment, rather than scheduling each `Next()`
   or each operator as an individual task. This is not compiled kernel fusion.
 
@@ -248,9 +257,8 @@ storage, and nested Join inside an unconsumed-tail sequential group on one worke
 
 `HashJoinTest.*` compares joins with a nested-loop oracle across duplicate keys,
 empty inputs, both size relationships, multiple chunks and repeated probes of
-the same table. `JoinBuildsOnceAndPullsOnlyOneProbeChunk` checks that the real
-operator consumes the build input once, pulls one left chunk per result, and
-reports a later left-input error only when that chunk is requested.
+the same table. `JoinStateReceivesBuildDataAndReusesPublishedTable` checks build publication and
+repeated probing without any operator-owned input reader.
 
 `MorselExecutionTest.*` checks dynamic range allocation and real worker overlap,
 ordered local transformations, a single global Limit, deferred errors, source
@@ -259,3 +267,8 @@ finalization, and real partitioned Join build/probe with profiling.
 barrier and concurrent probing against a nested-loop oracle. Python regressions
 exercise scans over 5003 rows, deleted-row visibility, global ordering/dedup and
 joins across range boundaries.
+
+`DeepPipelineRunsKernelsIterativelyAndFinalizesOnce` executes 4096 consecutive
+kernels over multiple chunks and verifies processing order and one completion
+per state. COPY tests cover late input errors and rollback across batches;
+export tests verify column order across the Context-based extension ABI boundary.

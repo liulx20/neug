@@ -69,58 +69,50 @@ class FilterOidsGPredOpr : public IOperator {
                      std::unique_ptr<neug::execution::ExprBase>&& pred)
       : params_(params), oids_(oids), pred_(std::move(pred)) {}
 
-  Stream<ContextChunk> Eval(IStorageInterface& graph, const ParamsMap& params,
-                            OperatorInputs inputs,
-                            neug::execution::OprTimer* timer) override {
-    auto input = inputs.TakeSingle();
-    return defer_stream(
-        std::move(input),
-        [this, &graph, params,
-         timer](Stream<ContextChunk>&& input) mutable -> Stream<ContextChunk> {
-          return generate_chunk([this, &graph, params,
-                                 timer]() -> result<ContextChunk> {
-            ContextChunk chunk;
+  Kernel CreateState(IStorageInterface& graph, const ParamsMap& params,
+                     neug::execution::OprTimer* timer) override {
+    return make_source_kernel([this, &graph, params,
+                               timer]() -> result<ContextChunk> {
+      ContextChunk chunk;
 
-            const auto& rhs_op = oids_.expression().operators(0);
-            if ((rhs_op.has_const_() && rhs_op.const_().has_none()) ||
-                (rhs_op.has_param() &&
-                 params.at(rhs_op.param().name()).IsNull())) {
-              static const std::vector<Value> no_oids;
-              auto empty_chunk = Scan::filter_oids(
-                  std::move(chunk), graph, params_, DummyPred(), no_oids);
-              if (!empty_chunk) {
-                return tl::make_unexpected(empty_chunk.error());
-              }
-              chunk = std::move(*empty_chunk);
-              return std::move(chunk);
-            }
-            std::vector<Value> oid_values = ScanUtils::parse_ids(oids_, params);
-            if (oids_.cmp() == common::Logical::WITHIN) {
-              oid_values = deduplicate_ids(std::move(oid_values));
-            }
+      const auto& rhs_op = oids_.expression().operators(0);
+      if ((rhs_op.has_const_() && rhs_op.const_().has_none()) ||
+          (rhs_op.has_param() && params.at(rhs_op.param().name()).IsNull())) {
+        static const std::vector<Value> no_oids;
+        auto empty_chunk = Scan::filter_oids(std::move(chunk), graph, params_,
+                                             DummyPred(), no_oids);
+        if (!empty_chunk) {
+          return tl::make_unexpected(empty_chunk.error());
+        }
+        chunk = std::move(*empty_chunk);
+        return std::move(chunk);
+      }
+      std::vector<Value> oid_values = ScanUtils::parse_ids(oids_, params);
+      if (oids_.cmp() == common::Logical::WITHIN) {
+        oid_values = deduplicate_ids(std::move(oid_values));
+      }
 
-            if (pred_ == nullptr) {
-              if (params_.tables.size() == 1 && oid_values.size() == 1) {
-                {
-                  return Scan::find_vertex_with_oid(
-                      std::move(chunk), graph, params_.tables[0], oid_values[0],
-                      params_.alias);
-                }
-              }
-              {
-                return Scan::filter_oids(std::move(chunk), graph, params_,
-                                         DummyPred(), oid_values);
-              }
-            } else {
-              auto pred = pred_->bind(&graph, params);
-              GeneralPred predicate_wrapper(std::move(pred));
-              {
-                return Scan::filter_oids(std::move(chunk), graph, params_,
-                                         predicate_wrapper, oid_values);
-              }
-            }
-          });
-        });
+      if (pred_ == nullptr) {
+        if (params_.tables.size() == 1 && oid_values.size() == 1) {
+          {
+            return Scan::find_vertex_with_oid(std::move(chunk), graph,
+                                              params_.tables[0], oid_values[0],
+                                              params_.alias);
+          }
+        }
+        {
+          return Scan::filter_oids(std::move(chunk), graph, params_,
+                                   DummyPred(), oid_values);
+        }
+      } else {
+        auto pred = pred_->bind(&graph, params);
+        GeneralPred predicate_wrapper(std::move(pred));
+        {
+          return Scan::filter_oids(std::move(chunk), graph, params_,
+                                   predicate_wrapper, oid_values);
+        }
+      }
+    });
   }
 
   std::string get_operator_name() const override {
@@ -204,8 +196,7 @@ class ScanWithSPredOpr : public MorselSourceOperator {
   std::string get_operator_name() const override { return "ScanWithSPredOpr"; }
 
   std::unique_ptr<MorselSource> CreateMorselSource(
-      IStorageInterface& graph, const ParamsMap& params,
-      Stream<ContextChunk>) override {
+      IStorageInterface& graph, const ParamsMap& params) override {
     return std::make_unique<VertexMorselSource>(
         graph, scan_params_, [this, &graph, params] {
           return [this, &graph, params](size_t partition, size_t begin,
@@ -232,8 +223,7 @@ class ScanWithGPredOpr : public MorselSourceOperator {
                    std::unique_ptr<neug::execution::ExprBase> pred)
       : scan_params_(scan_params), pred_(std::move(pred)) {}
   std::unique_ptr<MorselSource> CreateMorselSource(
-      IStorageInterface& graph, const ParamsMap& params,
-      Stream<ContextChunk>) override {
+      IStorageInterface& graph, const ParamsMap& params) override {
     return std::make_unique<VertexMorselSource>(
         graph, scan_params_, [this, &graph, params] {
           auto predicate =
@@ -332,23 +322,17 @@ class DummySourceOpr : public IOperator {
 
   DummySourceOpr() {}
 
-  Stream<ContextChunk> Eval(IStorageInterface& graph_interface,
-                            const ParamsMap& params, OperatorInputs inputs,
-                            neug::execution::OprTimer* timer) override {
-    auto input = inputs.TakeSingle();
-    return defer_stream(
-        std::move(input),
-        [this, &graph_interface, params,
-         timer](Stream<ContextChunk>&& input) mutable -> Stream<ContextChunk> {
-          return generate_chunk([this, &graph_interface, params,
-                                 timer]() -> result<ContextChunk> {
-            ContextChunk chunk;
-            ValueColumnBuilder<int32_t> builder;
-            builder.push_back_opt(0);
-            chunk.set(-1, builder.finish());
+  Kernel CreateState(IStorageInterface& graph_interface,
+                     const ParamsMap& params,
+                     neug::execution::OprTimer* timer) override {
+    return make_source_kernel(
+        [this, &graph_interface, params, timer]() -> result<ContextChunk> {
+          ContextChunk chunk;
+          ValueColumnBuilder<int32_t> builder;
+          builder.push_back_opt(0);
+          chunk.set(-1, builder.finish());
 
-            return std::move(chunk);
-          });
+          return std::move(chunk);
         });
   }
 

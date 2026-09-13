@@ -184,12 +184,11 @@ class CallbackSource final : public IOperator {
       : produce_(std::move(produce)), initialized_(initialized) {}
   bool consumes_input() const override { return false; }
   std::string get_operator_name() const override { return "CallbackSource"; }
-  Stream<ContextChunk> Eval(IStorageInterface&, const ParamsMap&,
-                            OperatorInputs, OprTimer*) override {
+  Kernel CreateState(IStorageInterface&, const ParamsMap&, OprTimer*) override {
     if (initialized_) {
       ++*initialized_;
     }
-    return generate_chunk(produce_);
+    return make_source_kernel(produce_);
   }
 
  private:
@@ -203,46 +202,15 @@ Pipeline OneOperator(std::unique_ptr<IOperator> op) {
   return Pipeline(std::move(operators));
 }
 
-class TestForkState final : public OperatorState {
- public:
-  TestForkState(SubPipelineMode mode, std::vector<Stream<ContextChunk>> inputs)
-      : mode_(mode), inputs_(std::move(inputs)) {}
-  Stream<ContextChunk>::NextResult Next() override {
-    if (mode_ == SubPipelineMode::kMaterialized) {
-      if (index_ != 0) {
-        return std::optional<ContextChunk>{};
-      }
-      ++index_;
-      GS_AUTO(left, collect_chunk(std::move(inputs_[0])));
-      GS_AUTO(right, collect_chunk(std::move(inputs_[1])));
-      return std::optional<ContextChunk>(std::move(left));
-    }
-    while (index_ < inputs_.size()) {
-      GS_AUTO(next, inputs_[index_].Next());
-      if (next) {
-        return next;
-      }
-      ++index_;
-    }
-    return std::optional<ContextChunk>{};
-  }
-
- private:
-  SubPipelineMode mode_;
-  std::vector<Stream<ContextChunk>> inputs_;
-  size_t index_ = 0;
-};
-
 class TestFork final : public IOperator {
  public:
   TestFork(SubPipelineMode mode, Pipeline left, Pipeline right)
       : mode_(mode), left_(std::move(left)), right_(std::move(right)) {}
   std::string get_operator_name() const override { return "TestFork"; }
   SubPipelines sub_pipelines() override { return {mode_, {&left_, &right_}}; }
-  Stream<ContextChunk> Eval(IStorageInterface&, const ParamsMap&,
-                            OperatorInputs inputs, OprTimer*) override {
-    return Stream<ContextChunk>(
-        std::make_shared<TestForkState>(mode_, inputs.TakeAll()));
+  Kernel CreateState(IStorageInterface&, const ParamsMap&, OprTimer*) override {
+    return make_chunk_kernel(
+        [](ContextChunk chunk) -> result<ContextChunk> { return chunk; });
   }
 
  private:
@@ -312,8 +280,14 @@ TEST(TaskSchedulerTest, WritableExecutionUsesOneWorkerAndPreservesTaskOrder) {
       OneOperator(std::make_unique<CallbackSource>([&] { return record(1); })),
       OneOperator(
           std::make_unique<CallbackSource>([&] { return record(2); }))));
-  auto input =
-      generate_chunk([&]() -> result<ContextChunk> { return record(0); });
+  auto input = Stream<ContextChunk>(
+      [&, done = false]() mutable -> Stream<ContextChunk>::NextResult {
+        if (done) {
+          return std::optional<ContextChunk>{};
+        }
+        done = true;
+        return std::optional<ContextChunk>(record(0));
+      });
   auto stream =
       pipeline.ExecuteStream(storage, std::move(input), {}, nullptr, 4);
   EXPECT_TRUE(order.empty());
@@ -445,11 +419,9 @@ TEST(TaskSchedulerTest, JoinInsideSequentialGroupUsesSameGraphWithoutPoolWait) {
   // Destroy before the second branch is demanded.
 }
 
-TEST(TaskSchedulerTest, JoinBuildsOnceAndPullsOnlyOneProbeChunk) {
+TEST(TaskSchedulerTest, JoinStateReceivesBuildDataAndReusesPublishedTable) {
   PlanParser::get().init();
   PropertyGraph graph;
-  GraphView view(graph);
-  StorageReadInterface storage(view, 0);
   physical::PhysicalPlan plan;
   AddJoin(plan, 1);
   ContextMeta meta;
@@ -457,37 +429,19 @@ TEST(TaskSchedulerTest, JoinBuildsOnceAndPullsOnlyOneProbeChunk) {
   ops::JoinOprBuilder builder;
   auto built = builder.Build(graph.schema(), meta, plan, 0);
   ASSERT_TRUE(built);
-  int left_pulls = 0;
-  int right_pulls = 0;
-  OperatorInputs inputs;
-  inputs.Add([&]() -> Stream<ContextChunk>::NextResult {
-    EXPECT_EQ(right_pulls, 3);
-    if (++left_pulls == 3) {
-      return tl::unexpected(Status::InternalError("later probe failure"));
-    }
-    return std::optional<ContextChunk>(MakeChunk(1));
-  });
-  inputs.Add([&]() -> Stream<ContextChunk>::NextResult {
-    EXPECT_EQ(left_pulls, 0);
-    if (++right_pulls == 3) {
-      return std::optional<ContextChunk>{};
-    }
-    return std::optional<ContextChunk>(MakeChunk(1));
-  });
-  auto output = built->first->Eval(storage, {}, std::move(inputs), nullptr);
-  EXPECT_EQ(right_pulls, 0);
-  for (int expected = 1; expected <= 2; ++expected) {
-    auto next = output.Next();
-    ASSERT_TRUE(next);
-    ASSERT_TRUE(*next);
-    EXPECT_EQ((**next).row_num(), 2);
-    EXPECT_EQ(left_pulls, expected);
-    EXPECT_EQ(right_pulls, 3);
+  auto state = built->first->CreateBuildState(2);
+  auto input = MakeChunk(1).union_with(MakeChunk(1));
+  ASSERT_TRUE(state->PrepareBuild(std::move(input)));
+  ASSERT_FALSE(state->FinalizeBuild());
+  for (size_t i = 0; i < state->BuildPartitions(); ++i) {
+    ASSERT_TRUE(state->BuildPartition(i));
   }
-  EXPECT_FALSE(output.Next());
-  EXPECT_FALSE(output.Next());
-  EXPECT_EQ(left_pulls, 3);
-  EXPECT_EQ(right_pulls, 3);
+  ASSERT_TRUE(state->FinalizeBuild());
+  for (int i = 0; i < 3; ++i) {
+    auto output = state->ProbeChunk(MakeChunk(1));
+    ASSERT_TRUE(output);
+    EXPECT_EQ(output->row_num(), 2);
+  }
 }
 
 TEST(TaskSchedulerTest, RealNestedJoinReplaysMultipleChunksAndProfiles) {

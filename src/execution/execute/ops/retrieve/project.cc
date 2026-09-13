@@ -50,42 +50,36 @@ class ProjectOpr : public IOperator {
 
   ~ProjectOpr() {}
 
-  Stream<ContextChunk> Eval(IStorageInterface& graph, const ParamsMap& params,
-                            OperatorInputs inputs,
-                            neug::execution::OprTimer* timer) override {
-    auto input = inputs.TakeSingle();
-    return map_chunks(
-        std::move(input),
-        [this, &graph, params,
-         timer](ContextChunk&& chunk) -> result<ContextChunk> {
-          if (is_select_columns_) {
-            {
-              ContextChunk ret;
-              for (auto& p : select_columns_mapping_) {
-                ret.set(p.second, chunk.get(p.first));
-              }
-              return ret;
-            }
+  Kernel CreateState(IStorageInterface& graph, const ParamsMap& params,
+                     neug::execution::OprTimer* timer) override {
+    return make_chunk_kernel([this, &graph, params, timer](
+                                 ContextChunk&& chunk) -> result<ContextChunk> {
+      if (is_select_columns_) {
+        {
+          ContextChunk ret;
+          for (auto& p : select_columns_mapping_) {
+            ret.set(p.second, chunk.get(p.first));
           }
+          return ret;
+        }
+      }
 
-          std::vector<ProjectOp> exprs;
+      std::vector<ProjectOp> exprs;
 
-          for (size_t i = 0; i < expr_builders_.size(); ++i) {
-            if (!expr_builders_[i]) {
-              exprs.emplace_back(
-                  fallback_expr_builders_[i]->build(graph, params), nullptr,
-                  fallback_expr_builders_[i]->alias());
-              continue;
-            } else {
-              exprs.emplace_back(
-                  expr_builders_[i]->build(graph, params),
-                  fallback_expr_builders_[i]->build(graph, params),
-                  expr_builders_[i]->alias());
-            }
-          }
+      for (size_t i = 0; i < expr_builders_.size(); ++i) {
+        if (!expr_builders_[i]) {
+          exprs.emplace_back(fallback_expr_builders_[i]->build(graph, params),
+                             nullptr, fallback_expr_builders_[i]->alias());
+          continue;
+        } else {
+          exprs.emplace_back(expr_builders_[i]->build(graph, params),
+                             fallback_expr_builders_[i]->build(graph, params),
+                             expr_builders_[i]->alias());
+        }
+      }
 
-          { return Project::project(std::move(chunk), exprs, is_append_); }
-        });
+      { return Project::project(std::move(chunk), exprs, is_append_); }
+    });
   }
 
   std::string get_operator_name() const override { return "ProjectOpr"; }
@@ -185,12 +179,10 @@ class ProjectOrderByOprBeta : public IOperator {
     return "ProjectOrderByOprBeta";
   }
 
-  Stream<ContextChunk> Eval(IStorageInterface& graph_interface,
-                            const ParamsMap& params, OperatorInputs inputs,
-                            neug::execution::OprTimer* timer) override {
-    auto input = inputs.TakeSingle();
-    return reduce_stream(
-        std::move(input),
+  Kernel CreateState(IStorageInterface& graph_interface,
+                     const ParamsMap& params,
+                     neug::execution::OprTimer* timer) override {
+    return make_global_kernel(
         [this, &graph_interface, params,
          timer](ContextChunk&& chunk) -> result<ContextChunk> {
           const auto& graph =

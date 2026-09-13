@@ -37,46 +37,6 @@ namespace execution {
 class OprTimer;
 namespace ops {
 
-class SourceState final : public OperatorState {
- public:
-  SourceState(Stream<ContextChunk> input, const reader::ReadSharedState& config,
-              ParamsMap params, function::ReadFunction* function)
-      : input_(std::move(input)),
-        reader_state_(std::make_shared<reader::ReadSharedState>(config)),
-        function_(function) {
-    reader_state_->parameters = std::move(params);
-  }
-  Stream<ContextChunk>::NextResult Next() override {
-    if (!initialized_) {
-      while (true) {
-        GS_AUTO(before, input_.Next());
-        if (!before) {
-          break;
-        }
-      }
-      NEUG_ASSERT(function_ != nullptr);
-      initialized_ = true;
-      supplier_ = function_->supplierFunc(reader_state_);
-      if (!supplier_) {
-        return tl::unexpected(
-            Status::InternalError("Reader returned a null supplier"));
-      }
-    }
-    auto chunk = supplier_->GetNextChunk();
-    if (!chunk) {
-      return std::optional<ContextChunk>{};
-    }
-    return std::optional<ContextChunk>(std::in_place, std::move(*chunk));
-  }
-
- private:
-  Stream<ContextChunk> input_;
-  std::shared_ptr<reader::ReadSharedState> reader_state_;
-  function::ReadFunction* function_;
-  std::shared_ptr<IDataChunkSupplier> supplier_;
-  bool initialized_ = false;
-};
-
 class DataSourceOpr : public MorselSourceOperator {
  private:
   std::shared_ptr<reader::ReadSharedState> sharedState;
@@ -92,22 +52,22 @@ class DataSourceOpr : public MorselSourceOperator {
   std::string get_operator_name() const override { return "DataSourceOpr"; }
 
   std::unique_ptr<MorselSource> CreateMorselSource(
-      IStorageInterface&, const ParamsMap& params,
-      Stream<ContextChunk> input) override {
-    // Finish dependencies before workers enter the supplier's allocation lock.
-    while (true) {
-      auto next = input.Next();
-      if (!next) {
-        return std::make_unique<ChunkMorselSource>(
-            error_stream<ContextChunk>(next.error()));
-      }
-      if (!*next) {
-        break;
-      }
+      IStorageInterface&, const ParamsMap& params) override {
+    auto state = std::make_shared<reader::ReadSharedState>(*sharedState);
+    state->parameters = params;
+    NEUG_ASSERT(readFunction != nullptr);
+    auto supplier = readFunction->supplierFunc(state);
+    if (!supplier) {
+      THROW_INTERNAL_EXCEPTION("Reader returned a null supplier");
     }
     return std::make_unique<ChunkMorselSource>(
-        Stream<ContextChunk>(std::make_shared<SourceState>(
-            Stream<ContextChunk>{}, *sharedState, params, readFunction)));
+        [supplier, state]() -> result<std::optional<ContextChunk>> {
+          auto chunk = supplier->GetNextChunk();
+          if (!chunk) {
+            return std::optional<ContextChunk>{};
+          }
+          return std::optional<ContextChunk>(std::in_place, std::move(*chunk));
+        });
   }
 };
 

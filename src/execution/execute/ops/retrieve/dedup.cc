@@ -38,15 +38,13 @@ class DedupOpr : public IOperator {
   explicit DedupOpr(const std::vector<int32_t>& tag_ids) : tag_ids_(tag_ids) {}
   std::string get_operator_name() const override { return "DedupOpr"; }
 
-  Stream<ContextChunk> Eval(IStorageInterface& graph, const ParamsMap& params,
-                            OperatorInputs inputs,
-                            neug::execution::OprTimer* timer) override {
-    auto input = inputs.TakeSingle();
-    return reduce_stream(std::move(input),
-                         [this, &graph, params,
-                          timer](ContextChunk&& chunk) -> result<ContextChunk> {
-                           { return Dedup::dedup(std::move(chunk), tag_ids_); }
-                         });
+  Kernel CreateState(IStorageInterface& graph, const ParamsMap& params,
+                     neug::execution::OprTimer* timer) override {
+    return make_global_kernel(
+        [this, &graph, params,
+         timer](ContextChunk&& chunk) -> result<ContextChunk> {
+          { return Dedup::dedup(std::move(chunk), tag_ids_); }
+        });
   }
 
   std::vector<int32_t> tag_ids_;

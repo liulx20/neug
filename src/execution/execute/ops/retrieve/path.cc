@@ -229,27 +229,24 @@ class SPOrderByLimitOpr : public IOperator {
 
   std::string get_operator_name() const override { return "SPOrderByLimitOpr"; }
 
-  Stream<ContextChunk> Eval(IStorageInterface& graph_interface,
-                            const ParamsMap& params, OperatorInputs inputs,
-                            neug::execution::OprTimer* timer) override {
-    auto input = inputs.TakeSingle();
-    return map_chunks(
-        std::move(input),
-        [this, &graph_interface, params,
-         timer](ContextChunk&& chunk) -> result<ContextChunk> {
-          const auto& graph =
-              dynamic_cast<const StorageReadInterface&>(graph_interface);
-          std::set<label_t> expected_labels;
-          for (auto label : spp_.labels) {
-            expected_labels.insert(label.src_label);
-            expected_labels.insert(label.dst_label);
-          }
-          {
-            return dispatch_vertex_predicate<OrderByLimitSPOp>(
-                graph, expected_labels, config_, params, graph,
-                std::move(chunk), spp_, limit_);
-          }
-        });
+  Kernel CreateState(IStorageInterface& graph_interface,
+                     const ParamsMap& params,
+                     neug::execution::OprTimer* timer) override {
+    return make_chunk_kernel([this, &graph_interface, params, timer](
+                                 ContextChunk&& chunk) -> result<ContextChunk> {
+      const auto& graph =
+          dynamic_cast<const StorageReadInterface&>(graph_interface);
+      std::set<label_t> expected_labels;
+      for (auto label : spp_.labels) {
+        expected_labels.insert(label.src_label);
+        expected_labels.insert(label.dst_label);
+      }
+      {
+        return dispatch_vertex_predicate<OrderByLimitSPOp>(
+            graph, expected_labels, config_, params, graph, std::move(chunk),
+            spp_, limit_);
+      }
+    });
   }
 
  private:
@@ -268,35 +265,32 @@ class SPOrderByLimitWithGPredOpr : public IOperator {
     return "SPOrderByLimitWithGPredOpr";
   }
 
-  Stream<ContextChunk> Eval(IStorageInterface& graph_interface,
-                            const ParamsMap& params, OperatorInputs inputs,
-                            neug::execution::OprTimer* timer) override {
-    auto input = inputs.TakeSingle();
-    return map_chunks(
-        std::move(input),
-        [this, &graph_interface, params,
-         timer](ContextChunk&& chunk) -> result<ContextChunk> {
-          const auto& graph =
-              dynamic_cast<const StorageReadInterface&>(graph_interface);
-          if (pred_) {
-            auto pred = pred_->bind(&graph, params);
+  Kernel CreateState(IStorageInterface& graph_interface,
+                     const ParamsMap& params,
+                     neug::execution::OprTimer* timer) override {
+    return make_chunk_kernel([this, &graph_interface, params, timer](
+                                 ContextChunk&& chunk) -> result<ContextChunk> {
+      const auto& graph =
+          dynamic_cast<const StorageReadInterface&>(graph_interface);
+      if (pred_) {
+        auto pred = pred_->bind(&graph, params);
 
-            GeneralPred predicate_wrapper(std::move(pred));
+        GeneralPred predicate_wrapper(std::move(pred));
 
-            {
-              return PathExpand::
-                  single_source_shortest_path_with_order_by_length_limit(
-                      graph, std::move(chunk), spp_, predicate_wrapper, limit_);
-            }
-          } else {
-            {
-              return PathExpand::
-                  single_source_shortest_path_with_order_by_length_limit(
-                      graph, std::move(chunk), spp_,
-                      [](label_t, vid_t) { return true; }, limit_);
-            }
-          }
-        });
+        {
+          return PathExpand::
+              single_source_shortest_path_with_order_by_length_limit(
+                  graph, std::move(chunk), spp_, predicate_wrapper, limit_);
+        }
+      } else {
+        {
+          return PathExpand::
+              single_source_shortest_path_with_order_by_length_limit(
+                  graph, std::move(chunk), spp_,
+                  [](label_t, vid_t) { return true; }, limit_);
+        }
+      }
+    });
   }
 
  private:
@@ -373,22 +367,19 @@ class SPSPredOpr : public IOperator {
 
   std::string get_operator_name() const override { return "SPSPredOpr"; }
 
-  Stream<ContextChunk> Eval(IStorageInterface& graph_interface,
-                            const ParamsMap& params, OperatorInputs inputs,
-                            neug::execution::OprTimer* timer) override {
-    auto input = inputs.TakeSingle();
-    return map_chunks(
-        std::move(input),
-        [this, &graph_interface, params,
-         timer](ContextChunk&& chunk) -> result<ContextChunk> {
-          const auto& graph =
-              dynamic_cast<const StorageReadInterface&>(graph_interface);
-          {
-            return PathExpand::
-                single_source_shortest_path_with_special_vertex_predicate(
-                    graph, std::move(chunk), spp_, config_, params);
-          }
-        });
+  Kernel CreateState(IStorageInterface& graph_interface,
+                     const ParamsMap& params,
+                     neug::execution::OprTimer* timer) override {
+    return make_chunk_kernel([this, &graph_interface, params, timer](
+                                 ContextChunk&& chunk) -> result<ContextChunk> {
+      const auto& graph =
+          dynamic_cast<const StorageReadInterface&>(graph_interface);
+      {
+        return PathExpand::
+            single_source_shortest_path_with_special_vertex_predicate(
+                graph, std::move(chunk), spp_, config_, params);
+      }
+    });
   }
 
  private:
@@ -403,24 +394,21 @@ class SPGPredOpr : public IOperator {
 
   std::string get_operator_name() const override { return "SPGPredOpr"; }
 
-  Stream<ContextChunk> Eval(IStorageInterface& graph_interface,
-                            const ParamsMap& params, OperatorInputs inputs,
-                            neug::execution::OprTimer* timer) override {
-    auto input = inputs.TakeSingle();
-    return map_chunks(
-        std::move(input),
-        [this, &graph_interface, params,
-         timer](ContextChunk&& chunk) -> result<ContextChunk> {
-          const auto& graph =
-              dynamic_cast<const StorageReadInterface&>(graph_interface);
-          auto pred = pred_->bind(&graph, params);
-          GeneralPred predicate_wrapper(std::move(pred));
+  Kernel CreateState(IStorageInterface& graph_interface,
+                     const ParamsMap& params,
+                     neug::execution::OprTimer* timer) override {
+    return make_chunk_kernel([this, &graph_interface, params, timer](
+                                 ContextChunk&& chunk) -> result<ContextChunk> {
+      const auto& graph =
+          dynamic_cast<const StorageReadInterface&>(graph_interface);
+      auto pred = pred_->bind(&graph, params);
+      GeneralPred predicate_wrapper(std::move(pred));
 
-          {
-            return PathExpand::single_source_shortest_path(
-                graph, std::move(chunk), spp_, predicate_wrapper);
-          }
-        });
+      {
+        return PathExpand::single_source_shortest_path(graph, std::move(chunk),
+                                                       spp_, predicate_wrapper);
+      }
+    });
   }
 
  private:
@@ -433,22 +421,18 @@ class SPWithoutPredOpr : public IOperator {
 
   std::string get_operator_name() const override { return "SPWithoutPredOpr"; }
 
-  Stream<ContextChunk> Eval(IStorageInterface& graph_interface,
-                            const ParamsMap& params, OperatorInputs inputs,
-                            neug::execution::OprTimer* timer) override {
-    auto input = inputs.TakeSingle();
-    return map_chunks(
-        std::move(input),
-        [this, &graph_interface, params,
-         timer](ContextChunk&& chunk) -> result<ContextChunk> {
-          const auto& graph =
-              dynamic_cast<const StorageReadInterface&>(graph_interface);
-          {
-            return PathExpand::single_source_shortest_path(
-                graph, std::move(chunk), spp_,
-                [](label_t, vid_t) { return true; });
-          }
-        });
+  Kernel CreateState(IStorageInterface& graph_interface,
+                     const ParamsMap& params,
+                     neug::execution::OprTimer* timer) override {
+    return make_chunk_kernel([this, &graph_interface, params, timer](
+                                 ContextChunk&& chunk) -> result<ContextChunk> {
+      const auto& graph =
+          dynamic_cast<const StorageReadInterface&>(graph_interface);
+      {
+        return PathExpand::single_source_shortest_path(
+            graph, std::move(chunk), spp_, [](label_t, vid_t) { return true; });
+      }
+    });
   }
 
  private:
@@ -480,42 +464,39 @@ class ASPOpr : public IOperator {
 
   std::string get_operator_name() const override { return "ASPOpr"; }
 
-  Stream<ContextChunk> Eval(IStorageInterface& graph_interface,
-                            const ParamsMap& params, OperatorInputs inputs,
-                            neug::execution::OprTimer* timer) override {
-    auto input = inputs.TakeSingle();
-    return map_chunks(
-        std::move(input),
-        [this, &graph_interface, params,
-         timer](ContextChunk&& chunk) -> result<ContextChunk> {
-          const auto& graph =
-              dynamic_cast<const StorageReadInterface&>(graph_interface);
-          Value oid;
-          if (expr_opr_.has_param()) {
-            auto name = expr_opr_.param().name();
-            auto val = params.at(name).GetValue<int64_t>();
-            oid = Value::INT64(val);
-          } else {
-            const auto& c = expr_opr_.const_();
-            oid = Value::INT64(c.i64());
-          }
-          vid_t vid;
-          if (!graph.GetVertexIndex(aspp_.labels[0].dst_label, oid, vid)) {
-            LOG(ERROR) << "vertex not found "
-                       << static_cast<int>(aspp_.labels[0].dst_label) << " "
-                       << oid.to_string();
-            RETURN_UNSUPPORTED_ERROR(
-                "vertex not found" +
-                std::to_string(static_cast<int>(aspp_.labels[0].dst_label)) +
-                " " + std::string(oid.to_string()));
-          }
+  Kernel CreateState(IStorageInterface& graph_interface,
+                     const ParamsMap& params,
+                     neug::execution::OprTimer* timer) override {
+    return make_chunk_kernel([this, &graph_interface, params, timer](
+                                 ContextChunk&& chunk) -> result<ContextChunk> {
+      const auto& graph =
+          dynamic_cast<const StorageReadInterface&>(graph_interface);
+      Value oid;
+      if (expr_opr_.has_param()) {
+        auto name = expr_opr_.param().name();
+        auto val = params.at(name).GetValue<int64_t>();
+        oid = Value::INT64(val);
+      } else {
+        const auto& c = expr_opr_.const_();
+        oid = Value::INT64(c.i64());
+      }
+      vid_t vid;
+      if (!graph.GetVertexIndex(aspp_.labels[0].dst_label, oid, vid)) {
+        LOG(ERROR) << "vertex not found "
+                   << static_cast<int>(aspp_.labels[0].dst_label) << " "
+                   << oid.to_string();
+        RETURN_UNSUPPORTED_ERROR(
+            "vertex not found" +
+            std::to_string(static_cast<int>(aspp_.labels[0].dst_label)) + " " +
+            std::string(oid.to_string()));
+      }
 
-          auto v = std::make_pair(aspp_.labels[0].dst_label, vid);
-          {
-            return PathExpand::all_shortest_paths_with_given_source_and_dest(
-                graph, std::move(chunk), aspp_, v);
-          }
-        });
+      auto v = std::make_pair(aspp_.labels[0].dst_label, vid);
+      {
+        return PathExpand::all_shortest_paths_with_given_source_and_dest(
+            graph, std::move(chunk), aspp_, v);
+      }
+    });
   }
 
  private:
@@ -529,43 +510,40 @@ class SSSDSPOpr : public IOperator {
       : spp_(spp), expr_opr_(expr_opr) {}
   std::string get_operator_name() const override { return "SSSDSPOpr"; }
 
-  Stream<ContextChunk> Eval(IStorageInterface& graph_interface,
-                            const ParamsMap& params, OperatorInputs inputs,
-                            neug::execution::OprTimer* timer) override {
-    auto input = inputs.TakeSingle();
-    return map_chunks(
-        std::move(input),
-        [this, &graph_interface, params,
-         timer](ContextChunk&& chunk) -> result<ContextChunk> {
-          const auto& graph =
-              dynamic_cast<const StorageReadInterface&>(graph_interface);
-          Value vertex = [&]() {
-            if (expr_opr_.has_param()) {
-              auto name = expr_opr_.param().name();
-              auto val = params.at(name).GetValue<int64_t>();
-              return Value::INT64(val);
-            } else {
-              const auto& c = expr_opr_.const_();
-              return Value::INT64(c.i64());
-            }
-          }();
-          vid_t vid;
-          if (!graph.GetVertexIndex(spp_.labels[0].dst_label, vertex, vid)) {
-            LOG(ERROR) << "vertex not found" << spp_.labels[0].dst_label << " "
-                       << vertex.to_string();
-            RETURN_UNSUPPORTED_ERROR(
-                "vertex not found" +
-                std::to_string(static_cast<int>(spp_.labels[0].dst_label)) +
-                " " + vertex.to_string());
-          }
+  Kernel CreateState(IStorageInterface& graph_interface,
+                     const ParamsMap& params,
+                     neug::execution::OprTimer* timer) override {
+    return make_chunk_kernel([this, &graph_interface, params, timer](
+                                 ContextChunk&& chunk) -> result<ContextChunk> {
+      const auto& graph =
+          dynamic_cast<const StorageReadInterface&>(graph_interface);
+      Value vertex = [&]() {
+        if (expr_opr_.has_param()) {
+          auto name = expr_opr_.param().name();
+          auto val = params.at(name).GetValue<int64_t>();
+          return Value::INT64(val);
+        } else {
+          const auto& c = expr_opr_.const_();
+          return Value::INT64(c.i64());
+        }
+      }();
+      vid_t vid;
+      if (!graph.GetVertexIndex(spp_.labels[0].dst_label, vertex, vid)) {
+        LOG(ERROR) << "vertex not found" << spp_.labels[0].dst_label << " "
+                   << vertex.to_string();
+        RETURN_UNSUPPORTED_ERROR(
+            "vertex not found" +
+            std::to_string(static_cast<int>(spp_.labels[0].dst_label)) + " " +
+            vertex.to_string());
+      }
 
-          auto v = std::make_pair(spp_.labels[0].dst_label, vid);
+      auto v = std::make_pair(spp_.labels[0].dst_label, vid);
 
-          {
-            return PathExpand::single_source_single_dest_shortest_path(
-                graph, std::move(chunk), spp_, v);
-          }
-        });
+      {
+        return PathExpand::single_source_single_dest_shortest_path(
+            graph, std::move(chunk), spp_, v);
+      }
+    });
   }
 
  private:
@@ -669,18 +647,15 @@ class PathExpandVOpr : public IOperator {
  public:
   explicit PathExpandVOpr(const PathExpandParams& pep) : pep_(pep) {}
 
-  Stream<ContextChunk> Eval(IStorageInterface& graph_interface,
-                            const ParamsMap& params, OperatorInputs inputs,
-                            neug::execution::OprTimer* timer) override {
-    auto input = inputs.TakeSingle();
-    return map_chunks(
-        std::move(input),
-        [this, &graph_interface, params,
-         timer](ContextChunk&& chunk) -> result<ContextChunk> {
-          const auto& graph =
-              dynamic_cast<const StorageReadInterface&>(graph_interface);
-          { return PathExpand::edge_expand_v(graph, std::move(chunk), pep_); }
-        });
+  Kernel CreateState(IStorageInterface& graph_interface,
+                     const ParamsMap& params,
+                     neug::execution::OprTimer* timer) override {
+    return make_chunk_kernel([this, &graph_interface, params, timer](
+                                 ContextChunk&& chunk) -> result<ContextChunk> {
+      const auto& graph =
+          dynamic_cast<const StorageReadInterface&>(graph_interface);
+      { return PathExpand::edge_expand_v(graph, std::move(chunk), pep_); }
+    });
   }
   std::string get_operator_name() const override { return "PathExpandVOpr"; }
 
@@ -772,18 +747,15 @@ class PathExpandOpr : public IOperator {
 
   std::string get_operator_name() const override { return "PathExpandOpr"; }
 
-  Stream<ContextChunk> Eval(IStorageInterface& graph_interface,
-                            const ParamsMap& params, OperatorInputs inputs,
-                            neug::execution::OprTimer* timer) override {
-    auto input = inputs.TakeSingle();
-    return map_chunks(
-        std::move(input),
-        [this, &graph_interface, params,
-         timer](ContextChunk&& chunk) -> result<ContextChunk> {
-          const auto& graph =
-              dynamic_cast<const StorageReadInterface&>(graph_interface);
-          { return PathExpand::edge_expand_p(graph, std::move(chunk), pep_); }
-        });
+  Kernel CreateState(IStorageInterface& graph_interface,
+                     const ParamsMap& params,
+                     neug::execution::OprTimer* timer) override {
+    return make_chunk_kernel([this, &graph_interface, params, timer](
+                                 ContextChunk&& chunk) -> result<ContextChunk> {
+      const auto& graph =
+          dynamic_cast<const StorageReadInterface&>(graph_interface);
+      { return PathExpand::edge_expand_p(graph, std::move(chunk), pep_); }
+    });
   }
 
  private:
@@ -799,23 +771,20 @@ class PathExpandOprWithPred : public IOperator {
     return "PathExpandOprWithPred";
   }
 
-  Stream<ContextChunk> Eval(IStorageInterface& graph_interface,
-                            const ParamsMap& params, OperatorInputs inputs,
-                            neug::execution::OprTimer* timer) override {
-    auto input = inputs.TakeSingle();
-    return map_chunks(
-        std::move(input),
-        [this, &graph_interface, params,
-         timer](ContextChunk&& chunk) -> result<ContextChunk> {
-          const auto& graph =
-              dynamic_cast<const StorageReadInterface&>(graph_interface);
-          auto expr = pred_->bind(&graph, params);
-          GeneralPred predicate_wrapper(std::move(expr));
-          {
-            return PathExpand::edge_expand_p_with_pred(graph, std::move(chunk),
-                                                       pep_, predicate_wrapper);
-          }
-        });
+  Kernel CreateState(IStorageInterface& graph_interface,
+                     const ParamsMap& params,
+                     neug::execution::OprTimer* timer) override {
+    return make_chunk_kernel([this, &graph_interface, params, timer](
+                                 ContextChunk&& chunk) -> result<ContextChunk> {
+      const auto& graph =
+          dynamic_cast<const StorageReadInterface&>(graph_interface);
+      auto expr = pred_->bind(&graph, params);
+      GeneralPred predicate_wrapper(std::move(expr));
+      {
+        return PathExpand::edge_expand_p_with_pred(graph, std::move(chunk),
+                                                   pep_, predicate_wrapper);
+      }
+    });
   }
 
  private:
@@ -833,28 +802,25 @@ class AnyWeightedShortestPathOpr : public IOperator {
     return "WeightedShortestPathOpr";
   }
 
-  Stream<ContextChunk> Eval(IStorageInterface& graph_interface,
-                            const ParamsMap& params, OperatorInputs inputs,
-                            neug::execution::OprTimer* timer) override {
-    auto input = inputs.TakeSingle();
-    return map_chunks(
-        std::move(input),
-        [this, &graph_interface, params,
-         timer](ContextChunk&& chunk) -> result<ContextChunk> {
-          const auto& graph =
-              dynamic_cast<const StorageReadInterface&>(graph_interface);
-          auto expr = weight_->bind(&graph, params);
-          auto weight_func = [&expr](const LabelTriplet& label, vid_t src,
-                                     vid_t dst, const void* data_ptr) {
-            return expr->Cast<EdgeExprBase>()
-                .eval_edge(label, src, dst, data_ptr)
-                .GetValue<double>();
-          };
-          {
-            return PathExpand::any_weighted_shortest_path(
-                graph, std::move(chunk), pep_, weight_func);
-          }
-        });
+  Kernel CreateState(IStorageInterface& graph_interface,
+                     const ParamsMap& params,
+                     neug::execution::OprTimer* timer) override {
+    return make_chunk_kernel([this, &graph_interface, params, timer](
+                                 ContextChunk&& chunk) -> result<ContextChunk> {
+      const auto& graph =
+          dynamic_cast<const StorageReadInterface&>(graph_interface);
+      auto expr = weight_->bind(&graph, params);
+      auto weight_func = [&expr](const LabelTriplet& label, vid_t src,
+                                 vid_t dst, const void* data_ptr) {
+        return expr->Cast<EdgeExprBase>()
+            .eval_edge(label, src, dst, data_ptr)
+            .GetValue<double>();
+      };
+      {
+        return PathExpand::any_weighted_shortest_path(graph, std::move(chunk),
+                                                      pep_, weight_func);
+      }
+    });
   }
 
  private:

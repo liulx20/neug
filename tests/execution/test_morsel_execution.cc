@@ -121,8 +121,8 @@ class RangeSourceOpr final : public MorselSourceOperator {
       : rows_(rows), observed_(observed) {}
   bool consumes_input() const override { return false; }
   std::string get_operator_name() const override { return "RangeSource"; }
-  std::unique_ptr<MorselSource> CreateMorselSource(
-      IStorageInterface&, const ParamsMap&, Stream<ContextChunk>) override {
+  std::unique_ptr<MorselSource> CreateMorselSource(IStorageInterface&,
+                                                   const ParamsMap&) override {
     return std::make_unique<RangeSource>(rows_, observed_);
   }
 
@@ -137,21 +137,19 @@ class EvenProject final : public IOperator {
     return PipelineBehavior::kChunkLocal;
   }
   std::string get_operator_name() const override { return "EvenProject"; }
-  Stream<ContextChunk> Eval(IStorageInterface&, const ParamsMap&,
-                            OperatorInputs inputs, OprTimer*) override {
-    return map_chunks(
-        inputs.TakeSingle(), [](ContextChunk&& input) -> result<ContextChunk> {
-          ValueColumnBuilder<int64_t> column;
-          for (size_t row = 0; row < input.row_num(); ++row) {
-            auto value = input.get(0)->get_elem(row).GetValue<int64_t>();
-            if (value % 2 == 0) {
-              column.push_back_opt(value * 2);
-            }
-          }
-          ContextChunk output;
-          output.set(0, column.finish());
-          return output;
-        });
+  Kernel CreateState(IStorageInterface&, const ParamsMap&, OprTimer*) override {
+    return make_chunk_kernel([](ContextChunk&& input) -> result<ContextChunk> {
+      ValueColumnBuilder<int64_t> column;
+      for (size_t row = 0; row < input.row_num(); ++row) {
+        auto value = input.get(0)->get_elem(row).GetValue<int64_t>();
+        if (value % 2 == 0) {
+          column.push_back_opt(value * 2);
+        }
+      }
+      ContextChunk output;
+      output.set(0, column.finish());
+      return output;
+    });
   }
 };
 
@@ -166,9 +164,8 @@ class JoinWithSources final : public BuildProbeOperator {
   SubPipelines sub_pipelines() override {
     return {SubPipelineMode::kBuildProbe, {&left_, &right_}};
   }
-  std::shared_ptr<BuildProbeState> CreateBuildState(Stream<ContextChunk> input,
-                                                    size_t workers) override {
-    return kernel_->CreateBuildState(std::move(input), workers);
+  std::shared_ptr<BuildProbeState> CreateBuildState(size_t workers) override {
+    return kernel_->CreateBuildState(workers);
   }
 
  private:

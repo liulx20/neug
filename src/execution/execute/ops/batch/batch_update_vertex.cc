@@ -40,8 +40,8 @@ class UpdateVertexOpr : public IOperator {
                                        const ParamsMap& params,
                                        ContextChunk&& chunk, OprTimer* timer);
 
-  Stream<ContextChunk> Eval(IStorageInterface& graph, const ParamsMap& params,
-                            OperatorInputs inputs, OprTimer* timer) override;
+  Kernel CreateState(IStorageInterface& graph, const ParamsMap& params,
+                     OprTimer* timer) override;
 
  private:
   // No alias is produced in this operator.
@@ -114,26 +114,13 @@ neug::result<ContextChunk> UpdateVertexOpr::eval_impl(
   return chunk;
 }
 
-Stream<ContextChunk> UpdateVertexOpr::Eval(IStorageInterface& graph_interface,
-                                           const ParamsMap& params,
-                                           OperatorInputs inputs,
-                                           OprTimer* timer) {
-  auto input = inputs.TakeSingle();
-  return defer_stream(
-      std::move(input),
-      [this, &graph_interface, params,
-       timer](Stream<ContextChunk>&& input) mutable -> Stream<ContextChunk> {
-        // Finish reading before mutation; downstream cancellation must not skip
-        // writes.
-        return reduce_stream(
-            std::move(input),
-            [this, &graph_interface, params,
-             timer](ContextChunk&& chunk) -> result<ContextChunk> {
-              auto& graph =
-                  dynamic_cast<StorageUpdateInterface&>(graph_interface);
-              { return eval_impl(graph, params, std::move(chunk), timer); }
-            });
-      });
+Kernel UpdateVertexOpr::CreateState(IStorageInterface& graph_interface,
+                                    const ParamsMap& params, OprTimer* timer) {
+  return make_global_kernel([this, &graph_interface, params, timer](
+                                ContextChunk&& chunk) -> result<ContextChunk> {
+    auto& graph = dynamic_cast<StorageUpdateInterface&>(graph_interface);
+    { return eval_impl(graph, params, std::move(chunk), timer); }
+  });
 }
 
 neug::result<OpBuildResultT> UpdateVertexOprBuilder::Build(

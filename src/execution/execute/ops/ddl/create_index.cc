@@ -66,42 +66,31 @@ class CreateIndexOpr : public IOperator {
 
   std::string get_operator_name() const override { return "CreateIndexOpr"; }
 
-  Stream<ContextChunk> Eval(IStorageInterface& graph, const ParamsMap& params,
-                            OperatorInputs inputs, OprTimer* timer) override {
-    auto input = inputs.TakeSingle();
-    return defer_stream(
-        std::move(input),
-        [this, &graph, params,
-         timer](Stream<ContextChunk>&& input) mutable -> Stream<ContextChunk> {
-          auto metadata = input.metadata();
-          auto before = collect_batches(std::move(input));
-          if (!before) {
-            return error_stream<ContextChunk>(before.error());
-          }
-          input = stream_from_batches(std::move(*before), std::move(metadata));
+  Kernel CreateState(IStorageInterface& graph, const ParamsMap& params,
+                     OprTimer* timer) override {
+    return make_batch_kernel([this, &graph, params,
+                              timer](ChunkBatch input) mutable -> KernelResult {
+      auto* index_interface = dynamic_cast<StorageIndexDDLInterface*>(&graph);
+      if (!index_interface) {
+        return tl::unexpected(
+            Status(StatusCode::ERR_NOT_SUPPORTED,
+                   "Current storage interface does not support index DDL"));
+      }
 
-          auto* index_interface =
-              dynamic_cast<StorageIndexDDLInterface*>(&graph);
-          if (!index_interface) {
-            return error_stream<ContextChunk>(
-                Status(StatusCode::ERR_NOT_SUPPORTED,
-                       "Current storage interface does not support index DDL"));
-          }
-
-          auto index_meta = CreateIndexMeta(graph.schema(), create_index_);
-          auto index = index_interface->CreateIndex(std::move(index_meta));
-          if (!index) {
-            // The storage layer reports ERR_ILLEGAL_OPERATION when an index
-            // with the same name already exists; honor IF NOT EXISTS in that
-            // case.
-            if (ignore_conflict_ && index.error().error_code() ==
-                                        StatusCode::ERR_ILLEGAL_OPERATION) {
-              return std::move(input);
-            }
-            return error_stream<ContextChunk>(index.error());
-          }
+      auto index_meta = CreateIndexMeta(graph.schema(), create_index_);
+      auto index = index_interface->CreateIndex(std::move(index_meta));
+      if (!index) {
+        // The storage layer reports ERR_ILLEGAL_OPERATION when an index
+        // with the same name already exists; honor IF NOT EXISTS in that
+        // case.
+        if (ignore_conflict_ &&
+            index.error().error_code() == StatusCode::ERR_ILLEGAL_OPERATION) {
           return std::move(input);
-        });
+        }
+        return tl::unexpected(index.error());
+      }
+      return std::move(input);
+    });
   }
 
  private:

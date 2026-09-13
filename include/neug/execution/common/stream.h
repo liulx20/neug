@@ -38,7 +38,7 @@ class StreamState {
   virtual result<std::optional<T>> Next() = 0;
 };
 
-using OperatorState = StreamState<ContextChunk>;
+using ResultReaderState = StreamState<ContextChunk>;
 
 // A single-consumer, synchronous pull stream. Construction does not read rows.
 // The stream yields T directly. Execution uses ContextChunk, which already
@@ -118,108 +118,6 @@ Stream<T> error_stream(Status error) {
       typename Stream<T>::NextResult { return tl::unexpected(error); });
 }
 
-// Own execution state until first demand. Initialization and its exceptions
-// run inside Stream::Next's error boundary, exactly once.
-template <typename Initialize>
-Stream<ContextChunk> defer_stream(Stream<ContextChunk> input,
-                                  Initialize initialize) {
-  auto metadata = input.metadata();
-  class DeferredState final : public OperatorState {
-   public:
-    DeferredState(Stream<ContextChunk> input, Initialize initialize)
-        : input_(std::move(input)), initialize_(std::move(initialize)) {}
-    Stream<ContextChunk>::NextResult Next() override {
-      if (!output_) {
-        output_.emplace(initialize_(std::move(input_)));
-      }
-      return output_->Next();
-    }
-
-   private:
-    Stream<ContextChunk> input_;
-    Initialize initialize_;
-    std::optional<Stream<ContextChunk>> output_;
-  };
-  return Stream<ContextChunk>(
-      std::make_shared<DeferredState>(std::move(input), std::move(initialize)),
-      std::move(metadata));
-}
-
-// Put a batch pulled for initialization back in front of its remaining input.
-inline Stream<ContextChunk> prepend_chunk(std::optional<ContextChunk> first,
-                                          Stream<ContextChunk> input) {
-  if (!first) {
-    return std::move(input);
-  }
-  auto metadata = input.metadata();
-  auto pending =
-      std::make_shared<std::optional<ContextChunk>>(std::move(first));
-  auto upstream = std::make_shared<Stream<ContextChunk>>(std::move(input));
-  return Stream<ContextChunk>(
-      [pending, upstream]() -> Stream<ContextChunk>::NextResult {
-        if (*pending) {
-          auto chunk = std::move(*pending);
-          pending->reset();
-          return chunk;
-        }
-        return upstream->Next();
-      },
-      std::move(metadata));
-}
-
-// Exactly one upstream pull and one kernel invocation per downstream pull.
-template <typename Transform>
-Stream<ContextChunk> map_chunks(Stream<ContextChunk> input,
-                                Transform transform) {
-  auto metadata = input.metadata();
-  class MapState final : public OperatorState {
-   public:
-    MapState(Stream<ContextChunk> input, Transform transform)
-        : input_(std::move(input)), transform_(std::move(transform)) {}
-    Stream<ContextChunk>::NextResult Next() override {
-      GS_AUTO(next, input_.Next());
-      if (!next) {
-        return std::optional<ContextChunk>{};
-      }
-      GS_AUTO(output, transform_(std::move(*next)));
-      return std::optional<ContextChunk>(std::move(output));
-    }
-
-   private:
-    Stream<ContextChunk> input_;
-    Transform transform_;
-  };
-  return Stream<ContextChunk>(
-      std::make_shared<MapState>(std::move(input), std::move(transform)),
-      std::move(metadata));
-}
-
-// Invoke a producer on first demand, without an intermediate Context.
-template <typename Producer>
-Stream<ContextChunk> generate_chunk(Producer producer,
-                                    StreamMetadata metadata = {}) {
-  class GenerateState final : public OperatorState {
-   public:
-    explicit GenerateState(Producer producer)
-        : producer_(std::move(producer)) {}
-    Stream<ContextChunk>::NextResult Next() override {
-      if (done_) {
-        return std::optional<ContextChunk>{};
-      }
-      done_ = true;
-      GS_AUTO(chunk, producer_());
-      return std::optional<ContextChunk>(std::move(chunk));
-    }
-
-   private:
-    Producer producer_;
-    bool done_ = false;
-  };
-  return Stream<ContextChunk>(
-      std::make_shared<GenerateState>(std::move(producer)),
-      std::move(metadata));
-}
-
 // Explicit global-input boundary. Row-local operators never collect input.
 inline result<ContextChunk> collect_chunk(Stream<ContextChunk> input) {
   std::optional<ContextChunk> accumulated;
@@ -235,18 +133,6 @@ inline result<ContextChunk> collect_chunk(Stream<ContextChunk> input) {
       accumulated = std::move(chunk);
     }
   }
-}
-
-template <typename Reduce>
-Stream<ContextChunk> reduce_stream(Stream<ContextChunk> input, Reduce reduce) {
-  auto metadata = input.metadata();
-  auto upstream = std::make_shared<Stream<ContextChunk>>(std::move(input));
-  return generate_chunk(
-      [upstream, reduce = std::move(reduce)]() mutable -> result<ContextChunk> {
-        GS_AUTO(chunk, collect_chunk(std::move(*upstream)));
-        return reduce(std::move(chunk));
-      },
-      std::move(metadata));
 }
 
 // Buffer only when an operator must replay its input or stabilize it before
@@ -265,7 +151,7 @@ inline result<std::vector<ContextChunk>> collect_batches(
 
 inline Stream<ContextChunk> stream_from_batches(
     std::vector<ContextChunk> chunks, StreamMetadata metadata = {}) {
-  class BatchState final : public OperatorState {
+  class BatchState final : public ResultReaderState {
    public:
     explicit BatchState(std::vector<ContextChunk> chunks)
         : chunks_(std::move(chunks)) {}

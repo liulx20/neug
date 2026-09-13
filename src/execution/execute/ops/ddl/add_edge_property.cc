@@ -37,50 +37,39 @@ class AddEdgePropertySchemaOpr : public IOperator {
   std::string get_operator_name() const override {
     return "AddEdgePropertySchemaOpr";
   }
-  Stream<ContextChunk> Eval(IStorageInterface& graph, const ParamsMap& params,
-                            OperatorInputs inputs, OprTimer* timer) override {
-    auto input = inputs.TakeSingle();
-    return defer_stream(
-        std::move(input),
-        [this, &graph, params,
-         timer](Stream<ContextChunk>&& input) mutable -> Stream<ContextChunk> {
-          auto metadata = input.metadata();
-          auto before = collect_batches(std::move(input));
-          if (!before) {
-            return error_stream<ContextChunk>(before.error());
-          }
-          input = stream_from_batches(std::move(*before), std::move(metadata));
-
-          StorageUpdateInterface& storage =
-              dynamic_cast<StorageUpdateInterface&>(graph);
-          label_t src, dst, edge;
-          auto resolve =
-              ResolveEdgeTriplet(storage.schema(), src_type_, dst_type_,
-                                 edge_type_, src, dst, edge);
-          if (!resolve.ok()) {
-            if (ignore_conflict_ && IsSchemaConflictError(resolve)) {
-              return std::move(input);
-            }
-            LOG(ERROR) << "Fail to add edge property to type: " << edge_type_
-                       << ", reason: " << resolve.ToString();
-            return error_stream<ContextChunk>(resolve);
-          }
-          AddEdgePropertiesParamBuilder builder;
-          for (const auto& [prop_name, prop_value] : properties_) {
-            builder.AddProperty(prop_name, prop_value);
-          }
-          auto config = builder.Build();
-          auto res = storage.AddEdgeProperties(src, dst, edge, config);
-          if (!res.ok()) {
-            if (ignore_conflict_ && IsSchemaConflictError(res)) {
-              return std::move(input);
-            }
-            LOG(ERROR) << "Fail to add edge property to type: " << edge_type_
-                       << ", reason: " << res.ToString();
-            return error_stream<ContextChunk>(res);
-          }
+  Kernel CreateState(IStorageInterface& graph, const ParamsMap& params,
+                     OprTimer* timer) override {
+    return make_batch_kernel([this, &graph, params,
+                              timer](ChunkBatch input) mutable -> KernelResult {
+      StorageUpdateInterface& storage =
+          dynamic_cast<StorageUpdateInterface&>(graph);
+      label_t src, dst, edge;
+      auto resolve = ResolveEdgeTriplet(storage.schema(), src_type_, dst_type_,
+                                        edge_type_, src, dst, edge);
+      if (!resolve.ok()) {
+        if (ignore_conflict_ && IsSchemaConflictError(resolve)) {
           return std::move(input);
-        });
+        }
+        LOG(ERROR) << "Fail to add edge property to type: " << edge_type_
+                   << ", reason: " << resolve.ToString();
+        return tl::unexpected(resolve);
+      }
+      AddEdgePropertiesParamBuilder builder;
+      for (const auto& [prop_name, prop_value] : properties_) {
+        builder.AddProperty(prop_name, prop_value);
+      }
+      auto config = builder.Build();
+      auto res = storage.AddEdgeProperties(src, dst, edge, config);
+      if (!res.ok()) {
+        if (ignore_conflict_ && IsSchemaConflictError(res)) {
+          return std::move(input);
+        }
+        LOG(ERROR) << "Fail to add edge property to type: " << edge_type_
+                   << ", reason: " << res.ToString();
+        return tl::unexpected(res);
+      }
+      return std::move(input);
+    });
   }
 
  private:

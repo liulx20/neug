@@ -15,7 +15,8 @@
 
 #pragma once
 
-#include "neug/execution/common/stream.h"
+#include <functional>
+#include "neug/execution/common/context_chunk.h"
 
 namespace neug::execution {
 
@@ -49,12 +50,12 @@ class MorselSource {
 // the returned ranges and their downstream transforms execute independently.
 class ChunkMorselSource final : public MorselSource {
  public:
-  explicit ChunkMorselSource(Stream<ContextChunk> input)
-      : input_(std::move(input)) {}
+  using ReadBatch = std::function<result<std::optional<ContextChunk>>()>;
+  explicit ChunkMorselSource(ReadBatch input) : input_(std::move(input)) {}
 
   result<std::optional<Morsel>> Pick() override {
     if (!chunk_) {
-      GS_AUTO(next, input_.Next());
+      GS_AUTO(next, input_());
       if (!next) {
         return std::optional<Morsel>{};
       }
@@ -101,7 +102,7 @@ class ChunkMorselSource final : public MorselSource {
   }
 
  private:
-  Stream<ContextChunk> input_;
+  ReadBatch input_;
   std::shared_ptr<const ContextChunk> chunk_;
   size_t offset_ = 0;
 };

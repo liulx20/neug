@@ -17,7 +17,7 @@
 #include <vector>
 
 #include "neug/common/types/graph_types.h"
-#include "neug/execution/common/stream.h"
+#include "neug/execution/execute/operator_state.h"
 #include "neug/storages/loader/loader_utils.h"
 #include "neug/utils/property/types.h"
 
@@ -47,24 +47,44 @@ std::string edge_to_json_string(const EdgeRecord& edge,
 
 std::string path_to_json_string(Path& path, const StorageReadInterface& graph);
 
-class StreamChunkSupplier final : public IDataChunkSupplier {
+class BatchChunkSupplier final : public IDataChunkSupplier {
  public:
-  StreamChunkSupplier(Stream<ContextChunk> stream,
-                      std::vector<std::pair<int32_t, std::string>> mappings);
+  BatchChunkSupplier(ChunkBatch chunks,
+                     std::vector<std::pair<int32_t, std::string>> mappings);
   std::shared_ptr<DataChunk> GetNextChunk() override;
   int64_t RowNum() const override { return -1; }
-  const Status& status() const { return status_; }
   size_t rows_read() const { return rows_read_; }
 
  private:
-  Stream<ContextChunk> stream_;
+  ChunkBatch chunks_;
+  size_t index_ = 0;
   std::vector<std::pair<int32_t, std::string>> mappings_;
-  Status status_ = Status::OK();
   size_t rows_read_ = 0;
 };
 
 // Preserve COPY result cardinality without retaining its input payload.
-Stream<ContextChunk> batch_insert_result(size_t rows);
+ContextChunk batch_insert_result(size_t rows);
+
+template <typename F>
+Kernel make_insert_kernel(F insert) {
+  class State final : public OperatorState {
+   public:
+    explicit State(F insert) : insert_(std::move(insert)) {}
+    KernelResult Process(ContextChunk chunk) override {
+      GS_AUTO(rows, insert_(std::move(chunk)));
+      rows_ += rows;
+      return ChunkBatch{};
+    }
+    KernelResult Finalize() override {
+      return one_chunk(batch_insert_result(rows_));
+    }
+
+   private:
+    F insert_;
+    size_t rows_ = 0;
+  };
+  return std::make_unique<State>(std::move(insert));
+}
 
 std::vector<std::string> match_files_with_pattern(const std::string& file_path);
 

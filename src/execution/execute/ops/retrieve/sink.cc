@@ -30,11 +30,14 @@ class SinkOpr : public IOperator {
  public:
   explicit SinkOpr(const std::vector<int>& tag_ids) : tag_ids_(tag_ids) {}
 
-  Stream<ContextChunk> Eval(IStorageInterface& graph, const ParamsMap& params,
-                            OperatorInputs inputs, OprTimer* timer) override {
-    auto input = inputs.TakeSingle();
-    input.set_metadata(StreamMetadata{tag_ids_});
-    return std::move(input);
+  Kernel CreateState(IStorageInterface& graph, const ParamsMap& params,
+                     OprTimer* timer) override {
+    return make_chunk_kernel(
+        [](ContextChunk chunk) -> result<ContextChunk> { return chunk; });
+  }
+
+  std::optional<std::vector<int>> output_columns() const override {
+    return tag_ids_;
   }
 
   std::string get_operator_name() const override { return "SinkOpr"; }

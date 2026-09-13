@@ -39,28 +39,24 @@ class GetVFromEdgesOpr : public IOperator {
 
   std::string get_operator_name() const override { return "GetVFromEdgesOpr"; }
 
-  Stream<ContextChunk> Eval(IStorageInterface& graph, const ParamsMap& params,
-                            OperatorInputs inputs,
-                            neug::execution::OprTimer* timer) override {
-    auto input = inputs.TakeSingle();
-    return map_chunks(std::move(input),
-                      [this, &graph, params,
-                       timer](ContextChunk&& chunk) -> result<ContextChunk> {
-                        if (pred_ != nullptr) {
-                          auto expr = pred_->bind(&graph, params);
-                          GeneralPred pred(std::move(expr));
-                          {
-                            return GetV::get_vertex_from_edges(
-                                graph, std::move(chunk), v_params_, pred);
-                          }
-                        } else {
-                          {
-                            return GetV::get_vertex_from_edges(
-                                graph, std::move(chunk), v_params_,
-                                DummyPred());
-                          }
-                        }
-                      });
+  Kernel CreateState(IStorageInterface& graph, const ParamsMap& params,
+                     neug::execution::OprTimer* timer) override {
+    return make_chunk_kernel([this, &graph, params, timer](
+                                 ContextChunk&& chunk) -> result<ContextChunk> {
+      if (pred_ != nullptr) {
+        auto expr = pred_->bind(&graph, params);
+        GeneralPred pred(std::move(expr));
+        {
+          return GetV::get_vertex_from_edges(graph, std::move(chunk), v_params_,
+                                             pred);
+        }
+      } else {
+        {
+          return GetV::get_vertex_from_edges(graph, std::move(chunk), v_params_,
+                                             DummyPred());
+        }
+      }
+    });
   }
 
  private:

@@ -36,9 +36,8 @@ class DataExportOpr : public IOperator {
 
   std::string get_operator_name() const override { return "DataExportOpr"; }
 
-  Stream<ContextChunk> Eval(IStorageInterface& graph, const ParamsMap& params,
-                            OperatorInputs inputs,
-                            neug::execution::OprTimer* timer) override;
+  Kernel CreateState(IStorageInterface& graph, const ParamsMap& params,
+                     neug::execution::OprTimer* timer) override;
 
  private:
   reader::FileSchema schema_;
@@ -46,37 +45,26 @@ class DataExportOpr : public IOperator {
   function::ExportFunction* exportFunction_;
 };
 
-Stream<ContextChunk> DataExportOpr::Eval(IStorageInterface& graph_interface,
-                                         const ParamsMap& params,
-                                         OperatorInputs inputs,
-                                         neug::execution::OprTimer* timer) {
-  auto input = inputs.TakeSingle();
-  return defer_stream(
-      std::move(input),
-      [this, &graph_interface, params,
-       timer](Stream<ContextChunk>&& input) mutable -> Stream<ContextChunk> {
-        // Legacy extension ABI: Context conversion is confined to this
-        // boundary.
+Kernel DataExportOpr::CreateState(IStorageInterface& graph_interface,
+                                  const ParamsMap& params,
+                                  neug::execution::OprTimer* timer) {
+  return make_context_kernel([this, &graph_interface, params,
+                              timer](Context ctx) mutable -> result<Context> {
+    // Legacy extension ABI: Context conversion is confined to this
+    // boundary.
 
-        auto ctx_result = materialize(std::move(input));
-        if (!ctx_result) {
-          return error_stream<ContextChunk>(ctx_result.error());
-        }
-        auto ctx = std::move(*ctx_result);
-
-        const auto& graph =
-            dynamic_cast<const StorageReadInterface&>(graph_interface);
-        if (!exportFunction_) {
-          THROW_IO_EXCEPTION("DataExportOpr: export function is nullptr");
-        }
-        if (!exportFunction_->execFunc) {
-          THROW_IO_EXCEPTION(
-              "DataExportOpr: write function in export function is nullptr");
-        }
-        auto output =
-            exportFunction_->execFunc(ctx, schema_, entry_schema_, graph);
-        return stream_from_context(std::move(output));
-      });
+    const auto& graph =
+        dynamic_cast<const StorageReadInterface&>(graph_interface);
+    if (!exportFunction_) {
+      THROW_IO_EXCEPTION("DataExportOpr: export function is nullptr");
+    }
+    if (!exportFunction_->execFunc) {
+      THROW_IO_EXCEPTION(
+          "DataExportOpr: write function in export function is nullptr");
+    }
+    auto output = exportFunction_->execFunc(ctx, schema_, entry_schema_, graph);
+    return output;
+  });
 }
 
 neug::result<OpBuildResultT> DataExportOprBuilder::Build(

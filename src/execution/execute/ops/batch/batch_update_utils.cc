@@ -273,24 +273,19 @@ std::string path_to_json_string(Path& path, const StorageReadInterface& graph) {
   return buffer.GetString();
 }
 
-StreamChunkSupplier::StreamChunkSupplier(
-    Stream<ContextChunk> stream,
-    std::vector<std::pair<int32_t, std::string>> mappings)
-    : stream_(std::move(stream)), mappings_(std::move(mappings)) {}
+BatchChunkSupplier::BatchChunkSupplier(
+    ChunkBatch chunks, std::vector<std::pair<int32_t, std::string>> mappings)
+    : chunks_(std::move(chunks)), mappings_(std::move(mappings)) {}
 
-std::shared_ptr<DataChunk> StreamChunkSupplier::GetNextChunk() {
-  auto next = stream_.Next();
-  if (!next) {
-    status_ = next.error();
+std::shared_ptr<DataChunk> BatchChunkSupplier::GetNextChunk() {
+  if (index_ == chunks_.size()) {
     return nullptr;
   }
-  if (!*next) {
-    return nullptr;
-  }
-  rows_read_ += (**next).row_num();
+  auto* next = &chunks_[index_++];
+  rows_read_ += next->row_num();
   auto output = std::make_shared<DataChunk>();
   for (size_t i = 0; i < mappings_.size(); ++i) {
-    auto column = (**next).get(mappings_[i].first);
+    auto column = next->get(mappings_[i].first);
     if (!column) {
       THROW_INTERNAL_EXCEPTION("Column not found for tag id: " +
                                std::to_string(mappings_[i].first));
@@ -300,7 +295,7 @@ std::shared_ptr<DataChunk> StreamChunkSupplier::GetNextChunk() {
   return output;
 }
 
-Stream<ContextChunk> batch_insert_result(size_t rows) {
+ContextChunk batch_insert_result(size_t rows) {
   // COPY's sink has no output tags, but QueryResponse still reports the
   // consumed row count. A head-only constant column preserves that contract
   // in O(1) space rather than keeping every input property column alive.
@@ -319,11 +314,9 @@ Stream<ContextChunk> batch_insert_result(size_t rows) {
    private:
     size_t rows_;
   };
-  return generate_chunk([rows]() -> result<ContextChunk> {
-    ContextChunk output;
-    output.set(-1, std::make_shared<CardinalityColumn>(rows));
-    return output;
-  });
+  ContextChunk output;
+  output.set(-1, std::make_shared<CardinalityColumn>(rows));
+  return output;
 }
 
 std::vector<std::string> match_files_with_pattern(

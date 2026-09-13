@@ -29,27 +29,6 @@ namespace execution {
 class OprTimer;
 
 namespace ops {
-class UnionState final : public OperatorState {
- public:
-  explicit UnionState(std::vector<Stream<ContextChunk>> inputs)
-      : inputs_(std::move(inputs)) {}
-  Stream<ContextChunk>::NextResult Next() override {
-    while (index_ < inputs_.size()) {
-      GS_AUTO(next, inputs_[index_].Next());
-      if (next) {
-        next->head().reset();
-        return next;
-      }
-      ++index_;
-    }
-    return std::optional<ContextChunk>{};
-  }
-
- private:
-  std::vector<Stream<ContextChunk>> inputs_;
-  size_t index_ = 0;
-};
-
 class UnionOpr : public IOperator {
  public:
   explicit UnionOpr(std::vector<Pipeline>&& sub_plans)
@@ -64,14 +43,12 @@ class UnionOpr : public IOperator {
   }
   std::string get_operator_name() const override { return "UnionOpr"; }
 
-  Stream<ContextChunk> Eval(IStorageInterface& graph, const ParamsMap& params,
-                            OperatorInputs inputs,
-                            neug::execution::OprTimer* timer) override {
-    auto streams = inputs.TakeAll();
-    auto metadata =
-        streams.empty() ? StreamMetadata{} : streams.front().metadata();
-    return Stream<ContextChunk>(
-        std::make_shared<UnionState>(std::move(streams)), std::move(metadata));
+  Kernel CreateState(IStorageInterface& graph, const ParamsMap& params,
+                     neug::execution::OprTimer* timer) override {
+    return make_chunk_kernel([](ContextChunk chunk) -> result<ContextChunk> {
+      chunk.head().reset();
+      return chunk;
+    });
   }
 
   void build_explain_children(OprTimer* parent_timer, const ParamsMap& params,

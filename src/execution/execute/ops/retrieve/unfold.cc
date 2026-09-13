@@ -52,23 +52,19 @@ class UnfoldOpr : public IOperator {
 
   std::string get_operator_name() const override { return "UnfoldOpr"; }
 
-  Stream<ContextChunk> Eval(IStorageInterface& graph, const ParamsMap& params,
-                            OperatorInputs inputs,
-                            neug::execution::OprTimer* timer) override {
-    auto input = inputs.TakeSingle();
-    return map_chunks(
-        std::move(input),
-        [this, &graph, params,
-         timer](ContextChunk&& chunk) -> result<ContextChunk> {
-          if (key_.has_value()) {
-            auto key_val = key_.value();
-            { return Unfold::unfold(std::move(chunk), key_val, alias_); }
-          } else {
-            auto expr = expr_->bind(&graph, params);
-            auto& record_expr = expr->Cast<RecordExprBase>();
-            { return Unfold::unfold(std::move(chunk), record_expr, alias_); }
-          }
-        });
+  Kernel CreateState(IStorageInterface& graph, const ParamsMap& params,
+                     neug::execution::OprTimer* timer) override {
+    return make_chunk_kernel([this, &graph, params, timer](
+                                 ContextChunk&& chunk) -> result<ContextChunk> {
+      if (key_.has_value()) {
+        auto key_val = key_.value();
+        { return Unfold::unfold(std::move(chunk), key_val, alias_); }
+      } else {
+        auto expr = expr_->bind(&graph, params);
+        auto& record_expr = expr->Cast<RecordExprBase>();
+        { return Unfold::unfold(std::move(chunk), record_expr, alias_); }
+      }
+    });
   }
 
  private:

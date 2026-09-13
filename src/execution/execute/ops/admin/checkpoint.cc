@@ -26,27 +26,22 @@ class CheckpointOpr : public IOperator {
   CheckpointOpr() = default;
   ~CheckpointOpr() override = default;
   std::string get_operator_name() const override { return "CheckpointOpr"; }
-  Stream<ContextChunk> Eval(IStorageInterface& graph, const ParamsMap& params,
-                            OperatorInputs inputs, OprTimer* timer) override;
+  Kernel CreateState(IStorageInterface& graph, const ParamsMap& params,
+                     OprTimer* timer) override;
 };
 
-Stream<ContextChunk> CheckpointOpr::Eval(IStorageInterface& graph_interface,
-                                         const ParamsMap& params,
-                                         OperatorInputs inputs,
-                                         OprTimer* timer) {
-  auto input = inputs.TakeSingle();
-  return defer_stream(
-      std::move(input),
-      [this, &graph_interface, params,
-       timer](Stream<ContextChunk>&& input) mutable -> Stream<ContextChunk> {
-        (void) graph_interface;
-        (void) params;
-        (void) input;
-        (void) timer;
-        return error_stream<ContextChunk>(neug::Status(
-            neug::StatusCode::ERR_ILLEGAL_OPERATION,
-            "CHECKPOINT must be executed by the database checkpoint executor"));
-      });
+Kernel CheckpointOpr::CreateState(IStorageInterface& graph_interface,
+                                  const ParamsMap& params, OprTimer* timer) {
+  return make_batch_kernel([this, &graph_interface, params,
+                            timer](ChunkBatch input) mutable -> KernelResult {
+    (void) graph_interface;
+    (void) params;
+    (void) input;
+    (void) timer;
+    return tl::unexpected(neug::Status(
+        neug::StatusCode::ERR_ILLEGAL_OPERATION,
+        "CHECKPOINT must be executed by the database checkpoint executor"));
+  });
 }
 
 neug::result<OpBuildResultT> CheckpointOprBuilder::Build(

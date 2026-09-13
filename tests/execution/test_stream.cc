@@ -20,6 +20,7 @@
 #include "neug/execution/common/operators/retrieve/sink.h"
 #include "neug/execution/common/stream.h"
 #include "neug/execution/execute/ops/batch/batch_update_utils.h"
+#include "neug/execution/execute/ops/retrieve/limit.h"
 #include "neug/execution/execute/ops/retrieve/sink.h"
 #include "neug/execution/execute/pipeline.h"
 #include "neug/storages/graph/property_graph.h"
@@ -159,81 +160,155 @@ TEST(StreamTest, PreservesHeadsTagsSparseAliasesAndEmptyBatches) {
   EXPECT_EQ(restored->chunk(2).row_num(), 1);
 }
 
-TEST(StreamTest, BatchTransformPreservesColumnIdentityAndDoesNotReadAhead) {
-  int pulls = 0;
+TEST(StreamTest, ChunkKernelPreservesColumnIdentity) {
   auto data = chunk(42, 3);
   auto column = data.get(3);
-  ChunkStream source(
-      [&]() -> ChunkStream::NextResult {
-        if (++pulls > 1) {
-          THROW_IO_EXCEPTION("must not read ahead");
-        }
-        return std::optional<ContextChunk>(std::in_place, std::move(data),
-                                           column);
-      },
-      StreamMetadata{{3, -1}});
-  auto mapped = map_chunks(std::move(source),
-                           [](ContextChunk&& batch) -> result<ContextChunk> {
-                             return std::move(batch);
-                           });
-  EXPECT_EQ(pulls, 0);
-  auto first = mapped.Next();
-  ASSERT_TRUE(first);
-  ASSERT_TRUE(*first);
-  EXPECT_EQ((**first).get(3), column);
-  EXPECT_EQ((**first).head(), column);
-  EXPECT_EQ(mapped.metadata().output_columns, (std::vector<int>{3, -1}));
-  EXPECT_EQ(pulls, 1);
+  auto state = make_chunk_kernel(
+      [](ContextChunk input) -> result<ContextChunk> { return input; });
+  auto output = state->Process(ContextChunk(std::move(data), column));
+  ASSERT_TRUE(output);
+  ASSERT_EQ(output->size(), 1);
+  EXPECT_EQ(output->front().get(3), column);
+  EXPECT_EQ(output->front().head(), column);
+  EXPECT_TRUE(state->Finalize()->empty());
 }
 
-TEST(StreamTest, StorageBridgePreservesMappingAndLateError) {
-  int pulls = 0;
-  ChunkStream stream([&]() -> ChunkStream::NextResult {
-    if (++pulls == 2) {
-      return tl::unexpected(
-          Status(StatusCode::ERR_IO_ERROR, "bad second batch"));
-    }
-    auto input = chunk(5, 2);
-    input.set(0, chunk(9).get(0));
-    return std::optional<ContextChunk>(std::in_place, std::move(input));
-  });
-  ops::StreamChunkSupplier supplier(std::move(stream), {{2, "a"}, {0, "b"}});
-  EXPECT_EQ(pulls, 0);
+TEST(StreamTest, StorageBridgeMapsProvidedBatchesAndStopsAtEnd) {
+  auto input = chunk(5, 2);
+  input.set(0, chunk(9).get(0));
+  ops::BatchChunkSupplier supplier(one_chunk(ContextChunk(std::move(input))),
+                                   {{2, "a"}, {0, "b"}});
   EXPECT_EQ(supplier.RowNum(), -1);
   auto first = supplier.GetNextChunk();
   ASSERT_NE(first, nullptr);
   EXPECT_EQ(first->get(0)->get_elem(0).GetValue<int64_t>(), 5);
   EXPECT_EQ(first->get(1)->get_elem(0).GetValue<int64_t>(), 9);
   EXPECT_EQ(supplier.GetNextChunk(), nullptr);
-  EXPECT_EQ(supplier.status().error_code(), StatusCode::ERR_IO_ERROR);
+  EXPECT_EQ(supplier.rows_read(), 1);
 }
 
 TEST(StreamTest, CopyResultPreservesCardinalityWithoutInputColumns) {
-  auto output = materialize(ops::batch_insert_result(1000000));
+  auto output = ops::batch_insert_result(1000000);
+  EXPECT_EQ(output.row_num(), 1000000);
+  EXPECT_EQ(output.col_num(), 0);
+}
+
+TEST(StreamTest, DeepPipelineRunsKernelsIterativelyAndFinalizesOnce) {
+  class State final : public OperatorState {
+   public:
+    State(size_t index, size_t width, size_t& processed, size_t& finalized)
+        : index_(index),
+          width_(width),
+          processed_(processed),
+          finalized_(finalized) {}
+    KernelResult Process(ContextChunk input) override {
+      EXPECT_EQ(processed_++ % width_, index_);
+      return one_chunk(std::move(input));
+    }
+    KernelResult Finalize() override {
+      EXPECT_EQ(finalized_++, index_);
+      return ChunkBatch{};
+    }
+
+   private:
+    size_t index_, width_;
+    size_t& processed_;
+    size_t& finalized_;
+  };
+  class Forward final : public IOperator {
+   public:
+    Forward(size_t index, size_t width, size_t& processed, size_t& finalized)
+        : index_(index),
+          width_(width),
+          processed_(processed),
+          finalized_(finalized) {}
+    std::string get_operator_name() const override { return "Forward"; }
+    Kernel CreateState(IStorageInterface&, const ParamsMap&,
+                       OprTimer*) override {
+      return std::make_unique<State>(index_, width_, processed_, finalized_);
+    }
+
+   private:
+    size_t index_, width_;
+    size_t& processed_;
+    size_t& finalized_;
+  };
+  size_t processed = 0, finalized = 0;
+  constexpr size_t width = 4096;
+  std::vector<std::unique_ptr<IOperator>> operators;
+  for (size_t i = 0; i < width; ++i) {
+    operators.push_back(
+        std::make_unique<Forward>(i, width, processed, finalized));
+  }
+  Pipeline pipeline(std::move(operators));
+  PropertyGraph graph;
+  GraphView view(graph);
+  StorageReadInterface storage(view, 0);
+  Context input;
+  input.append_chunk(chunk(1));
+  input.append_chunk(chunk(2));
+  auto output = pipeline.Execute(storage, std::move(input), {}, nullptr);
   ASSERT_TRUE(output);
-  EXPECT_EQ(output->row_num(), 1000000);
-  EXPECT_EQ(output->col_num(), 0);
-  EXPECT_TRUE(output->tag_ids.empty());
+  EXPECT_EQ(output->row_num(), 2);
+  EXPECT_EQ(processed, width * 2);
+  EXPECT_EQ(finalized, width);
+}
+
+TEST(StreamTest, GlobalFinalizeStopsAtDownstreamLimit) {
+  class Buffer final : public IOperator {
+   public:
+    std::string get_operator_name() const override { return "Buffer"; }
+    Kernel CreateState(IStorageInterface&, const ParamsMap&,
+                       OprTimer*) override {
+      return make_batch_kernel(
+          [](ChunkBatch input) -> KernelResult { return input; });
+    }
+  };
+  PropertyGraph graph;
+  GraphView view(graph);
+  StorageReadInterface storage(view, 0);
+  physical::PhysicalPlan plan;
+  auto* range =
+      plan.add_plan()->mutable_opr()->mutable_limit()->mutable_range();
+  range->set_lower(0);
+  range->set_upper(1);
+  ops::LimitOprBuilder builder;
+  auto built = builder.Build(Schema(), ContextMeta(), plan, 0);
+  ASSERT_TRUE(built);
+  std::vector<std::unique_ptr<IOperator>> operators;
+  operators.push_back(std::make_unique<Buffer>());
+  operators.push_back(std::move(built->first));
+  Pipeline pipeline(std::move(operators));
+  Context input;
+  input.append_chunk(chunk(1));
+  input.append_chunk(chunk(2));
+  OprTimer timer;
+  auto output = pipeline.Execute(storage, std::move(input), {}, &timer);
+  ASSERT_TRUE(output);
+  EXPECT_EQ(output->chunk_num(), 1);
+  EXPECT_EQ(output->row_num(), 1);
+  EXPECT_EQ(output->chunk(0).get(0)->get_elem(0).GetValue<int64_t>(), 1);
 }
 
 struct Counts {
   int produced = 0;
   int consumed = 0;
 };
-class CountingSource final : public IOperator {
+class CountingSource final : public MorselSourceOperator {
  public:
   explicit CountingSource(Counts& counts) : counts_(counts) {}
   std::string get_operator_name() const override { return "CountingSource"; }
-  ChunkStream Eval(IStorageInterface&, const ParamsMap&, OperatorInputs,
-                   OprTimer*) override {
-    return ChunkStream([this]() -> ChunkStream::NextResult {
-      EXPECT_EQ(counts_.produced, counts_.consumed);
-      if (counts_.produced == 3) {
-        return std::optional<ContextChunk>{};
-      }
-      return std::optional<ContextChunk>(std::in_place,
-                                         chunk(++counts_.produced));
-    });
+  std::unique_ptr<MorselSource> CreateMorselSource(IStorageInterface&,
+                                                   const ParamsMap&) override {
+    return std::make_unique<ChunkMorselSource>(
+        [this]() -> result<std::optional<ContextChunk>> {
+          EXPECT_EQ(counts_.produced, counts_.consumed);
+          if (counts_.produced == 3) {
+            return std::optional<ContextChunk>{};
+          }
+          return std::optional<ContextChunk>(std::in_place,
+                                             chunk(++counts_.produced));
+        });
   }
 
  private:
@@ -243,48 +318,35 @@ class CountingProject final : public IOperator {
  public:
   explicit CountingProject(Counts& counts) : counts_(counts) {}
   std::string get_operator_name() const override { return "CountingProject"; }
-  Stream<ContextChunk> Eval(IStorageInterface&, const ParamsMap&,
-                            OperatorInputs inputs, OprTimer*) override {
-    auto input = inputs.TakeSingle();
-    return map_chunks(std::move(input),
-                      [this](ContextChunk&& chunk) -> result<ContextChunk> {
-                        ++counts_.consumed;
-                        EXPECT_EQ(chunk.row_num(), 1);
-                        return std::move(chunk);
-                      });
+  Kernel CreateState(IStorageInterface&, const ParamsMap&, OprTimer*) override {
+    return make_chunk_kernel(
+        [this](ContextChunk&& chunk) -> result<ContextChunk> {
+          ++counts_.consumed;
+          EXPECT_EQ(chunk.row_num(), 1);
+          return std::move(chunk);
+        });
   }
 
  private:
   Counts& counts_;
 };
 
-TEST(StreamTest, DeferredInitializationRunsOnceAndReportsErrorsOnNext) {
-  int initialized = 0;
-  auto stream = defer_stream(
-      Stream<ContextChunk>(),
-      [&](Stream<ContextChunk> &&) -> Stream<ContextChunk> {
-        ++initialized;
-        return error_stream<ContextChunk>(Status::InternalError("init failed"));
+TEST(StreamTest, GlobalKernelFinalizesAfterAllInput) {
+  int calls = 0;
+  auto state =
+      make_global_kernel([&](ContextChunk input) -> result<ContextChunk> {
+        ++calls;
+        EXPECT_EQ(input.row_num(), 2);
+        return input;
       });
-  EXPECT_EQ(initialized, 0);
-  auto first = stream.Next();
-  ASSERT_FALSE(first);
-  EXPECT_NE(first.error().ToString().find("init failed"), std::string::npos);
-  EXPECT_EQ(initialized, 1);
-  auto second = stream.Next();
-  ASSERT_FALSE(second);
-  EXPECT_EQ(second.error().ToString(), first.error().ToString());
-  EXPECT_EQ(initialized, 1);
-
-  auto throwing =
-      defer_stream(Stream<ContextChunk>(),
-                   [](Stream<ContextChunk> &&) -> Stream<ContextChunk> {
-                     THROW_IO_EXCEPTION("opening source failed");
-                   });
-  auto error = throwing.Next();
-  ASSERT_FALSE(error);
-  EXPECT_NE(error.error().ToString().find("opening source failed"),
-            std::string::npos);
+  EXPECT_TRUE(state->Process(ContextChunk(chunk(1)))->empty());
+  EXPECT_TRUE(state->Process(ContextChunk(chunk(2)))->empty());
+  EXPECT_EQ(calls, 0);
+  auto output = state->Finalize();
+  ASSERT_TRUE(output);
+  ASSERT_EQ(output->size(), 1);
+  EXPECT_EQ(output->front().row_num(), 2);
+  EXPECT_EQ(calls, 1);
 }
 
 TEST(StreamTest, SinkMetadataPreservesOutputOrderAndEmptyResults) {
@@ -321,15 +383,12 @@ TEST(StreamTest, PipelineReportsInitializationFailureOnlyWhenPulled) {
    public:
     explicit FailingSource(int& calls) : calls_(calls) {}
     std::string get_operator_name() const override { return "FailingSource"; }
-    Stream<ContextChunk> Eval(IStorageInterface&, const ParamsMap&,
-                              OperatorInputs inputs, OprTimer*) override {
-      auto input = inputs.TakeSingle();
-      return defer_stream(
-          std::move(input),
-          [this](Stream<ContextChunk> &&) -> Stream<ContextChunk> {
-            ++calls_;
-            THROW_IO_EXCEPTION("source initialization failed");
-          });
+    Kernel CreateState(IStorageInterface&, const ParamsMap&,
+                       OprTimer*) override {
+      return make_once_kernel([this]() -> KernelResult {
+        ++calls_;
+        THROW_IO_EXCEPTION("source initialization failed");
+      });
     }
 
    private:

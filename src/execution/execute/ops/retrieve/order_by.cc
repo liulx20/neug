@@ -33,12 +33,10 @@ class OrderByOpr : public IOperator {
 
   std::string get_operator_name() const override { return "OrderByOpr"; }
 
-  Stream<ContextChunk> Eval(IStorageInterface& graph_interface,
-                            const ParamsMap& params, OperatorInputs inputs,
-                            neug::execution::OprTimer* timer) override {
-    auto input = inputs.TakeSingle();
-    return reduce_stream(
-        std::move(input),
+  Kernel CreateState(IStorageInterface& graph_interface,
+                     const ParamsMap& params,
+                     neug::execution::OprTimer* timer) override {
+    return make_global_kernel(
         [this, &graph_interface, params,
          timer](ContextChunk&& chunk) -> result<ContextChunk> {
           const auto& graph =

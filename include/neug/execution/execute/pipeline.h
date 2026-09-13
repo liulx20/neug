@@ -14,6 +14,7 @@
  */
 #pragma once
 
+#include "neug/execution/common/stream.h"
 #include "neug/execution/execute/operator.h"
 #include "neug/storages/graph/graph_interface.h"
 

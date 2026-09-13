@@ -28,28 +28,13 @@ GDSAlgoOpr::GDSAlgoOpr(std::unique_ptr<function::CallFuncInputBase> algo_input,
                        function::GDSAlgoFunction* algo_func)
     : algo_input_(std::move(algo_input)), algo_func_(algo_func) {}
 
-Stream<ContextChunk> GDSAlgoOpr::Eval(IStorageInterface& graph_interface,
-                                      const ParamsMap& params,
-                                      OperatorInputs inputs,
-                                      neug::execution::OprTimer* timer) {
-  auto input = inputs.TakeSingle();
-  return defer_stream(
-      std::move(input),
-      [this, &graph_interface, params,
-       timer](Stream<ContextChunk>&& input) mutable -> Stream<ContextChunk> {
+Kernel GDSAlgoOpr::CreateState(IStorageInterface& graph_interface,
+                               const ParamsMap& params,
+                               neug::execution::OprTimer* timer) {
+  return make_once_kernel(
+      [this, &graph_interface, params, timer]() mutable -> KernelResult {
         // Legacy extension ABI: Context conversion is confined to this
         // boundary.
-
-        while (true) {
-          auto next_result = input.Next();
-          if (!next_result) {
-            return error_stream<ContextChunk>(next_result.error());
-          }
-          auto next = std::move(*next_result);
-          if (!next) {
-            break;
-          }
-        }
 
         (void) timer;
         if (algo_func_ == nullptr) {
@@ -65,7 +50,7 @@ Stream<ContextChunk> GDSAlgoOpr::Eval(IStorageInterface& graph_interface,
         auto bound_input = algo_input_->bindParams(params);
         const auto& bound = bound_input ? *bound_input : *algo_input_;
         auto output = algo_func_->execFunc(bound, graph_interface);
-        return stream_from_context(std::move(output));
+        return std::move(output.chunks());
       });
 }
 

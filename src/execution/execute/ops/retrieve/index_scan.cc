@@ -28,21 +28,12 @@ class IndexScanOpr final : public IOperator {
                function::NeugCallFunction* function)
       : input{std::move(input)}, function{function} {}
 
-  Stream<ContextChunk> Eval(IStorageInterface& graph, const ParamsMap& params,
-                            OperatorInputs inputs, OprTimer* timer) override {
-    auto upstream = inputs.TakeSingle();
-    return defer_stream(
-        std::move(upstream),
-        [this, &graph, params, timer](
-            Stream<ContextChunk>&& upstream) mutable -> Stream<ContextChunk> {
+  Kernel CreateState(IStorageInterface& graph, const ParamsMap& params,
+                     OprTimer* timer) override {
+    return make_context_kernel(
+        [this, &graph, params, timer](Context ctx) mutable -> result<Context> {
           // Legacy extension ABI: Context conversion is confined to this
           // boundary.
-
-          auto ctx_result = materialize(std::move(upstream));
-          if (!ctx_result) {
-            return error_stream<ContextChunk>(ctx_result.error());
-          }
-          auto ctx = std::move(*ctx_result);
 
           if (input == nullptr) {
             THROW_RUNTIME_ERROR("IndexScanOpr: index scan input is null");
@@ -64,7 +55,7 @@ class IndexScanOpr final : public IOperator {
                 "context");
           }
           auto output = function->execFunc(*context_bound_input, graph);
-          return stream_from_context(std::move(output));
+          return output;
         });
   }
 

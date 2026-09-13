@@ -36,27 +36,12 @@ class ProcedureCallOpr : public IOperator {
 
   std::string get_operator_name() const override { return "ProcedureCallOpr"; }
 
-  Stream<ContextChunk> Eval(IStorageInterface& graph, const ParamsMap& params,
-                            OperatorInputs inputs,
-                            neug::execution::OprTimer* timer) override {
-    auto input = inputs.TakeSingle();
-    return defer_stream(
-        std::move(input),
-        [this, &graph, params,
-         timer](Stream<ContextChunk>&& input) mutable -> Stream<ContextChunk> {
+  Kernel CreateState(IStorageInterface& graph, const ParamsMap& params,
+                     neug::execution::OprTimer* timer) override {
+    return make_once_kernel(
+        [this, &graph, params, timer]() mutable -> KernelResult {
           // Legacy extension ABI: Context conversion is confined to this
           // boundary.
-
-          while (true) {
-            auto next_result = input.Next();
-            if (!next_result) {
-              return error_stream<ContextChunk>(next_result.error());
-            }
-            auto next = std::move(*next_result);
-            if (!next) {
-              break;
-            }
-          }
 
           (void) timer;
           if (callFunction_ == nullptr) {
@@ -75,10 +60,10 @@ class ProcedureCallOpr : public IOperator {
           auto output_result = neug::result<neug::execution::Context>(
               callFunction_->execFunc(bound, graph));
           if (!output_result) {
-            return error_stream<ContextChunk>(output_result.error());
+            return tl::unexpected(output_result.error());
           }
           auto output = std::move(*output_result);
-          return stream_from_context(std::move(output));
+          return std::move(output.chunks());
         });
   }
 };

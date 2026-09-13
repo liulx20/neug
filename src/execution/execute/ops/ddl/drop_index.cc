@@ -30,40 +30,29 @@ class DropIndexOpr : public IOperator {
 
   std::string get_operator_name() const override { return "DropIndexOpr"; }
 
-  Stream<ContextChunk> Eval(IStorageInterface& graph, const ParamsMap& params,
-                            OperatorInputs inputs, OprTimer* timer) override {
-    auto input = inputs.TakeSingle();
-    return defer_stream(
-        std::move(input),
-        [this, &graph, params,
-         timer](Stream<ContextChunk>&& input) mutable -> Stream<ContextChunk> {
-          auto metadata = input.metadata();
-          auto before = collect_batches(std::move(input));
-          if (!before) {
-            return error_stream<ContextChunk>(before.error());
-          }
-          input = stream_from_batches(std::move(*before), std::move(metadata));
+  Kernel CreateState(IStorageInterface& graph, const ParamsMap& params,
+                     OprTimer* timer) override {
+    return make_batch_kernel([this, &graph, params,
+                              timer](ChunkBatch input) mutable -> KernelResult {
+      auto* indexInterface = dynamic_cast<StorageIndexDDLInterface*>(&graph);
+      if (!indexInterface) {
+        return tl::unexpected(
+            Status(StatusCode::ERR_NOT_SUPPORTED,
+                   "Current storage interface does not support index DDL"));
+      }
 
-          auto* indexInterface =
-              dynamic_cast<StorageIndexDDLInterface*>(&graph);
-          if (!indexInterface) {
-            return error_stream<ContextChunk>(
-                Status(StatusCode::ERR_NOT_SUPPORTED,
-                       "Current storage interface does not support index DDL"));
-          }
-
-          auto status = indexInterface->DropIndex(indexName_);
-          if (!status.ok()) {
-            // The storage layer reports ERR_NOT_FOUND when the target index
-            // does not exist; honor IF EXISTS in that case.
-            if (ignore_conflict_ &&
-                status.error_code() == StatusCode::ERR_NOT_FOUND) {
-              return std::move(input);
-            }
-            return error_stream<ContextChunk>(status);
-          }
+      auto status = indexInterface->DropIndex(indexName_);
+      if (!status.ok()) {
+        // The storage layer reports ERR_NOT_FOUND when the target index
+        // does not exist; honor IF EXISTS in that case.
+        if (ignore_conflict_ &&
+            status.error_code() == StatusCode::ERR_NOT_FOUND) {
           return std::move(input);
-        });
+        }
+        return tl::unexpected(status);
+      }
+      return std::move(input);
+    });
   }
 
  private:
