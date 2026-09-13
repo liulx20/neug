@@ -15,6 +15,7 @@
 
 #include "neug/execution/common/operators/retrieve/join.h"
 
+#include <algorithm>
 #include <atomic>
 #include "neug/common/columns/vertex_columns.h"
 #include "neug/common/types.h"
@@ -175,6 +176,29 @@ struct JoinTable::Impl {
     if (chunks.empty()) {
       return {};
     }
+    auto select = [&](size_t index, const sel_vec_t& rows) {
+      auto selected = *chunks[index];
+      if (outer) {
+        for (auto alias : params.right_columns) {
+          selected.remove(alias);
+        }
+        selected.optional_reshuffle(rows);
+      } else {
+        selected.reshuffle(rows);
+      }
+      return selected;
+    };
+    auto source = refs.empty() ? size_t{0} : refs.front().chunk;
+    if (std::all_of(refs.begin(), refs.end(), [source](const RowRef& ref) {
+          return ref.chunk == source;
+        })) {
+      sel_vec_t rows;
+      rows.reserve(refs.size());
+      for (const auto& ref : refs) {
+        rows.push_back(ref.row);
+      }
+      return select(source, rows);
+    }
     std::vector<sel_vec_t> rows(chunks.size()), positions(chunks.size());
     for (size_t i = 0; i < refs.size(); ++i) {
       rows[refs[i].chunk].push_back(refs[i].row);
@@ -187,15 +211,7 @@ struct JoinTable::Impl {
       if (rows[i].empty() && (!refs.empty() || i != 0)) {
         continue;
       }
-      auto selected = *chunks[i];
-      if (outer) {
-        for (auto alias : params.right_columns) {
-          selected.remove(alias);
-        }
-        selected.optional_reshuffle(rows[i]);
-      } else {
-        selected.reshuffle(rows[i]);
-      }
+      auto selected = select(i, rows[i]);
       for (auto position : positions[i]) {
         order[position] = offset++;
       }

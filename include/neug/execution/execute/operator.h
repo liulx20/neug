@@ -71,6 +71,7 @@ class BuildProbeState {
   struct Batch {
     virtual ~Batch() = default;
   };
+  // A null batch needs no append work (for example, redundant empty input).
   virtual std::shared_ptr<Batch> PartitionBuild(ContextChunk input) const = 0;
   virtual size_t BuildPartitions() const = 0;
   virtual Status BuildPartition(size_t partition, const Batch& batch) = 0;

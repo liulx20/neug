@@ -712,7 +712,14 @@ class BuildPipelineTask final : public PipelineTask {
         continue;
       }
       for (auto* slot : pending_) {
-        if (slot->sequence != lane->sequence || slot->running || !slot->batch) {
+        if (slot->sequence != lane->sequence || slot->running ||
+            !slot->partitioned) {
+          continue;
+        }
+        if (!slot->batch) {
+          ++lane->sequence;
+          --slot->remaining;
+          progress = true;
           continue;
         }
         lane->slot = slot;
@@ -731,6 +738,7 @@ class BuildPipelineTask final : public PipelineTask {
       auto* slot = *std::find_if(slots_.begin(), slots_.end(),
                                  [](Slot* item) { return !item->occupied; });
       slot->occupied = true;
+      slot->partitioned = false;
       slot->sequence = sequence_++;
       slot->remaining = lanes_.size();
       auto chunk = std::move(*input_->output);
@@ -741,10 +749,6 @@ class BuildPipelineTask final : public PipelineTask {
           [this, slot, chunk = std::move(chunk)]() mutable {
             return slot->Measure([&] {
               slot->batch = state_->PartitionBuild(std::move(chunk));
-              if (!slot->batch) {
-                return Status::InternalError(
-                    "Build partition returned no batch");
-              }
               return Status::OK();
             });
           },
@@ -796,6 +800,11 @@ class BuildPipelineTask final : public PipelineTask {
   };
   struct Slot final : Work {
     using Work::Work;
+    void Completed() override {
+      Work::Completed();
+      partitioned = true;
+    }
+    bool partitioned = false;
     std::shared_ptr<BuildProbeState::Batch> batch;
     size_t sequence = 0;
     size_t remaining = 0;

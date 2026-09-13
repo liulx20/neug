@@ -16,6 +16,7 @@
 #include "neug/execution/execute/ops/retrieve/join.h"
 
 #include <glog/logging.h>
+#include <atomic>
 
 #include "neug/common/types/graph_types.h"
 #include "neug/execution/common/context.h"
@@ -46,6 +47,11 @@ class JoinState final : public BuildProbeState {
   };
   std::shared_ptr<BuildProbeState::Batch> PartitionBuild(
       ContextChunk input) const override {
+    // Retain one typed empty input if necessary, but no later empty batches.
+    bool seen = seen_input_.exchange(true);
+    if (input.row_num() == 0 && seen) {
+      return nullptr;
+    }
     auto batch = std::make_shared<Batch>();
     batch->data = table_.Partition(std::move(input));
     return batch;
@@ -62,6 +68,7 @@ class JoinState final : public BuildProbeState {
   }
 
  private:
+  mutable std::atomic<bool> seen_input_{false};
   JoinTable table_;
   size_t partitions_;
 };

@@ -20,6 +20,11 @@ def main():
     parser.add_argument("--repeats", type=int, default=7)
     parser.add_argument("--workers", type=int, nargs="+", default=[1, 2, 4])
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument(
+        "--join-shapes",
+        action="store_true",
+        help="include large and skewed join inputs with plan evidence",
+    )
     args = parser.parse_args()
     if args.rows < 17 or args.repeats < 1 or min(args.workers) < 1:
         parser.error("rows >= 17, repeats >= 1 and positive workers are required")
@@ -33,6 +38,17 @@ def main():
         "group_sum": "MATCH (n:parallel_item) RETURN n.grp, sum(n.id)",
         "limit_10": "MATCH (n:parallel_item) RETURN n.id LIMIT 10",
     }
+    if args.join_shapes:
+        queries.update(
+            {
+                "hash_join_large_build": "MATCH (a:parallel_item), (b:parallel_item) "
+                "WHERE a.id = b.shifted RETURN a.id, b.id",
+                "hash_join_skewed_build": "MATCH (a:parallel_item), (b:parallel_item) "
+                "WHERE a.id = b.grp RETURN a.id, b.id",
+                "hash_join_single_hot_key": "MATCH (a:parallel_item), (b:parallel_item) "
+                "WHERE a.id = b.hot RETURN a.id, b.id",
+            }
+        )
     report = {
         "platform": platform.platform(),
         "logical_cpus": os.cpu_count(),
@@ -44,14 +60,21 @@ def main():
     }
     with tempfile.TemporaryDirectory() as directory:
         csv = Path(directory) / "input.csv"
-        csv.write_text(
-            "id|grp\n" + "".join(f"{i}|{i % 17}\n" for i in range(args.rows))
-        )
+        if args.join_shapes:
+            csv.write_text(
+                "id|grp|shifted|hot\n"
+                + "".join(f"{i}|{i % 17}|{i + 1}|0\n" for i in range(args.rows))
+            )
+        else:
+            csv.write_text(
+                "id|grp\n" + "".join(f"{i}|{i % 17}\n" for i in range(args.rows))
+            )
         db = Database("", max_thread_num=max(args.workers), checkpoint_on_close=False)
         conn = db.connect()
         try:
+            extra = ", shifted INT64, hot INT64" if args.join_shapes else ""
             conn.execute(
-                "CREATE NODE TABLE parallel_item(id INT64, grp INT64, PRIMARY KEY(id))"
+                f"CREATE NODE TABLE parallel_item(id INT64, grp INT64{extra}, PRIMARY KEY(id))"
             )
             conn.execute(f'COPY parallel_item FROM "{csv}"')
             for name, query in queries.items():
@@ -83,6 +106,23 @@ def main():
                         for workers, values in timings.items()
                     },
                 }
+                if args.join_shapes and name.startswith("hash_join"):
+                    profiled = conn.execute(
+                        "PROFILE " + query, num_threads=max(args.workers)
+                    )
+                    report["queries"][name]["profile"] = profiled.get_profile_metrics()
+                    metrics = report["queries"][name]["profile"]
+                    joins = [
+                        op
+                        for op in metrics["operators"]
+                        if op["operator_name"] == "JoinOpr"
+                    ]
+                    assert len(joins) == 1, (name, metrics)
+                    assert joins[0]["output_rows"] == len(rows), (name, metrics)
+                    by_id = {op["operator_id"]: op for op in metrics["operators"]}
+                    build_rows = by_id[joins[0]["child_ids"][1]]["output_rows"]
+                    assert build_rows == (17 if name == "hash_join" else args.rows)
+                    report["queries"][name]["profile_build_rows"] = build_rows
                 print(
                     name,
                     {w: round(statistics.median(v), 3) for w, v in timings.items()},

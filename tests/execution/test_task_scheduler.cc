@@ -344,6 +344,14 @@ TEST(TaskSchedulerTest, JoinStateReceivesBuildDataAndReusesPublishedTable) {
   auto built = builder.Build(graph.schema(), meta, plan, 0);
   ASSERT_TRUE(built);
   auto state = built->first->CreateBuildState(2);
+  auto empty = MakeChunk(0);
+  empty.reshuffle({});
+  auto metadata = state->PartitionBuild(empty);
+  ASSERT_TRUE(metadata);
+  EXPECT_FALSE(state->PartitionBuild(empty));
+  for (size_t i = 0; i < state->BuildPartitions(); ++i) {
+    ASSERT_TRUE(state->BuildPartition(i, *metadata));
+  }
   auto input = MakeChunk(1).union_with(MakeChunk(1));
   auto batch = state->PartitionBuild(std::move(input));
   ASSERT_TRUE(batch);
@@ -624,6 +632,9 @@ class ObservedBuildState final : public BuildProbeState {
   std::shared_ptr<Batch> PartitionBuild(ContextChunk chunk) const override {
     auto input = std::make_shared<Input>();
     input->value = chunk.get(0)->get_elem(0).GetValue<int64_t>();
+    if (input->value == 2) {
+      return nullptr;
+    }
     std::unique_lock<std::mutex> lock(observation_.mutex);
     if (input->value == 0) {
       // The second partition task must run while the first is still active.
@@ -657,8 +668,8 @@ class ObservedBuildState final : public BuildProbeState {
   }
   Status FinalizeBuild() override {
     observation_.finalized = true;
-    EXPECT_EQ(observation_.built[0].size(), 20);
-    EXPECT_EQ(observation_.built[1].size(), 20);
+    EXPECT_EQ(observation_.built[0].size(), 19);
+    EXPECT_EQ(observation_.built[1].size(), 19);
     return Status::OK();
   }
   result<ContextChunk> ProbeChunk(ContextChunk chunk) const override {
@@ -736,9 +747,9 @@ TEST(TaskSchedulerTest, IncrementalBuildBoundsPendingInputAndDrainsFailure) {
       EXPECT_TRUE(observation.finalized);
       EXPECT_TRUE(observation.probed);
       for (const auto& rows : observation.built) {
-        ASSERT_EQ(rows.size(), 20);
+        ASSERT_EQ(rows.size(), 19);
         for (size_t i = 0; i < rows.size(); ++i) {
-          EXPECT_EQ(rows[i], i);
+          EXPECT_EQ(rows[i], i < 2 ? i : i + 1);
         }
       }
     }

@@ -205,3 +205,66 @@ running concurrently. The pending-build limit counts batches, not bytes; all
 build chunks and hash-table entries remain resident, with no spill support.
 
 Raw samples: [incremental Join, 1m rows](benchmarks/task_queue_incremental_join_1m.json).
+
+## Empty-batch and single-chunk gather follow-up
+
+Redundant empty Join batches now skip per-bucket append jobs, while the scheduler
+still advances bucket sequence numbers. Partition jobs still run; one typed
+empty input is retained when needed for metadata. When every match references
+the same build chunk, gathering selects its rows directly without per-chunk
+buckets or a restoring permutation.
+
+With the original two-column dataset and unchanged queries (1m rows, five
+repetitions), Join medians were:
+
+| Version | 1 worker | 2 workers | 4 workers |
+| --- | ---: | ---: | ---: |
+| Incremental build before these changes | 217.172 ms | 138.743 ms | 105.898 ms |
+| Empty-batch/gather changes | 205.337 ms | 131.970 ms | 98.876 ms |
+
+At four workers this run is about 6.6% faster than the preceding incremental
+build, and close to the earlier collected-build measurement of 97.697 ms. These
+are local observations rather than guaranteed speedups. The two optimizations
+were measured together; their individual contributions were not isolated.
+All original query checksums and row counts match the preceding baseline.
+
+Raw samples: [original dataset](benchmarks/task_queue_join_fast_original_1m.json).
+
+### Large and skewed build inputs
+
+Pass `--join-shapes` to include three additional joins. This adds stored `shifted`
+and `hot` columns to the generated dataset; existing queries remain unchanged.
+`shifted = id + 1` supplies mostly unique build keys, `grp = id % 17` supplies
+17 repeated keys, and `hot = 0` supplies a single hotspot. Every new query produces
+at most one output row per build row, avoiding quadratic result sizes.
+
+```sh
+PYTHONPATH=tools/python_bind python tools/benchmarks/task_queue.py --rows 1000000 --repeats 5 --join-shapes --output /tmp/task_queue_join_shapes.json
+```
+
+| Join shape | Build rows | 1 worker | 2 workers | 4 workers |
+| --- | ---: | ---: | ---: | ---: |
+| Mostly unique keys | 1,000,000 | 602.766 ms | 377.090 ms | 250.313 ms |
+| 17 repeated keys | 1,000,000 | 317.945 ms | 244.110 ms | 209.894 ms |
+| One repeated key | 1,000,000 | 323.657 ms | 250.842 ms | 207.608 ms |
+
+The mostly unique case scales by about 2.4x from one to four workers. The two
+skewed cases scale less: keys concentrate build work in fewer buckets, and
+matching probe rows can produce large output batches. These measurements compare
+worker counts in the new implementation, not against the collected-build version.
+Memory peaks, byte budgets, and concurrent-query throughput were not measured.
+
+Each worker count checks result equality before timing. After timed runs, a
+separate PROFILE execution records operator metrics and validates right-side
+build cardinality and Join output cardinality. PROFILE is outside all reported
+timings; summed worker durations are not query wall time. The report contains
+this plan evidence along with the timings.
+
+During workload validation, inline arithmetic predicates (`a.id + 1 = b.id`
+and `a.id = b.id % 1`) compiled into a Cartesian Join followed by a filter. At
+1,000 rows, PROFILE showed 1,000,000 Join rows before filtering. These are not
+valid hash-join scaling workloads for this compiler, so the benchmark uses
+precomputed columns instead. The compiler itself was not changed here.
+
+Raw samples and PROFILE evidence:
+[join shapes](benchmarks/task_queue_join_fast_paths_1m.json).

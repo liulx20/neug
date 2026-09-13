@@ -158,7 +158,10 @@ Input pipeline -> shared input buffer
 Right-side chunks enter at most `worker_count` pending build slots. Workers
 partition different chunks concurrently, encoding generic keys once. For each
 hash bucket, the coordinator submits at most one append task at a time, in input
-batch order. Different buckets advance independently. A slot is released only
+batch order. A null partition result skips append jobs while advancing every
+bucket's input sequence. Join uses this for redundant empty chunks; it retains a
+first typed empty chunk when necessary for output metadata. Different buckets
+advance independently. A slot is released only
 after all buckets have appended it; when slots fill, the build task stops asking
 for upstream input. Upstream sources retain their own bounded read-ahead.
 This limits pending batches, not bytes or retained hash-table data.
@@ -167,8 +170,10 @@ Tables retain immutable original chunks and store `(chunk, row)` references.
 There is no concatenation of the entire right input before building. Finalization
 runs only after upstream EOF and every append completes; it publishes the tables
 without merging them. Probe workers hash each key to its bucket and gather only
-matched build rows, restoring left-input and duplicate-match order. Selected
-output rows may still be copied and merged. Partition tasks and append tasks use
+matched build rows, restoring left-input and duplicate-match order. When all
+matches come from one chunk, gathering directly selects rows from that chunk
+without grouping by chunk or constructing a restoring permutation. Selected
+output rows spanning multiple chunks may still be copied and merged. Partition tasks and append tasks use
 the same executor pool, with no worker waiting for another task inside a kernel.
 Skewed keys can still concentrate appends in one bucket. With one worker the same
 protocol executes serially.
