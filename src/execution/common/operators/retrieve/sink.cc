@@ -23,6 +23,7 @@
 #include "neug/common/columns/value_columns.h"
 #include "neug/common/columns/vertex_columns.h"
 #include "neug/common/types/value.h"
+#include "neug/execution/common/batch_accumulator.h"
 #include "neug/execution/common/context.h"
 
 #include "neug/storages/graph/graph_interface.h"
@@ -552,22 +553,19 @@ void Sink::sink_results(const Context& ctx, const StorageReadInterface& graph,
 
   response->mutable_arrays()->Reserve(ctx.tag_ids.size());
   for (size_t i : ctx.tag_ids) {
-    // Merge column across all chunks via union_col.
-    std::shared_ptr<IContextColumn> merged;
+    ColumnAccumulator columns;
     for (size_t c = 0; c < ctx.chunk_num(); ++c) {
       auto col = ctx.chunk(c).get(i);
-      if (col == nullptr)
+      if (col == nullptr) {
         continue;
-      if (!merged) {
-        merged = col;
-      } else {
-        merged = merged->union_col(col);
       }
+      columns.Add(std::move(col));
     }
-    if (merged == nullptr) {
+    auto merged = columns.Finish();
+    if (!merged) {
       continue;
     }
-    add_column(merged, graph, response->add_arrays());
+    add_column(*merged, graph, response->add_arrays());
   }
 }
 

@@ -14,6 +14,7 @@
  */
 
 #include "neug/execution/common/context.h"
+#include "neug/execution/common/batch_accumulator.h"
 
 #include <glog/logging.h>
 
@@ -58,12 +59,13 @@ void Context::flatten() {
   if (chunks_.size() <= 1) {
     return;
   }
-  ContextChunk merged = std::move(chunks_[0]);
-  for (size_t i = 1; i < chunks_.size(); ++i) {
-    merged = merged.union_with(chunks_[i]);
+  ChunkAccumulator chunks;
+  for (auto& chunk : chunks_) {
+    chunks.Add(std::move(chunk));
   }
+  auto merged = chunks.Finish();
   chunks_.clear();
-  chunks_.push_back(std::move(merged));
+  chunks_.push_back(std::move(*merged));
 }
 
 void Context::ensure_single_chunk(const char* caller) {

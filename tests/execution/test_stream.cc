@@ -36,6 +36,76 @@ DataChunk chunk(int64_t value, int alias = 0) {
   return out;
 }
 
+TEST(QueryResultTest, BatchAccumulatorPreservesOrderAndBoundsCopies) {
+  struct Merge {
+    size_t* copied;
+    std::vector<int> operator()(const std::vector<int>& left,
+                                const std::vector<int>& right) const {
+      *copied += left.size() + right.size();
+      auto out = left;
+      out.insert(out.end(), right.begin(), right.end());
+      return out;
+    }
+  };
+  size_t copied = 0;
+  OrderedBatchAccumulator<std::vector<int>, Merge> accumulator(Merge{&copied});
+  std::vector<int> expected;
+  // Non-power-of-two count and uneven batches exercise carry and tail merges.
+  for (size_t batch = 0; batch < 1025; ++batch) {
+    std::vector<int> input;
+    const size_t rows = batch == 0 ? 4096 : batch % 7;
+    for (size_t row = 0; row < rows; ++row) {
+      input.push_back(expected.size());
+      expected.push_back(expected.size());
+    }
+    accumulator.Add(std::move(input));
+  }
+  auto output = accumulator.Finish();
+  ASSERT_TRUE(output);
+  EXPECT_EQ(*output, expected);
+  EXPECT_LE(copied, expected.size() * 22);
+  EXPECT_FALSE(accumulator.Finish());
+  accumulator.Add({42});
+  EXPECT_EQ(*accumulator.Finish(), (std::vector<int>{42}));
+}
+
+TEST(QueryResultTest, BalancedChunksPreserveNullsSparseAliasesAndHead) {
+  ChunkAccumulator accumulator;
+  size_t row = 0;
+  std::vector<std::optional<int64_t>> expected;
+  for (size_t batch = 0; batch < 37; ++batch) {
+    ValueColumnBuilder<int64_t> builder;
+    for (size_t i = 0; i < batch % 5; ++i, ++row) {
+      if (row % 7 == 0) {
+        builder.push_back_null();
+        expected.push_back(std::nullopt);
+      } else {
+        builder.push_back_opt(row);
+        expected.push_back(row);
+      }
+    }
+    ContextChunk input;
+    input.set(3, builder.finish());
+    accumulator.Add(std::move(input));
+  }
+  auto output = accumulator.Finish();
+  ASSERT_TRUE(output);
+  EXPECT_EQ(output->head(), output->get(3));
+  ASSERT_EQ(output->row_num(), expected.size());
+  for (size_t i = 0; i < expected.size(); ++i) {
+    auto value = output->get(3)->get_elem(i);
+    EXPECT_EQ(value.IsNull(), !expected[i]);
+    if (expected[i]) {
+      EXPECT_EQ(value.GetValue<int64_t>(), *expected[i]);
+    }
+  }
+  ContextChunk single;
+  single.set(3, chunk(9).get(0));
+  auto identity = single.head();
+  accumulator.Add(std::move(single));
+  EXPECT_EQ(accumulator.Finish()->head(), identity);
+}
+
 TEST(QueryResultTest, NestedColumnsMergeAcrossBatchesAndSerialize) {
   std::function<void(const Value&, const Value&)> expect_value;
   expect_value = [&](const Value& actual, const Value& expected) {
@@ -65,7 +135,7 @@ TEST(QueryResultTest, NestedColumnsMergeAcrossBatchesAndSerialize) {
   const auto nested_type = DataType::Array(array_type, 2);
   const auto pair =
       Value::ARRAY(array_type, {Value::INT32(1), Value(DataType::INT32)});
-  for (const auto& values : std::vector<std::vector<Value>>{
+  for (const auto& pattern : std::vector<std::vector<Value>>{
            {Value::LIST(DataType::INT32,
                         {Value::INT32(1), Value(DataType::INT32)}),
             Value(list_type), Value::LIST(DataType::INT32, {}),
@@ -73,6 +143,10 @@ TEST(QueryResultTest, NestedColumnsMergeAcrossBatchesAndSerialize) {
            {pair, Value(array_type), pair, Value(array_type)},
            {Value::ARRAY(nested_type, {pair, pair}), Value(nested_type),
             Value::ARRAY(nested_type, {pair, pair}), Value(nested_type)}}) {
+    std::vector<Value> values;
+    for (size_t repeat = 0; repeat < 17; ++repeat) {
+      values.insert(values.end(), pattern.begin(), pattern.end());
+    }
     std::vector<ContextChunk> batches;
     for (size_t begin = 0; begin < values.size(); begin += 2) {
       auto builder = ColumnsUtils::create_builder(values.front().type());
@@ -104,6 +178,13 @@ TEST(QueryResultTest, NestedColumnsMergeAcrossBatchesAndSerialize) {
     Sink::sink_results(*result, storage, &response);
     EXPECT_EQ(response.row_count(), values.size());
     EXPECT_EQ(response.arrays_size(), 1);
+    Context reference;
+    reference.tag_ids = {0};
+    reference.append_chunk(std::move(*merged));
+    QueryResponse expected_response;
+    Sink::sink_results(reference, storage, &expected_response);
+    EXPECT_EQ(response.SerializeAsString(),
+              expected_response.SerializeAsString());
   }
 }
 

@@ -45,7 +45,7 @@ Median milliseconds per `execute()` call:
 Raw data: [100k rows](benchmarks/task_queue_100k.json),
 [1m rows](benchmarks/task_queue_1m.json).
 
-## Interpretation and next work
+## Original baseline interpretation and next work
 
 At 100k rows, filtering/projection and the non-primary-key equality Join benefit
 from more workers. At 1m rows the gains shrink sharply; the global aggregate
@@ -68,4 +68,50 @@ merge paths before attributing the slowdown to task scheduling.
 Next priorities are to eliminate repeated full-prefix copying, then replace
 wave-wide publication with bounded incremental completion. Parallel aggregation,
 shared pools/admission control and byte-based memory budgets remain separate
-work. No wave scheduling or column merging behavior is changed by this commit.
+work. The original baseline commit changed no wave scheduling or column merging
+behavior; the follow-up below addresses the latter.
+
+## Follow-up: balanced batch merging
+
+On the same machine and build settings, the same benchmark script was rerun
+after replacing prefix merges with ordered, balanced batch accumulation.
+The original implementation is commit `7a04177f`. Repeats and query workloads
+are unchanged (7 at 100k rows, 5 at 1m rows); no builds or tests ran concurrently.
+Every query's result row count and SHA-256 checksum match the original baseline
+as well as the other worker counts. These local timings are not a cross-machine
+performance guarantee.
+
+Median milliseconds per call:
+
+| Rows | Query | Before: 1 worker | After: 1 worker | Before: 4 workers | After: 4 workers | 4-worker improvement |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| 100k | filter_project | 12.498 | 8.083 | 8.066 | 3.604 | 2.24x |
+| 100k | hash_join | 34.194 | 18.122 | 24.694 | 8.270 | 2.99x |
+| 100k | group_sum | 24.608 | 7.817 | 22.648 | 5.362 | 4.22x |
+| 100k | limit_10 | 0.205 | 0.201 | 0.347 | 0.326 | 1.06x |
+| 1m | filter_project | 752.238 | 85.342 | 699.892 | 40.881 | 17.12x |
+| 1m | hash_join | 2272.726 | 203.067 | 2164.780 | 101.946 | 21.23x |
+| 1m | group_sum | 2132.984 | 99.495 | 2153.476 | 72.272 | 29.80x |
+| 1m | limit_10 | 0.191 | 0.194 | 0.313 | 0.312 | 1.01x |
+
+Raw follow-up data: [100k rows](benchmarks/task_queue_balanced_100k.json),
+[1m rows](benchmarks/task_queue_balanced_1m.json).
+
+The changes cover result-column concatenation, global input accumulation,
+Join build-input merging and Context flattening. They preserve concatenation
+order and use the existing column merge implementations. Copy work changes from
+repeated full-prefix copying to O(N log K) for N rows and K batches; the required
+materialized result still occupies memory. This is not a streaming aggregate
+or spill implementation.
+
+At 1m rows, the new 4-worker filtering/projection and Join runs are about twice
+as fast as the new 1-worker runs. Global aggregation gains less from additional
+workers. Short LIMIT latency remains approximately unchanged by the merge fix;
+its parallel dispatch/read-ahead overhead and wave-wide publication still need
+separate work.
+
+Validation includes 157 C++ and 368 Python tests, including an uneven-batch copy
+budget, row order, empty batches, nulls, sparse aliases, head identity and nested
+column serialization compared with a sequential reference. The Python suite
+covers per-query workers, queries, import/export, transactions and local
+connections; HTTP-server tests are excluded because that build option is off.

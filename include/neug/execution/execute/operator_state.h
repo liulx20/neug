@@ -17,6 +17,7 @@
 #include <functional>
 #include <memory>
 #include <optional>
+#include "neug/execution/common/batch_accumulator.h"
 #include "neug/execution/common/context.h"
 
 namespace neug::execution {
@@ -64,22 +65,18 @@ Kernel make_global_kernel(F function) {
    public:
     explicit State(F function) : function_(std::move(function)) {}
     KernelResult Process(ContextChunk chunk) override {
-      if (input_) {
-        *input_ = input_->union_with(chunk);
-      } else {
-        input_ = std::move(chunk);
-      }
+      input_.Add(std::move(chunk));
       return ChunkBatch{};
     }
     KernelResult Finalize() override {
-      GS_AUTO(output, function_(input_ ? std::move(*input_) : ContextChunk{}));
-      input_.reset();
+      auto input = input_.Finish();
+      GS_AUTO(output, function_(input ? std::move(*input) : ContextChunk{}));
       return one_chunk(std::move(output));
     }
 
    private:
     F function_;
-    std::optional<ContextChunk> input_;
+    ChunkAccumulator input_;
   };
   return std::make_unique<State>(std::move(function));
 }

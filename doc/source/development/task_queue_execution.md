@@ -120,6 +120,21 @@ pipeline. This increases storage API call frequency compared with passing one
 supplier for the entire input, while preserving bounded input buffering and the
 transaction's existing commit/rollback boundary. All writes still use one worker.
 
+## Batch merging
+
+Global input kernels, Join build preparation, Context flattening and result
+column serialization use `OrderedBatchAccumulator`. Level i retains a consecutive
+group of 2^i input batches. Adding a batch merges occupied levels from low to
+high, always keeping older rows on the left. Completion combines the occupied
+levels from high to low. Empty typed batches remain part of this sequence.
+
+This replaces repeated full-prefix copying with O(N log K) row-copy work for
+N rows in K batches (assuming linear-cost column concatenation). Single-batch
+input keeps column ownership unchanged. Row order, nulls, sparse aliases and
+head alignment are preserved for batches sharing the same schema. The operation
+still materializes all rows where required; it is not a memory budget, spill
+implementation or parallel aggregate. See the baseline's before/after results.
+
 ## Ordinary Join graph
 
 The builder schedules the right build before the left probe pipeline:

@@ -642,11 +642,12 @@ class BuildPipelineTask final : public PipelineTask {
         return Timed([&] {
           state_ = factory_();
           factory_ = {};
-          std::optional<ContextChunk> input;
+          ChunkAccumulator chunks;
           for (auto& chunk : input_->chunks) {
-            input = input ? input->union_with(chunk) : std::move(chunk);
+            chunks.Add(std::move(chunk));
           }
           input_->chunks.clear();
+          auto input = chunks.Finish();
           return state_->PrepareBuild(input ? std::move(*input)
                                             : ContextChunk{});
         });
