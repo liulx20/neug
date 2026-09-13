@@ -155,7 +155,12 @@ class Connection(object):
         self._py_connection.rollback()
 
     def execute(
-        self, query: str, access_mode="", parameters: Optional[Dict[str, Any]] = None
+        self,
+        query: str,
+        access_mode="",
+        parameters: Optional[Dict[str, Any]] = None,
+        *,
+        num_threads: int = 0,
     ) -> QueryResult:
         """
         Execute a cypher query on the database. User could specify multiple queries in a single string,
@@ -218,6 +223,11 @@ class Connection(object):
             The parameters to be used in the query. The parameters should be a dictionary, where the keys are the
             parameter names, and the values are the parameter values. If no parameters are needed, it can be set to None.
 
+        num_threads : int
+            Query worker count, capped by database max_thread_num. Zero uses
+            max_thread_num for embedded AP execution and one for TP execution.
+            Writes always use one worker. This setting applies to this call only.
+
         Returns
         -------
         query_result : QueryResult
@@ -242,8 +252,16 @@ class Connection(object):
                 f"Invalid access_mode: {access_mode}. Supported access modes are "
                 f"{valid_access_modes}."
             )
+        if (
+            isinstance(num_threads, bool)
+            or not isinstance(num_threads, int)
+            or num_threads < 0
+        ):
+            raise ValueError("num_threads must be a non-negative integer")
         ret = QueryResult(
-            self._py_connection.execute(query, access_mode, parameters or {})
+            self._py_connection.execute(
+                query, access_mode, parameters or {}, num_threads
+            )
         )
         status_code = ret._result.status_code()
         try:

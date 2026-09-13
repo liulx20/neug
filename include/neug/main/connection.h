@@ -122,6 +122,9 @@ class NEUG_API Connection {
    * }
    * @endcode
    *
+   * @param num_threads Query worker count, capped by database max_thread_num.
+   * Zero uses the configured AP capacity or one worker for TP execution.
+   * Writable storage always executes with one worker.
    * @param query_string The Cypher query to execute
    * @param access_mode Query access mode:
    *        - `"read"` or `"r"`: Read-only operations
@@ -150,7 +153,8 @@ class NEUG_API Connection {
   result<QueryResult> Query(const std::string& query_string,
                             const std::string& access_mode = "",
                             const rapidjson::Value& parameters =
-                                rapidjson::Value{rapidjson::kObjectType});
+                                rapidjson::Value{rapidjson::kObjectType},
+                            int32_t num_threads = 0);
 
   /**
    * @brief Begin a Connection-owned embedded AP explicit transaction.

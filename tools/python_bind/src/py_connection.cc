@@ -48,6 +48,7 @@ void PyConnection::initialize(pybind11::handle& m) {
       .def("execute", &PyConnection::execute, pybind11::arg("query_string"),
            pybind11::arg("access_mode") = "",
            pybind11::arg("parameters") = pybind11::dict(),
+           pybind11::arg("num_threads") = 0,
            "Execute a query_string on the database. Which is passed to the "
            "query "
            "processor.\n\n"
@@ -115,7 +116,7 @@ bool PyConnection::has_active_transaction() const {
 
 std::unique_ptr<PyQueryResult> PyConnection::execute(
     const std::string& query_string, const std::string& access_mode,
-    const pybind11::dict& parameters) {
+    const pybind11::dict& parameters, int32_t num_threads) {
   rapidjson::Document params_json(rapidjson::kObjectType);
   for (auto item : parameters) {
     std::string key = pybind11::cast<std::string>(item.first);
@@ -125,7 +126,8 @@ std::unique_ptr<PyQueryResult> PyConnection::execute(
   }
   // Python has always forwarded an empty access mode, explicitly selecting
   // query-text inference instead of depending on the C++ API's default.
-  auto query_result = conn_->Query(query_string, access_mode, params_json);
+  auto query_result =
+      conn_->Query(query_string, access_mode, params_json, num_threads);
   if (!query_result) {
     return std::make_unique<PyQueryResult>(query_result.error());
   }

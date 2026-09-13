@@ -92,7 +92,7 @@ Status executePreparedPipeline(execution::CacheValue& prepared_query,
                                ExplainMode explain_mode,
                                const execution::ParamsMap& parameters,
                                IStorageInterface& storage,
-                               neug::QueryResponse& response) {
+                               neug::QueryResponse& response, size_t workers) {
   response.mutable_schema()->CopyFrom(prepared_query.result_schema);
 
   if (explain_mode == ExplainMode::kExplain) {
@@ -114,8 +114,8 @@ Status executePreparedPipeline(execution::CacheValue& prepared_query,
     timer = std::make_unique<execution::OprTimer>();
   }
 
-  auto context = prepared_query.pipeline.Execute(storage, execution::Context(),
-                                                 parameters, timer.get());
+  auto context = execution::materialize(prepared_query.pipeline.ExecuteReader(
+      storage, execution::Context(), parameters, timer.get(), workers));
   if (!context) {
     return context.error();
   }
@@ -436,8 +436,16 @@ Status ExecutionSlot::executePreparedQuery(
   if (NEUG_UNLIKELY(!parsed_parameters)) {
     return parsed_parameters.error();
   }
+  const auto requested =
+      query.num_threads == 0
+          ? (execution_strategy_ == QueryExecutionStrategy::kDirect
+                 ? db_config_.max_thread_num
+                 : 1)
+          : query.num_threads;
+  const auto workers = std::min(requested, db_config_.max_thread_num);
   return executePreparedPipeline(prepared_query, query.analysis.explain_mode,
-                                 parsed_parameters.value(), storage, response);
+                                 parsed_parameters.value(), storage, response,
+                                 workers);
 }
 
 result<QueryResult> ExecutionSlot::ExecuteQueryInTransaction(

@@ -98,7 +98,8 @@ class Database(object):
         max_thread_num : int
             Database query capacity; 0 selects hardware concurrency (fallback 1), while higher inputs warn and clamp to it.
 
-            Embedded (AP) queries are currently single-threaded; using this setting for intra-query parallelism is future work.
+            Embedded (AP) read queries use this many execution workers by default.
+            execute(num_threads=...) overrides the count per query. Writes use one worker.
 
             In TP mode, it sizes the slot pool and caps service threads. Queries run concurrently; each uses one slot/thread.
         checkpoint_on_close : bool

@@ -14,13 +14,26 @@ other commands. `Execute` materializes that reader for existing result consumers
 Every execution uses the same pipeline builder, dependency graph and task runner.
 There is no separate scheduled API or per-operator admission switch.
 
-The default worker count is one. Read-only executions may request more workers;
+The low-level reader defaults to one worker. The normal AP query entry point
+uses database `max_thread_num` by default; TP defaults to one execution worker
+per query. Both accept a per-query override capped by database capacity;
 writable storage is constrained to one worker even when a higher count is
 requested, preserving transaction sequencing. This enables worker execution of
 writes without introducing concurrent mutation within one transaction. Keep the
 plan, storage and optional profiling timer alive until the reader is consumed or
 destroyed. The worker pool is joined before the completed execution returns to
-its transaction owner. There is no Python/SQL worker-count switch yet.
+its transaction owner. Python callers can set the count without changing a
+cached plan or subsequent calls:
+
+```python
+conn.execute("MATCH (n) RETURN n", num_threads=4)
+```
+
+Zero selects the execution-mode default, negative values are rejected, and writes
+remain serial. Explicit transactions use the same setting (a writable transaction
+still uses one worker even for a read statement). The C++ `Connection::Query`
+accepts `num_threads` as its final argument. No SQL `SET` syntax is introduced.
+See [the latency baseline](task_queue_baseline.md) for measurements and limitations.
 
 ## Plan, state and scheduling
 

@@ -137,12 +137,17 @@ Status Connection::Rollback() {
 
 result<QueryResult> Connection::Query(const std::string& query_string,
                                       const std::string& access_mode,
-                                      const rapidjson::Value& parameters) {
+                                      const rapidjson::Value& parameters,
+                                      int32_t num_threads) {
   VLOG(1) << "Query: " << query_string;
   if (IsClosed()) {
     LOG(ERROR) << "Connection is closed, cannot execute query.";
     RETURN_ERROR(
         Status(StatusCode::ERR_CONNECTION_CLOSED, "Connection is closed."));
+  }
+  if (num_threads < 0) {
+    RETURN_ERROR(Status(StatusCode::ERR_INVALID_ARGUMENT,
+                        "num_threads must be non-negative"));
   }
   if (transaction_context_.IsRollbackOnly()) {
     RETURN_ERROR(
@@ -158,10 +163,11 @@ result<QueryResult> Connection::Query(const std::string& query_string,
       throw;
     }
     return execution_slot_->ExecuteQueryInTransaction(
-        query_string, requested_mode, parameters, /*num_threads=*/0,
+        query_string, requested_mode, parameters, num_threads,
         transaction_context_);
   }
-  return execution_slot_->ExecuteQuery(query_string, access_mode, parameters);
+  return execution_slot_->ExecuteQuery(query_string, access_mode, parameters,
+                                       num_threads);
 }
 
 }  // namespace neug
