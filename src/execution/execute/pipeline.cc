@@ -671,59 +671,147 @@ class ReplayTask final : public PipelineTask {
 class BuildPipelineTask final : public PipelineTask {
  public:
   using Factory = std::function<std::shared_ptr<BuildProbeState>()>;
-  BuildPipelineTask(BufferTask* input, Factory factory, OprTimer* timer)
-      : input_(input), factory_(std::move(factory)), timer_(timer) {
-    gates = {input};
-  }
+  BuildPipelineTask(PipelineTask* input, Factory factory, OprTimer* timer)
+      : input_(input), factory_(std::move(factory)), timer_(timer) {}
   BuildProbeState& state() const { return *state_; }
+
   bool Advance(QueueExecution& execution) override {
-    if (phase_ == Phase::kPrepare) {
-      phase_ = Phase::kBuild;
+    if (!state_) {
       execution.Submit(*this, [this] {
         return Timed([&] {
           state_ = factory_();
           factory_ = {};
-          ChunkAccumulator chunks;
-          for (auto& chunk : input_->chunks) {
-            chunks.Add(std::move(chunk));
-          }
-          input_->chunks.clear();
-          auto input = chunks.Finish();
-          return state_->PrepareBuild(input ? std::move(*input)
-                                            : ContextChunk{});
+          return Status::OK();
         });
       });
-    } else if (phase_ == Phase::kBuild) {
-      phase_ = Phase::kFinalize;
-      times_.resize(state_->BuildPartitions());
-      for (size_t part = 0; part < times_.size(); ++part) {
-        execution.Submit(*this, [this, part] {
-          if (!timer_) {
-            return state_->BuildPartition(part);
-          }
-          TimerUnit clock;
-          clock.start();
-          auto status = state_->BuildPartition(part);
-          times_[part] = clock.elapsed();
-          return status;
-        });
+      return true;
+    }
+    if (slots_.empty()) {
+      for (size_t i = 0; i < execution.workers(); ++i) {
+        slots_.push_back(execution.Add<Slot>(timer_));
       }
-    } else {
-      execution.Submit(*this, [this] {
-        if (timer_) {
-          for (auto elapsed : times_) {
-            timer_->add_elapsed(elapsed);
-          }
+      for (size_t i = 0; i < state_->BuildPartitions(); ++i) {
+        lanes_.push_back(execution.Add<Lane>(timer_));
+      }
+      if (lanes_.empty()) {
+        throw std::logic_error("Build requires at least one partition");
+      }
+    }
+    while (!pending_.empty() && pending_.front()->remaining == 0) {
+      auto* slot = pending_.front();
+      slot->batch.reset();
+      slot->occupied = false;
+      pending_.pop_front();
+    }
+    bool progress = false;
+    // One job per bucket at a time. Buckets progress independently, but each
+    // consumes batches in input order regardless of partition-task completion.
+    for (size_t part = 0; part < lanes_.size(); ++part) {
+      auto* lane = lanes_[part];
+      if (lane->running) {
+        continue;
+      }
+      for (auto* slot : pending_) {
+        if (slot->sequence != lane->sequence || slot->running || !slot->batch) {
+          continue;
         }
+        lane->slot = slot;
+        execution.Submit(
+            *lane,
+            [this, lane, slot, part] {
+              return lane->Measure(
+                  [&] { return state_->BuildPartition(part, *slot->batch); });
+            },
+            this);
+        progress = true;
+        break;
+      }
+    }
+    if (input_->output && pending_.size() < slots_.size()) {
+      auto* slot = *std::find_if(slots_.begin(), slots_.end(),
+                                 [](Slot* item) { return !item->occupied; });
+      slot->occupied = true;
+      slot->sequence = sequence_++;
+      slot->remaining = lanes_.size();
+      auto chunk = std::move(*input_->output);
+      input_->output.reset();
+      pending_.push_back(slot);
+      execution.Submit(
+          *slot,
+          [this, slot, chunk = std::move(chunk)]() mutable {
+            return slot->Measure([&] {
+              slot->batch = state_->PartitionBuild(std::move(chunk));
+              if (!slot->batch) {
+                return Status::InternalError(
+                    "Build partition returned no batch");
+              }
+              return Status::OK();
+            });
+          },
+          this);
+      progress = true;
+    }
+    if (input_->done && pending_.empty()) {
+      execution.Submit(*this, [this] {
         auto status = Timed([&] { return state_->FinalizeBuild(); });
         finished = true;
         return status;
       });
+      return true;
     }
-    return true;
+    if (!input_->done && pending_.size() < slots_.size()) {
+      progress = execution.Need(*input_) || progress;
+    }
+    return progress;
   }
 
  private:
+  struct Work : PipelineTask {
+    explicit Work(OprTimer* timer) : timer(timer) {}
+    bool Advance(QueueExecution&) override { return false; }
+    template <typename F>
+    Status Measure(F work) {
+      TimerUnit clock;
+      if (timer) {
+        clock.start();
+      }
+      // Capture exceptions here too, so failed work still contributes timing.
+      auto output = CaptureWork([&]() -> result<bool> {
+        auto status = work();
+        if (!status) {
+          return tl::unexpected(status);
+        }
+        return true;
+      });
+      elapsed = timer ? clock.elapsed() : 0;
+      return output ? Status::OK() : output.error();
+    }
+    void Completed() override {
+      if (timer) {
+        timer->add_elapsed(elapsed);
+      }
+    }
+    OprTimer* timer;
+    double elapsed = 0;
+  };
+  struct Slot final : Work {
+    using Work::Work;
+    std::shared_ptr<BuildProbeState::Batch> batch;
+    size_t sequence = 0;
+    size_t remaining = 0;
+    bool occupied = false;
+  };
+  struct Lane final : Work {
+    using Work::Work;
+    void Completed() override {
+      Work::Completed();
+      --slot->remaining;
+      ++sequence;
+      slot = nullptr;
+    }
+    Slot* slot = nullptr;
+    size_t sequence = 0;
+  };
   template <typename F>
   Status Timed(F work) {
     if (!timer_) {
@@ -733,13 +821,14 @@ class BuildPipelineTask final : public PipelineTask {
     PhaseTimerScope scope(*timer_, charged);
     return work();
   }
-  enum class Phase { kPrepare, kBuild, kFinalize };
-  Phase phase_ = Phase::kPrepare;
-  BufferTask* input_;
+  PipelineTask* input_;
   Factory factory_;
   OprTimer* timer_;
   std::shared_ptr<BuildProbeState> state_;
-  std::vector<double> times_;
+  std::vector<Slot*> slots_;
+  std::vector<Lane*> lanes_;
+  std::deque<Slot*> pending_;
+  size_t sequence_ = 0;
 };
 class ConcatTask final : public PipelineTask {
  public:
@@ -837,9 +926,8 @@ class PipelineBuilder {
         auto* right_timer = ChildTimer(current_timer);
         auto right = Build(children.build_plan(),
                            Replay(seed, fragment.columns, {seed}), right_timer);
-        auto* build_input = execution_.Add<BufferTask>(right.output);
         build_state = execution_.Add<BuildPipelineTask>(
-            build_input,
+            right.output,
             [operator_plan, workers = execution_.workers()] {
               return operator_plan->CreateBuildState(workers);
             },

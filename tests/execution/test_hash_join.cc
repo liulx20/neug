@@ -180,14 +180,14 @@ TEST(HashJoinTest, ParallelBuildFinalizesBeforeConcurrentProbe) {
     for (auto kind : {JoinKind::kInnerJoin, JoinKind::kLeftOuterJoin,
                       JoinKind::kSemiJoin, JoinKind::kAntiJoin}) {
       auto right = Rows(17, true);
-      auto table =
-          JoinTable::Prepare(VertexChunk(right, true), Params(dual, kind), 4);
+      auto table = std::make_unique<JoinTable>(Params(dual, kind), 4);
+      auto batch = table->Partition(VertexChunk(right, true));
       EXPECT_FALSE(table->Finalize());
       EXPECT_FALSE(table->Probe(VertexChunk(Rows(1, false), false)));
       std::vector<std::future<Status>> builds;
       for (size_t part = 0; part < 4; ++part) {
         builds.push_back(std::async(std::launch::async, [&, part] {
-          return table->BuildPartition(part);
+          return table->BuildPartition(part, *batch);
         }));
       }
       for (auto& build : builds) {
@@ -230,12 +230,13 @@ TEST(HashJoinTest, GenericInnerJoinSkipsNullKeysAndKeepsDuplicateMatches) {
     return chunk;
   };
   for (size_t partitions : {1, 3, 8}) {
-    auto table = JoinTable::Prepare(
-        make(true), Params(false, JoinKind::kInnerJoin), partitions);
+    auto table = std::make_unique<JoinTable>(
+        Params(false, JoinKind::kInnerJoin), partitions);
+    auto batch = table->Partition(make(true));
     std::vector<std::future<Status>> builds;
     for (size_t part = 0; part < partitions; ++part) {
       builds.push_back(std::async(std::launch::async, [&, part] {
-        return table->BuildPartition(part);
+        return table->BuildPartition(part, *batch);
       }));
     }
     for (auto& build : builds) {
@@ -260,12 +261,13 @@ TEST(HashJoinTest, HashPartitionsPreserveSkewedAndMissingKeyOrder) {
             row.first = {0, 7};
             row.second = {1, 2};
           }
-          auto table = JoinTable::Prepare(VertexChunk(right, true),
-                                          Params(dual, kind), partitions);
+          auto table =
+              std::make_unique<JoinTable>(Params(dual, kind), partitions);
+          auto batch = table->Partition(VertexChunk(right, true));
           std::vector<std::future<Status>> builds;
           for (size_t part = 0; part < partitions; ++part) {
             builds.push_back(std::async(std::launch::async, [&, part] {
-              return table->BuildPartition(part);
+              return table->BuildPartition(part, *batch);
             }));
           }
           for (auto& build : builds) {
@@ -277,6 +279,54 @@ TEST(HashJoinTest, HashPartitionsPreserveSkewedAndMissingKeyOrder) {
           ASSERT_TRUE(output);
           Check(*output, Expected(left, right, dual, kind), kind);
         }
+      }
+    }
+  }
+}
+TEST(HashJoinTest,
+     IncrementalChunksArePartitionedConcurrentlyAndKeepMatchOrder) {
+  for (auto kind :
+       {JoinKind::kInnerJoin, JoinKind::kLeftOuterJoin, JoinKind::kSemiJoin,
+        JoinKind::kAntiJoin, JoinKind::kTimesJoin}) {
+    for (bool dual : {false, true}) {
+      auto right = Rows(29, true);
+      auto left = Rows(11, false);
+      JoinTable table(Params(dual, kind), 3);
+      std::vector<std::future<std::shared_ptr<JoinTable::Batch>>> jobs;
+      for (size_t begin = 0; begin < right.size(); begin += 4) {
+        auto end = std::min(begin + 4, right.size());
+        auto chunk = VertexChunk(
+            std::vector<Row>(right.begin() + begin, right.begin() + end), true);
+        jobs.push_back(std::async(std::launch::async,
+                                  [&table, chunk = std::move(chunk)]() mutable {
+                                    return table.Partition(std::move(chunk));
+                                  }));
+      }
+      for (auto& job : jobs) {
+        auto batch = job.get();
+        std::vector<std::future<Status>> builds;
+        for (size_t part = 0; part < 3; ++part) {
+          builds.push_back(std::async(std::launch::async, [&, part] {
+            return table.BuildPartition(part, *batch);
+          }));
+        }
+        for (auto& build : builds) {
+          ASSERT_TRUE(build.get());
+        }
+      }
+      ASSERT_TRUE(table.Finalize());
+      auto output = table.Probe(VertexChunk(left, false));
+      ASSERT_TRUE(output);
+      if (kind == JoinKind::kTimesJoin) {
+        std::vector<Match> expected;
+        for (const auto& l : left) {
+          for (const auto& r : right) {
+            expected.emplace_back(l.payload, r.payload);
+          }
+        }
+        Check(*output, expected, kind);
+      } else {
+        Check(*output, Expected(left, right, dual, kind), kind);
       }
     }
   }

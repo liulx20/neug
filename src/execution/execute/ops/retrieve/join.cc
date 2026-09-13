@@ -39,31 +39,31 @@ namespace ops {
 class JoinState final : public BuildProbeState {
  public:
   JoinState(const JoinParams& params, size_t partitions)
-      : params_(params), partitions_(partitions) {}
+      : table_(params, partitions), partitions_(partitions) {}
 
-  Status PrepareBuild(ContextChunk input) override {
-    table_ = JoinTable::Prepare(std::move(input), params_, partitions_);
-    return Status::OK();
+  struct Batch final : BuildProbeState::Batch {
+    std::shared_ptr<JoinTable::Batch> data;
+  };
+  std::shared_ptr<BuildProbeState::Batch> PartitionBuild(
+      ContextChunk input) const override {
+    auto batch = std::make_shared<Batch>();
+    batch->data = table_.Partition(std::move(input));
+    return batch;
   }
-
-  size_t BuildPartitions() const override { return ready_ ? 0 : partitions_; }
-  Status BuildPartition(size_t partition) override {
-    return table_->BuildPartition(partition);
+  size_t BuildPartitions() const override { return partitions_; }
+  Status BuildPartition(size_t partition,
+                        const BuildProbeState::Batch& batch) override {
+    return table_.BuildPartition(partition,
+                                 *static_cast<const Batch&>(batch).data);
   }
-  Status FinalizeBuild() override {
-    auto status = table_->Finalize();
-    ready_ = status.ok();
-    return status;
-  }
+  Status FinalizeBuild() override { return table_.Finalize(); }
   result<ContextChunk> ProbeChunk(ContextChunk chunk) const override {
-    return table_->Probe(std::move(chunk));
+    return table_.Probe(std::move(chunk));
   }
 
  private:
-  JoinParams params_;
-  std::unique_ptr<JoinTable> table_;
+  JoinTable table_;
   size_t partitions_;
-  bool ready_ = false;
 };
 
 class JoinOpr : public BuildProbeOperator {

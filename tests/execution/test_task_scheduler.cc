@@ -345,10 +345,11 @@ TEST(TaskSchedulerTest, JoinStateReceivesBuildDataAndReusesPublishedTable) {
   ASSERT_TRUE(built);
   auto state = built->first->CreateBuildState(2);
   auto input = MakeChunk(1).union_with(MakeChunk(1));
-  ASSERT_TRUE(state->PrepareBuild(std::move(input)));
+  auto batch = state->PartitionBuild(std::move(input));
+  ASSERT_TRUE(batch);
   ASSERT_FALSE(state->FinalizeBuild());
   for (size_t i = 0; i < state->BuildPartitions(); ++i) {
-    ASSERT_TRUE(state->BuildPartition(i));
+    ASSERT_TRUE(state->BuildPartition(i, *batch));
   }
   ASSERT_TRUE(state->FinalizeBuild());
   for (int i = 0; i < 3; ++i) {
@@ -598,6 +599,149 @@ TEST(TaskSchedulerTest, LimitDoesNotDemandNextUnionBranch) {
     ASSERT_TRUE(result);
     EXPECT_EQ(result->row_num(), 1);
     EXPECT_EQ(unused, 0);
+  }
+}
+struct IncrementalBuildObservation {
+  std::mutex mutex;
+  std::condition_variable ready;
+  bool release = false;
+  bool blocked = false;
+  bool second_partitioned = false;
+  bool fail = false;
+  bool finalized = false;
+  bool probed = false;
+  std::atomic<int> reads{0};
+  std::vector<int> built[2];
+};
+
+class ObservedBuildState final : public BuildProbeState {
+ public:
+  explicit ObservedBuildState(IncrementalBuildObservation& observation)
+      : observation_(observation) {}
+  struct Input final : Batch {
+    int value;
+  };
+  std::shared_ptr<Batch> PartitionBuild(ContextChunk chunk) const override {
+    auto input = std::make_shared<Input>();
+    input->value = chunk.get(0)->get_elem(0).GetValue<int64_t>();
+    std::unique_lock<std::mutex> lock(observation_.mutex);
+    if (input->value == 0) {
+      // The second partition task must run while the first is still active.
+      EXPECT_TRUE(observation_.ready.wait_for(
+          lock, std::chrono::seconds(5),
+          [&] { return observation_.second_partitioned; }));
+    } else if (input->value == 1) {
+      observation_.second_partitioned = true;
+      observation_.ready.notify_all();
+    }
+    return input;
+  }
+  size_t BuildPartitions() const override { return 2; }
+  Status BuildPartition(size_t part, const Batch& batch) override {
+    int value = static_cast<const Input&>(batch).value;
+    std::unique_lock<std::mutex> lock(observation_.mutex);
+    if (part == 0 && value == 0) {
+      observation_.blocked = true;
+      observation_.ready.notify_all();
+      if (!observation_.ready.wait_for(lock, std::chrono::seconds(5),
+                                       [&] { return observation_.release; })) {
+        return Status::InternalError("build release timeout");
+      }
+    }
+    observation_.built[part].push_back(value);
+    observation_.ready.notify_all();
+    if (part == 1 && value == 0 && observation_.fail) {
+      return Status::InternalError("incremental build failed");
+    }
+    return Status::OK();
+  }
+  Status FinalizeBuild() override {
+    observation_.finalized = true;
+    EXPECT_EQ(observation_.built[0].size(), 20);
+    EXPECT_EQ(observation_.built[1].size(), 20);
+    return Status::OK();
+  }
+  result<ContextChunk> ProbeChunk(ContextChunk chunk) const override {
+    EXPECT_TRUE(observation_.finalized);
+    observation_.probed = true;
+    return chunk;
+  }
+
+ private:
+  IncrementalBuildObservation& observation_;
+};
+
+class ObservedBuildJoin final : public BuildProbeOperator {
+ public:
+  explicit ObservedBuildJoin(IncrementalBuildObservation& observation)
+      : observation_(observation),
+        left_(OneOperator(
+            std::make_unique<CallbackSource>([] { return MakeChunk(1); }))),
+        right_(PrependInput(
+            Pipeline{}, [&observation]() -> QueryResultReader::NextResult {
+              auto index = observation.reads++;
+              if (index == 20) {
+                return std::optional<ContextChunk>{};
+              }
+              return std::optional<ContextChunk>{MakeChunk(index)};
+            })) {}
+  std::string get_operator_name() const override { return "ObservedBuildJoin"; }
+  SubPipelines sub_pipelines() override {
+    return {SubPipelineMode::kBuildProbe, {&left_, &right_}};
+  }
+  std::shared_ptr<BuildProbeState> CreateBuildState(size_t) override {
+    return std::make_shared<ObservedBuildState>(observation_);
+  }
+
+ private:
+  IncrementalBuildObservation& observation_;
+  Pipeline left_, right_;
+};
+
+TEST(TaskSchedulerTest, IncrementalBuildBoundsPendingInputAndDrainsFailure) {
+  for (bool fail : {false, true}) {
+    PropertyGraph graph;
+    GraphView view(graph);
+    StorageReadInterface storage(view, 0);
+    IncrementalBuildObservation observation;
+    observation.fail = fail;
+    auto pipeline =
+        OneOperator(std::make_unique<ObservedBuildJoin>(observation));
+    auto reader = pipeline.ExecuteReader(storage, {}, {}, nullptr, 2);
+    auto output = std::async(std::launch::async, [&] { return reader.Next(); });
+    {
+      std::unique_lock<std::mutex> lock(observation.mutex);
+      EXPECT_TRUE(
+          observation.ready.wait_for(lock, std::chrono::seconds(5), [&] {
+            return observation.blocked && !observation.built[1].empty();
+          }));
+    }
+    EXPECT_EQ(output.wait_for(std::chrono::milliseconds(20)),
+              std::future_status::timeout);
+    // Two build slots plus bounded upstream read-ahead, not all 20 chunks.
+    EXPECT_LE(observation.reads.load(), 6);
+    {
+      std::lock_guard<std::mutex> lock(observation.mutex);
+      observation.release = true;
+      observation.ready.notify_all();
+    }
+    auto result = output.get();
+    if (fail) {
+      EXPECT_FALSE(result);
+      EXPECT_FALSE(observation.finalized);
+      EXPECT_FALSE(observation.probed);
+      EXPECT_FALSE(reader.Next());
+    } else {
+      ASSERT_TRUE(result);
+      EXPECT_TRUE(observation.finalized);
+      EXPECT_TRUE(observation.probed);
+      for (const auto& rows : observation.built) {
+        ASSERT_EQ(rows.size(), 20);
+        for (size_t i = 0; i < rows.size(); ++i) {
+          EXPECT_EQ(rows[i], i);
+        }
+      }
+    }
   }
 }
 }  // namespace

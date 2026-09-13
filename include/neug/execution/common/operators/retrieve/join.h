@@ -30,16 +30,18 @@ class JoinTable {
  public:
   JoinTable(ContextChunk right, const JoinParams& params);
   ~JoinTable();
-  static std::unique_ptr<JoinTable> Prepare(ContextChunk right,
-                                            const JoinParams& params,
-                                            size_t partitions);
-  Status BuildPartition(size_t partition);
+  struct Batch;
+  JoinTable(const JoinParams& params, size_t partitions);
+  // Partition calls may run concurrently. Append each batch to every bucket
+  // in input order, with at most one active append per bucket. Finalize after
+  // all appends complete; published tables support concurrent probes.
+  std::shared_ptr<Batch> Partition(ContextChunk input) const;
+  Status BuildPartition(size_t partition, const Batch& batch);
   Status Finalize();
   result<ContextChunk> Probe(ContextChunk left) const;
 
  private:
   struct Impl;
-  explicit JoinTable(std::unique_ptr<Impl> impl);
   std::unique_ptr<Impl> impl_;
 };
 

@@ -15,9 +15,11 @@
 
 #include "neug/execution/common/operators/retrieve/join.h"
 
+#include <atomic>
 #include "neug/common/columns/vertex_columns.h"
 #include "neug/common/types.h"
 #include "neug/common/types/data_chunk.h"
+#include "neug/execution/common/batch_accumulator.h"
 #include "neug/execution/common/context_chunk.h"
 #include "neug/execution/utils/params.h"
 #include "neug/storages/graph/graph_interface.h"
@@ -32,23 +34,36 @@ namespace execution {
 
 using vertex_pair = std::pair<VertexRecord, VertexRecord>;
 
+struct JoinTable::Batch {
+  std::shared_ptr<const ContextChunk> chunk;
+  size_t vertex_keys = 0;
+  struct Bucket {
+    sel_vec_t rows;
+    std::vector<std::pair<std::string, sel_t>> keys;
+  };
+  std::vector<Bucket> buckets;
+};
+
 struct JoinTable::Impl {
-  ContextChunk right;
+  struct RowRef {
+    size_t chunk;
+    sel_t row;
+  };
+  using Matches = std::vector<RowRef>;
   JoinParams params;
   size_t vertex_keys = 0;
   struct Tables {
-    flat_hash_map<VertexRecord, sel_vec_t> single;
-    flat_hash_map<vertex_pair, sel_vec_t> dual;
-    flat_hash_map<std::string, sel_vec_t> generic;
-    sel_vec_t rows;
-    std::vector<std::pair<std::string, sel_t>> keys;
-    bool built = false;
+    flat_hash_map<VertexRecord, Matches> single;
+    flat_hash_map<vertex_pair, Matches> dual;
+    flat_hash_map<std::string, Matches> generic;
+    std::vector<std::shared_ptr<const ContextChunk>> chunks;
   };
   std::vector<std::unique_ptr<Tables>> partitions;
+  mutable std::atomic<size_t> prepared{0};
   bool finalized = false;
 
   template <typename Map, typename Key>
-  size_t Partition(const Key& key) const {
+  size_t PartitionId(const Key& key) const {
     return typename Map::hasher{}(key) % partitions.size();
   }
 
@@ -72,102 +87,139 @@ struct JoinTable::Impl {
     return static_cast<const IVertexColumn&>(*chunk.get(alias)).get_vertex(row);
   }
 
-  Impl(ContextChunk input, const JoinParams& config, size_t partition_count)
-      : right(std::move(input)), params(config) {
-    if (partition_count == 0) {
+  Impl(const JoinParams& config, size_t count) : params(config) {
+    if (count == 0) {
       THROW_INVALID_ARGUMENT_EXCEPTION("Join requires a build partition");
-    }
-    for (size_t i = 0; i < partition_count; ++i) {
-      partitions.push_back(std::make_unique<Tables>());
     }
     if (params.left_columns.size() != params.right_columns.size()) {
       THROW_INVALID_ARGUMENT_EXCEPTION("Join columns size mismatch");
     }
-    if (params.join_type == JoinKind::kTimesJoin) {
-      return;
+    for (size_t i = 0; i < count; ++i) {
+      partitions.push_back(std::make_unique<Tables>());
     }
+  }
+
+  std::shared_ptr<Batch> Partition(ContextChunk input) const {
+    auto batch = std::make_shared<Batch>();
+    batch->chunk = std::make_shared<const ContextChunk>(std::move(input));
+    batch->buckets.resize(partitions.size());
+    const auto& right = *batch->chunk;
     auto count = params.right_columns.size();
     if (count == 1 || count == 2) {
-      vertex_keys = count;
+      batch->vertex_keys = count;
       for (auto alias : params.right_columns) {
         if (!right.exist(alias) ||
             right.get(alias)->column_type() != ContextColumnType::kVertex) {
-          vertex_keys = 0;
+          batch->vertex_keys = 0;
         }
       }
     }
-    // Retain the existing generic single-key semi/anti NULL behavior.
     if ((params.join_type == JoinKind::kSemiJoin ||
          params.join_type == JoinKind::kAntiJoin) &&
-        vertex_keys == 1) {
-      vertex_keys = 0;
+        batch->vertex_keys == 1) {
+      batch->vertex_keys = 0;
     }
-    if (partitions.size() == 1) {
-      return;
-    }
-    // Route in input order so duplicate matches keep their original order.
-    // Each build task owns one bucket and never mutates another bucket's table.
-    for (size_t row = 0; row < right.row_num(); ++row) {
-      size_t partition;
-      if (vertex_keys == 1) {
-        partition = Partition<decltype(Tables::single)>(
-            Vertex(right, params.right_columns[0], row));
-      } else if (vertex_keys == 2) {
-        partition = Partition<decltype(Tables::dual)>(
-            vertex_pair{Vertex(right, params.right_columns[0], row),
-                        Vertex(right, params.right_columns[1], row)});
-      } else {
-        auto key = Key(right, row, params.right_columns,
-                       params.join_type == JoinKind::kInnerJoin);
-        if (!key) {
+    if (params.join_type != JoinKind::kTimesJoin) {
+      for (size_t row = 0; row < right.row_num(); ++row) {
+        size_t partition;
+        if (batch->vertex_keys == 1) {
+          partition = PartitionId<decltype(Tables::single)>(
+              Vertex(right, params.right_columns[0], row));
+        } else if (batch->vertex_keys == 2) {
+          partition = PartitionId<decltype(Tables::dual)>(
+              vertex_pair{Vertex(right, params.right_columns[0], row),
+                          Vertex(right, params.right_columns[1], row)});
+        } else {
+          auto key = Key(right, row, params.right_columns,
+                         params.join_type == JoinKind::kInnerJoin);
+          if (!key) {
+            continue;
+          }
+          partition = PartitionId<decltype(Tables::generic)>(*key);
+          batch->buckets[partition].keys.emplace_back(std::move(*key), row);
           continue;
         }
-        partition = Partition<decltype(Tables::generic)>(*key);
-        partitions[partition]->keys.emplace_back(std::move(*key), row);
-        continue;
+        batch->buckets[partition].rows.push_back(row);
       }
-      partitions[partition]->rows.push_back(row);
     }
+    ++prepared;
+    return batch;
   }
 
-  void BuildPartition(size_t partition) {
+  void BuildPartition(size_t partition, const Batch& batch) {
     auto& target = *partitions.at(partition);
-    if (target.built) {
-      return;
+    auto chunk_id = target.chunks.size();
+    target.chunks.push_back(batch.chunk);
+    const auto& right = *batch.chunk;
+    const auto& bucket = batch.buckets.at(partition);
+    for (const auto& entry : bucket.keys) {
+      target.generic[entry.first].push_back({chunk_id, entry.second});
     }
-    if (params.join_type == JoinKind::kTimesJoin) {
-      target.built = true;
-      return;
-    }
-    for (auto& entry : target.keys) {
-      target.generic[std::move(entry.first)].push_back(entry.second);
-    }
-    decltype(target.keys){}.swap(target.keys);
-    auto count = partitions.size() == 1 ? right.row_num() : target.rows.size();
-    for (size_t index = 0; index < count; ++index) {
-      auto row = partitions.size() == 1 ? index : target.rows[index];
-      if (vertex_keys == 1) {
+    for (auto row : bucket.rows) {
+      if (batch.vertex_keys == 1) {
         target.single[Vertex(right, params.right_columns[0], row)].push_back(
-            row);
-      } else if (vertex_keys == 2) {
+            {chunk_id, row});
+      } else {
         target
             .dual[{Vertex(right, params.right_columns[0], row),
                    Vertex(right, params.right_columns[1], row)}]
-            .push_back(row);
-      } else {
-        auto key = Key(right, row, params.right_columns,
-                       params.join_type == JoinKind::kInnerJoin);
-        if (key) {
-          target.generic[*key].push_back(row);
-        }
+            .push_back({chunk_id, row});
       }
     }
-    sel_vec_t{}.swap(target.rows);
-    target.built = true;
+  }
+
+  // Gather only matched rows. Group by source chunk, then restore probe order.
+  // This never concatenates the retained build input.
+  ContextChunk Gather(const Matches& refs, bool outer) const {
+    const auto& chunks = partitions.front()->chunks;
+    if (chunks.empty()) {
+      return {};
+    }
+    std::vector<sel_vec_t> rows(chunks.size()), positions(chunks.size());
+    for (size_t i = 0; i < refs.size(); ++i) {
+      rows[refs[i].chunk].push_back(refs[i].row);
+      positions[refs[i].chunk].push_back(i);
+    }
+    sel_vec_t order(refs.size());
+    size_t offset = 0;
+    ChunkAccumulator result;
+    for (size_t i = 0; i < chunks.size(); ++i) {
+      if (rows[i].empty() && (!refs.empty() || i != 0)) {
+        continue;
+      }
+      auto selected = *chunks[i];
+      if (outer) {
+        for (auto alias : params.right_columns) {
+          selected.remove(alias);
+        }
+        selected.optional_reshuffle(rows[i]);
+      } else {
+        selected.reshuffle(rows[i]);
+      }
+      for (auto position : positions[i]) {
+        order[position] = offset++;
+      }
+      result.Add(std::move(selected));
+    }
+    auto output = result.Finish();
+    // Chunk grouping often already preserves probe order. Avoid copying every
+    // selected column again when the restoring permutation is the identity.
+    bool ordered = true;
+    for (size_t i = 0; i < order.size(); ++i) {
+      if (order[i] != i) {
+        ordered = false;
+        break;
+      }
+    }
+    if (!ordered) {
+      output->reshuffle(order);
+    }
+    return std::move(*output);
   }
 
   ContextChunk Probe(ContextChunk left) const {
-    sel_vec_t left_rows, right_rows;
+    sel_vec_t left_rows;
+    Matches right_rows;
     bool semi = params.join_type == JoinKind::kSemiJoin;
     bool anti = params.join_type == JoinKind::kAntiJoin;
     bool outer = params.join_type == JoinKind::kLeftOuterJoin;
@@ -178,17 +230,20 @@ struct JoinTable::Impl {
     }
     for (size_t row = 0; row < left.row_num(); ++row) {
       if (times) {
-        for (size_t index = 0; index < right.row_num(); ++index) {
-          left_rows.push_back(row);
-          right_rows.push_back(index);
+        const auto& chunks = partitions.front()->chunks;
+        for (size_t i = 0; i < chunks.size(); ++i) {
+          for (size_t index = 0; index < chunks[i]->row_num(); ++index) {
+            left_rows.push_back(row);
+            right_rows.push_back({i, static_cast<sel_t>(index)});
+          }
         }
         continue;
       }
-      const sel_vec_t* matches = nullptr;
+      const Matches* matches = nullptr;
       if (vertex_keys == 1) {
         auto key = Vertex(left, params.left_columns[0], row);
         const auto& table =
-            *partitions[Partition<decltype(Tables::single)>(key)];
+            *partitions[PartitionId<decltype(Tables::single)>(key)];
         auto found = table.single.find(key);
         if (found != table.single.end()) {
           matches = &found->second;
@@ -196,7 +251,8 @@ struct JoinTable::Impl {
       } else if (vertex_keys == 2) {
         vertex_pair key{Vertex(left, params.left_columns[0], row),
                         Vertex(left, params.left_columns[1], row)};
-        const auto& table = *partitions[Partition<decltype(Tables::dual)>(key)];
+        const auto& table =
+            *partitions[PartitionId<decltype(Tables::dual)>(key)];
         auto found = table.dual.find(key);
         if (found != table.dual.end()) {
           matches = &found->second;
@@ -207,7 +263,7 @@ struct JoinTable::Impl {
           continue;
         }
         const auto& table =
-            *partitions[Partition<decltype(Tables::generic)>(*key)];
+            *partitions[PartitionId<decltype(Tables::generic)>(*key)];
         auto found = table.generic.find(*key);
         if (found != table.generic.end()) {
           matches = &found->second;
@@ -224,22 +280,12 @@ struct JoinTable::Impl {
         }
       } else if (outer) {
         left_rows.push_back(row);
-        right_rows.push_back(std::numeric_limits<sel_t>::max());
+        right_rows.push_back({0, std::numeric_limits<sel_t>::max()});
       }
     }
     left.reshuffle(left_rows);
     if (!semi && !anti) {
-      // Copy only the column handles; reshuffle creates result columns and
-      // never mutates the reusable build-side data.
-      auto selected = right;
-      if (outer) {
-        for (auto alias : params.right_columns) {
-          selected.remove(alias);
-        }
-        selected.optional_reshuffle(right_rows);
-      } else {
-        selected.reshuffle(right_rows);
-      }
+      auto selected = Gather(right_rows, outer);
       for (size_t alias = 0; alias < selected.col_num(); ++alias) {
         auto column = selected.get(alias);
         if (column && (times || (outer && vertex_keys == 0) ||
@@ -254,20 +300,20 @@ struct JoinTable::Impl {
 };
 
 JoinTable::JoinTable(ContextChunk right, const JoinParams& params)
-    : impl_(std::make_unique<Impl>(std::move(right), params, 1)) {
-  impl_->BuildPartition(0);
+    : JoinTable(params, 1) {
+  auto batch = Partition(std::move(right));
+  BuildPartition(0, *batch);
   Finalize();
 }
-JoinTable::JoinTable(std::unique_ptr<Impl> impl) : impl_(std::move(impl)) {}
+JoinTable::JoinTable(const JoinParams& params, size_t partitions)
+    : impl_(std::make_unique<Impl>(params, partitions)) {}
 JoinTable::~JoinTable() = default;
-std::unique_ptr<JoinTable> JoinTable::Prepare(ContextChunk right,
-                                              const JoinParams& params,
-                                              size_t partitions) {
-  return std::unique_ptr<JoinTable>(new JoinTable(
-      std::make_unique<Impl>(std::move(right), params, partitions)));
+std::shared_ptr<JoinTable::Batch> JoinTable::Partition(
+    ContextChunk input) const {
+  return impl_->Partition(std::move(input));
 }
-Status JoinTable::BuildPartition(size_t partition) {
-  impl_->BuildPartition(partition);
+Status JoinTable::BuildPartition(size_t partition, const Batch& batch) {
+  impl_->BuildPartition(partition, batch);
   return Status::OK();
 }
 Status JoinTable::Finalize() {
@@ -275,11 +321,29 @@ Status JoinTable::Finalize() {
     return Status::OK();
   }
   for (const auto& partition : impl_->partitions) {
-    if (!partition->built) {
+    if (partition->chunks.size() != impl_->prepared.load()) {
       return Status::InternalError("Join build partition is unfinished");
     }
   }
-  // Publication barrier only: probe routes to the immutable hash buckets.
+  const auto& chunks = impl_->partitions.front()->chunks;
+  if (!chunks.empty()) {
+    auto count = impl_->params.right_columns.size();
+    if (count == 1 || count == 2) {
+      impl_->vertex_keys = count;
+      for (auto alias : impl_->params.right_columns) {
+        if (!chunks.front()->exist(alias) ||
+            chunks.front()->get(alias)->column_type() !=
+                ContextColumnType::kVertex) {
+          impl_->vertex_keys = 0;
+        }
+      }
+    }
+    if ((impl_->params.join_type == JoinKind::kSemiJoin ||
+         impl_->params.join_type == JoinKind::kAntiJoin) &&
+        impl_->vertex_keys == 1) {
+      impl_->vertex_keys = 0;
+    }
+  }
   impl_->finalized = true;
   return Status::OK();
 }

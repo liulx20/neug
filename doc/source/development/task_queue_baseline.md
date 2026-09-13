@@ -176,3 +176,32 @@ checksums match the preceding incremental-morsel baseline. Runs used the same
 settings above, with no concurrent builds or tests.
 
 Raw samples: [hash partitions, 1m rows](benchmarks/task_queue_hash_partitions_1m.json).
+
+## Incremental Join build follow-up
+
+Build input now enters bounded batch slots, is partitioned concurrently and
+appended to per-bucket tables in input order. Tables retain original chunks and
+row references; the executor no longer collects and concatenates the entire
+right input before building. Finalization waits for EOF and all append tasks.
+
+The same 1m-row, five-repetition benchmark produced these Join medians:
+
+| Join implementation | 1 worker | 2 workers | 4 workers |
+| --- | ---: | ---: | ---: |
+| Collected build, hash buckets | 198.273 ms | 130.906 ms | 97.697 ms |
+| Incremental build, retained chunks | 217.172 ms | 138.743 ms | 105.898 ms |
+
+This is a regression of about 8% at four workers, not a performance win. The
+query restricts `b.id < 17`: its right-side build retains only 17 matching rows,
+so it is not a benchmark of large-build scaling. Additional batch dispatch and
+matched-row gathering are plausible overheads, but their contributions have not
+been isolated. Removing an identity output permutation did not show a measurable
+end-to-end improvement in these runs. A larger build-side benchmark and profiles
+are needed before claiming a throughput or memory improvement.
+
+Checksums and row counts for every query match the preceding hash-partition
+baseline. Settings and timing scope are unchanged, and builds/tests were not
+running concurrently. The pending-build limit counts batches, not bytes; all
+build chunks and hash-table entries remain resident, with no spill support.
+
+Raw samples: [incremental Join, 1m rows](benchmarks/task_queue_incremental_join_1m.json).

@@ -66,9 +66,14 @@ struct SubPipelines {
 class BuildProbeState {
  public:
   virtual ~BuildProbeState() = default;
-  virtual Status PrepareBuild(ContextChunk input) = 0;
+  // Immutable partition output. The executor orders appends within each
+  // bucket and bounds the number of batches waiting to be appended.
+  struct Batch {
+    virtual ~Batch() = default;
+  };
+  virtual std::shared_ptr<Batch> PartitionBuild(ContextChunk input) const = 0;
   virtual size_t BuildPartitions() const = 0;
-  virtual Status BuildPartition(size_t partition) = 0;
+  virtual Status BuildPartition(size_t partition, const Batch& batch) = 0;
   virtual Status FinalizeBuild() = 0;
   virtual result<ContextChunk> ProbeChunk(ContextChunk chunk) const = 0;
 };
