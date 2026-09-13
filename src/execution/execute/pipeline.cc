@@ -14,21 +14,14 @@
  */
 
 #include "neug/execution/execute/pipeline.h"
-#include "neug/execution/execute/pipeline_graph.h"
-
 #include <algorithm>
+#include <deque>
 #include <memory>
 #include <optional>
-
-#include "neug/execution/common/context.h"
+#include "neug/execution/execute/task_scheduler.h"
 
 namespace neug::execution {
 namespace {
-Stream<ContextChunk> BuildExecution(Pipeline& plan, IStorageInterface& storage,
-                                    Stream<ContextChunk> input,
-                                    const ParamsMap& params, OprTimer* timer,
-                                    size_t workers, TaskScheduler::Mode mode);
-
 Status operator_error(const Status& error, const std::string& name) {
   return Status(error.error_code(), "Execution failed at operator: [" + name +
                                         "], " + error.error_message());
@@ -159,61 +152,254 @@ class KernelChain {
   bool stopped_ = false;
 };
 
-class LinearPipelineState final : public ResultReaderState {
+struct PipelineTask {
+  virtual ~PipelineTask() = default;
+  virtual bool Advance(QueueExecution&) = 0;
+  std::vector<PipelineTask*> gates;
+  std::vector<PipelineTask*> waiters;
+  bool queued = false;
+  // One-slot mailbox: publishing consumes downstream demand. A producer may
+  // retain the finite output of its current invocation, but cannot read ahead.
+  std::optional<ContextChunk> output;
+  std::deque<result<ContextChunk>> pending;
+  size_t running = 0;
+  bool requested = false;
+  bool finished = false;
+  bool done = false;
+};
+}  // namespace
+
+class QueueExecution {
  public:
-  explicit LinearPipelineState(Stream<ContextChunk> input)
-      : chain_({}), input_(std::move(input)) {}
-  void Append(std::string name, OprTimer* timer, KernelFactory factory,
-              std::vector<int> input_columns) {
-    chain_.Append(
-        {std::move(name), timer, std::move(factory), std::move(input_columns)});
+  explicit QueueExecution(size_t workers) : scheduler_(workers) {}
+  ~QueueExecution() { Drain(); }
+  template <typename T, typename... Args>
+  T* Add(Args&&... args) {
+    auto node = std::make_unique<T>(std::forward<Args>(args)...);
+    auto* ptr = node.get();
+    tasks_.push_back(std::move(node));
+    return ptr;
   }
-  Stream<ContextChunk>::NextResult Next() override {
+  size_t workers() const { return scheduler_.concurrency(); }
+  void SetRoot(PipelineTask* root) { root_ = root; }
+  // All graph, mailbox and readiness changes happen on the consumer thread.
+  // A completion event publishes worker writes before Advance resumes a task.
+  template <typename F>
+  void Submit(PipelineTask& owner, F work) {
+    ++owner.running;
+    ++active_;
+    try {
+      scheduler_.Submit([this, &owner, work = std::move(work)]() mutable {
+        auto captured = CaptureWork([&]() -> result<bool> {
+          auto status = work();
+          if (!status) {
+            return tl::unexpected(status);
+          }
+          return true;
+        });
+        std::lock_guard<std::mutex> lock(mutex_);
+        completed_.push_back(
+            {&owner, captured ? Status::OK() : captured.error()});
+        ready_.notify_one();
+      });
+    } catch (...) {
+      --owner.running;
+      --active_;
+      throw;
+    }
+  }
+  bool Need(PipelineTask& node) {
+    if (node.done || node.output) {
+      return false;
+    }
+    if (current_ && std::find(node.waiters.begin(), node.waiters.end(),
+                              current_) == node.waiters.end()) {
+      node.waiters.push_back(current_);
+    }
+    if (node.requested) {
+      return false;
+    }
+    node.requested = true;
+    Enqueue(node);
+    return true;
+  }
+  QueryResultReader::NextResult Next() {
+    if (error_) {
+      return tl::unexpected(*error_);
+    }
+    Need(*root_);
     while (true) {
-      if (index_ < pending_.size()) {
-        return std::optional<ContextChunk>(std::move(pending_[index_++]));
+      Receive(false);
+      if (error_) {
+        Drain();
+        return tl::unexpected(*error_);
       }
-      pending_.clear();
-      index_ = 0;
-      if (finalized_) {
+      if (root_->output) {
+        auto out = std::move(root_->output);
+        root_->output.reset();
+        return out;
+      }
+      if (root_->done) {
+        Drain();
         return std::optional<ContextChunk>{};
       }
-      if (chain_.Stopped()) {
-        input_ = {};
-        GS_AUTO(output, chain_.Finish());
-        pending_ = std::move(output);
-        finalized_ = true;
-      } else {
-        GS_AUTO(input, input_.Next());
-        if (!input) {
-          GS_AUTO(output, chain_.Finish());
-          pending_ = std::move(output);
-          finalized_ = true;
+      if (runnable_.empty()) {
+        if (!active_) {
+          error_ = Status::InternalError("Pipeline has no ready task");
         } else {
-          GS_AUTO(output, chain_.Process(std::move(*input)));
-          pending_ = std::move(output);
+          Receive(true);
+        }
+        continue;
+      }
+      auto& task = *runnable_.front();
+      runnable_.pop_front();
+      task.queued = false;
+      if (!task.requested || task.running || task.done || task.output) {
+        continue;
+      }
+      current_ = &task;
+      bool blocked = false;
+      for (auto* gate : task.gates) {
+        if (!gate->done) {
+          Need(*gate);
+          blocked = true;
         }
       }
+      if (!blocked) {
+        if (!task.pending.empty()) {
+          auto next = std::move(task.pending.front());
+          task.pending.pop_front();
+          if (!next) {
+            error_ = next.error();
+          } else {
+            task.output = std::move(*next);
+            task.requested = false;
+            Wake(task);
+          }
+        } else if (task.finished) {
+          task.done = true;
+          Wake(task);
+        } else if (task.Advance(*this)) {
+          Enqueue(task);
+        }
+      }
+      current_ = nullptr;
+    }
+  }
+  void Drain() {
+    // No further demand is issued. All submitted tasks finish before state,
+    // storage references or profiling pointers can be released by the caller.
+    while (active_) {
+      Receive(true);
     }
   }
 
  private:
-  KernelChain chain_;
-  Stream<ContextChunk> input_;
-  ChunkBatch pending_;
-  size_t index_ = 0;
-  bool finalized_ = false;
+  void Enqueue(PipelineTask& task) {
+    if (!task.queued && !task.running) {
+      task.queued = true;
+      runnable_.push_back(&task);
+    }
+  }
+  void Wake(PipelineTask& task) {
+    for (auto* waiter : task.waiters) {
+      Enqueue(*waiter);
+    }
+    task.waiters.clear();
+  }
+  void Receive(bool wait) {
+    std::unique_lock<std::mutex> lock(mutex_);
+    if (wait) {
+      ready_.wait(lock, [&] { return !completed_.empty(); });
+    }
+    for (auto& event : completed_) {
+      --event.first->running;
+      --active_;
+      if (!event.first->running) {
+        Enqueue(*event.first);
+      }
+      if (!event.second && !error_) {
+        error_ = event.second;
+      }
+    }
+    completed_.clear();
+  }
+  std::vector<std::unique_ptr<PipelineTask>> tasks_;
+  TaskScheduler scheduler_;
+  PipelineTask* root_ = nullptr;
+  PipelineTask* current_ = nullptr;
+  std::deque<PipelineTask*> runnable_;
+  std::mutex mutex_;
+  std::condition_variable ready_;
+  std::vector<std::pair<PipelineTask*, Status>> completed_;
+  size_t active_ = 0;
+  std::optional<Status> error_;
 };
 
-// Shared step control plus independently owned worker-lane state. One queued
-// task processes several ranges; no queue is placed between local transforms.
-class MorselPipelineState final : public ResultReaderState {
+namespace {
+void Publish(PipelineTask& task, ChunkBatch chunks) {
+  for (auto& chunk : chunks) {
+    task.pending.emplace_back(std::move(chunk));
+  }
+}
+class InputTask final : public PipelineTask {
+ public:
+  explicit InputTask(ChunkBatch chunks) { Publish(*this, std::move(chunks)); }
+  bool Advance(QueueExecution&) override {
+    finished = true;
+    return true;
+  }
+};
+
+class LinearPipelineTask final : public PipelineTask {
+ public:
+  explicit LinearPipelineTask(PipelineTask* input)
+      : chain_({}), input_(input) {}
+  void Append(std::string name, OprTimer* timer, KernelFactory factory,
+              std::vector<int> columns) {
+    chain_.Append(
+        {std::move(name), timer, std::move(factory), std::move(columns)});
+  }
+  bool Advance(QueueExecution& execution) override {
+    if (chain_.Stopped() || input_->done) {
+      execution.Submit(*this, [this] {
+        auto result = chain_.Finish();
+        if (!result) {
+          return result.error();
+        }
+        Publish(*this, std::move(*result));
+        finished = true;
+        return Status::OK();
+      });
+      return true;
+    }
+    if (!input_->output) {
+      return execution.Need(*input_);
+    }
+    auto chunk = std::move(*input_->output);
+    input_->output.reset();
+    execution.Submit(*this, [this, chunk = std::move(chunk)]() mutable {
+      auto result = chain_.Process(std::move(chunk));
+      if (!result) {
+        return result.error();
+      }
+      Publish(*this, std::move(*result));
+      return Status::OK();
+    });
+    return true;
+  }
+
+ private:
+  KernelChain chain_;
+  PipelineTask* input_;
+};
+class MorselPipelineTask final : public PipelineTask {
  public:
   using SourceFactory = std::function<std::unique_ptr<MorselSource>()>;
   using Transform = KernelFactory;
-  MorselPipelineState(TaskScheduler& scheduler, SourceFactory source,
-                      std::string name, OprTimer* timer)
-      : scheduler_(scheduler), factory_(std::move(source)) {
+  MorselPipelineTask(size_t workers, SourceFactory source, std::string name,
+                     OprTimer* timer)
+      : worker_count_(workers), factory_(std::move(source)) {
     names_.push_back(std::move(name));
     timers_.push_back(timer);
   }
@@ -223,35 +409,34 @@ class MorselPipelineState final : public ResultReaderState {
     transforms_.push_back(std::move(transform));
   }
 
-  Stream<ContextChunk>::NextResult Next() override {
-    while (true) {
-      while (pending_index_ < pending_.size()) {
-        auto& work = pending_[pending_index_];
-        if (!work.output) {
-          return tl::unexpected(work.output.error());
-        }
-        if (chunk_index_ < work.output->size()) {
-          return std::optional<ContextChunk>(
-              std::move((*work.output)[chunk_index_++]));
-        }
-        ++pending_index_;
-        chunk_index_ = 0;
-      }
-      pending_.clear();
-      pending_index_ = 0;
-      if (finished_) {
-        return std::optional<ContextChunk>{};
-      }
-      if (!source_) {
+  bool Advance(QueueExecution& execution) override {
+    if (!source_) {
+      execution.Submit(*this, [this] {
         source_ = factory_();
         factory_ = {};
         if (!source_) {
-          return tl::unexpected(Status::InternalError("Missing morsel source"));
+          return Status::InternalError("Missing morsel source");
         }
-        workers_.resize(scheduler_.concurrency());
-      }
-      RunWave();
+        workers_.resize(worker_count_);
+        return Status::OK();
+      });
+      return true;
     }
+    if (wave_) {
+      wave_ = false;
+      execution.Submit(*this, [this] { return FinishWave(); });
+      return true;
+    }
+    wave_ = true;
+    wave_outputs_.clear();
+    wave_outputs_.resize(workers_.size());
+    for (size_t lane = 0; lane < workers_.size(); ++lane) {
+      execution.Submit(*this, [this, lane] {
+        wave_outputs_[lane] = RunTask(lane);
+        return Status::OK();
+      });
+    }
+    return true;
   }
 
  private:
@@ -345,32 +530,14 @@ class MorselPipelineState final : public ResultReaderState {
     return outputs;
   }
 
-  void RunWave() {
-    std::vector<std::future<std::vector<Output>>> tasks;
-    tasks.reserve(workers_.size());
-    std::exception_ptr failure;
-    try {
-      for (size_t lane = 0; lane < workers_.size(); ++lane) {
-        tasks.push_back(
-            scheduler_.Submit([this, lane] { return RunTask(lane); }));
-      }
-    } catch (...) { failure = std::current_exception(); }
-    // Every submitted task is joined, including after a submit/task failure.
-    for (auto& task : tasks) {
-      try {
-        auto output = scheduler_.Wait(task);
-        for (auto& item : output) {
-          pending_.push_back(std::move(item));
-        }
-      } catch (...) {
-        if (!failure) {
-          failure = std::current_exception();
-        }
+  Status FinishWave() {
+    std::vector<Output> outputs;
+    for (auto& lane : wave_outputs_) {
+      for (auto& item : lane) {
+        outputs.push_back(std::move(item));
       }
     }
-    if (failure) {
-      std::rethrow_exception(failure);
-    }
+    wave_outputs_.clear();
     for (auto& worker : workers_) {
       for (size_t i = 0; i < timers_.size(); ++i) {
         if (timers_[i]) {
@@ -378,26 +545,31 @@ class MorselPipelineState final : public ResultReaderState {
         }
       }
     }
-    std::sort(pending_.begin(), pending_.end(),
+    std::sort(outputs.begin(), outputs.end(),
               [](const Output& a, const Output& b) {
                 return a.sequence < b.sequence;
               });
-    if (std::any_of(pending_.begin(), pending_.end(),
-                    [](const Output& output) { return !output.output; })) {
-      finished_ = true;
-      return;
+    for (auto& item : outputs) {
+      if (!item.output) {
+        pending.emplace_back(tl::unexpected(item.output.error()));
+        finished = true;
+        return Status::OK();
+      }
+      Publish(*this, std::move(*item.output));
     }
     if (exhausted_) {
-      // Exhaustion is observed only after all in-flight ranges have completed.
       auto status = source_->Finalize();
-      finished_ = true;
+      finished = true;
       if (!status) {
-        pending_.push_back({next_sequence_, tl::unexpected(status)});
+        pending.emplace_back(tl::unexpected(status));
       }
     }
+    return Status::OK();
   }
 
-  TaskScheduler& scheduler_;
+  size_t worker_count_;
+  bool wave_ = false;
+  std::vector<std::vector<Output>> wave_outputs_;
   SourceFactory factory_;
   std::unique_ptr<MorselSource> source_;
   std::vector<std::string> names_;
@@ -406,137 +578,167 @@ class MorselPipelineState final : public ResultReaderState {
   std::vector<LocalState> workers_;
   std::mutex pick_mutex_;
   bool exhausted_ = false;
-  bool finished_ = false;
   size_t next_sequence_ = 0;
-  std::vector<Output> pending_;
-  size_t pending_index_ = 0;
-  size_t chunk_index_ = 0;
 };
 
-// A pipeline boundary's shared data. Filling finishes before any concurrent
-// reader starts. Each reader has its own cursor; columns are shared read-only.
-struct PipelineBuffer {
-  explicit PipelineBuffer(Stream<ContextChunk> input)
-      : metadata(input.metadata()), input(std::move(input)) {}
-  Status Fill() {
-    if (!data) {
-      data.emplace(collect_batches(std::move(input)));
-    }
-    return *data ? Status::OK() : data->error();
-  }
-  StreamMetadata metadata;
-  Stream<ContextChunk> input;
-  std::optional<result<std::vector<ContextChunk>>> data;
-};
-
-class BufferReaderState final : public ResultReaderState {
+// Materialization is explicit only at replay/build barriers. This node drains
+// its mailbox into shared immutable batches; each replay owns its own cursor.
+class BufferTask final : public PipelineTask {
  public:
-  explicit BufferReaderState(std::shared_ptr<PipelineBuffer> buffer)
-      : buffer_(std::move(buffer)) {}
-  Stream<ContextChunk>::NextResult Next() override {
-    if (!buffer_->data) {
-      return tl::unexpected(
-          Status::InternalError("Pipeline input is not ready"));
+  BufferTask(PipelineTask* input, bool retain = true)
+      : input_(input), retain_(retain) {}
+  bool Advance(QueueExecution& execution) override {
+    if (input_->output) {
+      if (retain_) {
+        chunks.push_back(std::move(*input_->output));
+      }
+      input_->output.reset();
+      return true;
     }
-    if (!*buffer_->data) {
-      return tl::unexpected(buffer_->data->error());
+    if (input_->done) {
+      finished = true;
+      return true;
     }
-    const auto& chunks = buffer_->data->value();
-    if (index_ == chunks.size()) {
-      return std::optional<ContextChunk>{};
+    return execution.Need(*input_);
+  }
+  ChunkBatch chunks;
+
+ private:
+  PipelineTask* input_;
+  bool retain_;
+};
+class ReplayTask final : public PipelineTask {
+ public:
+  explicit ReplayTask(BufferTask* buffer) : buffer_(buffer) {
+    gates = {buffer};
+  }
+  bool Advance(QueueExecution&) override {
+    if (index_ < buffer_->chunks.size()) {
+      pending.emplace_back(buffer_->chunks[index_++]);
+    } else {
+      finished = true;
     }
-    return std::optional<ContextChunk>(chunks[index_++]);
+    return true;
   }
 
  private:
-  std::shared_ptr<PipelineBuffer> buffer_;
+  BufferTask* buffer_;
   size_t index_ = 0;
 };
-
-Stream<ContextChunk> ReadBuffer(const std::shared_ptr<PipelineBuffer>& buffer) {
-  return Stream<ContextChunk>(std::make_shared<BufferReaderState>(buffer),
-                              buffer->metadata);
-}
-
-// Sequential branch groups stay in one pull pipeline. This preserves Union
-// short-circuiting: an unconsumed branch is neither initialized nor executed.
-class LazyBranchState final : public ResultReaderState {
+// The build barrier advances through explicit phases. State construction is
+// deferred as well, so an unused conditional Join allocates no hash tables.
+class BuildPipelineTask final : public PipelineTask {
  public:
-  LazyBranchState(Pipeline& plan, IStorageInterface& storage, ParamsMap params,
-                  std::shared_ptr<PipelineBuffer> seed, OprTimer* timer)
-      : plan_(plan),
-        storage_(storage),
-        params_(std::move(params)),
-        seed_(std::move(seed)),
-        timer_(timer) {}
-  Stream<ContextChunk>::NextResult Next() override {
-    if (!output_) {
-      auto status = seed_->Fill();
-      if (!status) {
-        return tl::unexpected(status);
+  using Factory = std::function<std::shared_ptr<BuildProbeState>()>;
+  BuildPipelineTask(BufferTask* input, Factory factory, OprTimer* timer)
+      : input_(input), factory_(std::move(factory)), timer_(timer) {
+    gates = {input};
+  }
+  BuildProbeState& state() const { return *state_; }
+  bool Advance(QueueExecution& execution) override {
+    if (phase_ == Phase::kPrepare) {
+      phase_ = Phase::kBuild;
+      execution.Submit(*this, [this] {
+        return Timed([&] {
+          state_ = factory_();
+          factory_ = {};
+          std::optional<ContextChunk> input;
+          for (auto& chunk : input_->chunks) {
+            input = input ? input->union_with(chunk) : std::move(chunk);
+          }
+          input_->chunks.clear();
+          return state_->PrepareBuild(input ? std::move(*input)
+                                            : ContextChunk{});
+        });
+      });
+    } else if (phase_ == Phase::kBuild) {
+      phase_ = Phase::kFinalize;
+      times_.resize(state_->BuildPartitions());
+      for (size_t part = 0; part < times_.size(); ++part) {
+        execution.Submit(*this, [this, part] {
+          if (!timer_) {
+            return state_->BuildPartition(part);
+          }
+          TimerUnit clock;
+          clock.start();
+          auto status = state_->BuildPartition(part);
+          times_[part] = clock.elapsed();
+          return status;
+        });
       }
-      output_.emplace(BuildExecution(plan_, storage_, ReadBuffer(seed_),
-                                     params_, timer_, 1,
-                                     TaskScheduler::Mode::kInline));
+    } else {
+      execution.Submit(*this, [this] {
+        if (timer_) {
+          for (auto elapsed : times_) {
+            timer_->add_elapsed(elapsed);
+          }
+        }
+        auto status = Timed([&] { return state_->FinalizeBuild(); });
+        finished = true;
+        return status;
+      });
     }
-    return output_->Next();
+    return true;
   }
 
  private:
-  Pipeline& plan_;
-  IStorageInterface& storage_;
-  ParamsMap params_;
-  std::shared_ptr<PipelineBuffer> seed_;
+  template <typename F>
+  Status Timed(F work) {
+    if (!timer_) {
+      return work();
+    }
+    double charged = 0;
+    PhaseTimerScope scope(*timer_, charged);
+    return work();
+  }
+  enum class Phase { kPrepare, kBuild, kFinalize };
+  Phase phase_ = Phase::kPrepare;
+  BufferTask* input_;
+  Factory factory_;
   OprTimer* timer_;
-  std::optional<Stream<ContextChunk>> output_;
+  std::shared_ptr<BuildProbeState> state_;
+  std::vector<double> times_;
 };
-
-struct PipelineFragment {
-  Stream<ContextChunk> output;
-  std::vector<PipelineGraph::NodeId> dependencies;
-  std::vector<PipelineGraph::NodeId> barriers;
-  std::shared_ptr<MorselPipelineState> morsel_step;
-  std::shared_ptr<LinearPipelineState> linear_step;
-};
-
-class PipelineExecutionState final : public ResultReaderState {
+class ConcatTask final : public PipelineTask {
  public:
-  PipelineExecutionState(std::shared_ptr<TaskScheduler> scheduler,
-                         std::shared_ptr<PipelineGraph> graph,
-                         PipelineFragment fragment)
-      : scheduler_(std::move(scheduler)),
-        graph_(std::move(graph)),
-        fragment_(std::move(fragment)) {}
-  Stream<ContextChunk>::NextResult Next() override {
-    auto status = graph_->Execute(*scheduler_, fragment_.dependencies);
-    if (!status) {
-      return tl::unexpected(status);
+  explicit ConcatTask(std::vector<PipelineTask*> inputs)
+      : inputs_(std::move(inputs)) {}
+  bool Advance(QueueExecution& execution) override {
+    if (index_ == inputs_.size()) {
+      finished = true;
+      return true;
     }
-    auto output =
-        scheduler_->Submit([this] { return fragment_.output.Next(); });
-    // The external consumer waits for pool work. In a conditional group the
-    // inline task has already completed, so its worker never blocks here.
-    return output.get();
+    auto& input = *inputs_[index_];
+    if (input.output) {
+      pending.emplace_back(std::move(*input.output));
+      input.output.reset();
+      return true;
+    }
+    if (input.done) {
+      ++index_;
+      return true;
+    }
+    return execution.Need(input);
   }
 
  private:
-  std::shared_ptr<TaskScheduler> scheduler_;
-  std::shared_ptr<PipelineGraph> graph_;
-  PipelineFragment fragment_;
+  std::vector<PipelineTask*> inputs_;
+  size_t index_ = 0;
+};
+struct PipelineFragment {
+  PipelineTask* output;
+  std::vector<PipelineTask*> barriers;
+  std::vector<int> columns;
+  MorselPipelineTask* morsel_step = nullptr;
+  LinearPipelineTask* linear_step = nullptr;
 };
 }  // namespace
 
-// The sole owner of execution-flow construction. Operators declare subplans
-// and receive prepared inputs; they have no access to the scheduler or DAG.
 class PipelineBuilder {
  public:
   PipelineBuilder(IStorageInterface& storage, const ParamsMap& params,
-                  PipelineGraph& graph, TaskScheduler& scheduler)
-      : storage_(storage),
-        params_(params),
-        graph_(graph),
-        scheduler_(scheduler) {}
-
+                  QueueExecution& execution)
+      : storage_(storage), params_(params), execution_(execution) {}
   PipelineFragment Build(Pipeline& plan, PipelineFragment fragment,
                          OprTimer* timer) {
     auto* current_timer = timer;
@@ -547,163 +749,75 @@ class PipelineBuilder {
         current_timer->set_name(name);
       }
       if (!op.consumes_input()) {
-        fragment.dependencies = fragment.barriers;
-        fragment.output = {};
-        fragment.linear_step.reset();
-        fragment.morsel_step.reset();
+        fragment.output = execution_.Add<InputTask>(ChunkBatch{});
+        fragment.output->gates = fragment.barriers;
+        fragment.columns.clear();
+        fragment.linear_step = nullptr;
+        fragment.morsel_step = nullptr;
       }
+      auto* storage = &storage_;
+      auto params = params_;
+      auto* operator_plan = &op;
       if (op.pipeline_behavior() == PipelineBehavior::kMorselSource) {
-        if (op.consumes_input()) {
-          auto before = std::make_shared<Stream<ContextChunk>>(
-              std::move(fragment.output));
-          auto id = graph_.Add(name + "/input",
-                               std::move(fragment.dependencies), [before] {
-                                 while (true) {
-                                   auto next = before->Next();
-                                   if (!next) {
-                                     return next.error();
-                                   }
-                                   if (!*next) {
-                                     return Status::OK();
-                                   }
-                                 }
-                               });
-          fragment.dependencies = {id};
-        }
-        fragment.linear_step.reset();
-        auto* source = &op;
-        auto* storage = &storage_;
-        auto params = params_;
-        fragment.morsel_step = std::make_shared<MorselPipelineState>(
-            scheduler_,
-            [source, storage, params] {
-              return source->CreateMorselSource(*storage, params);
+        auto* before = execution_.Add<BufferTask>(fragment.output, false);
+        auto* task = execution_.Add<MorselPipelineTask>(
+            execution_.workers(),
+            [operator_plan, storage, params] {
+              return operator_plan->CreateMorselSource(*storage, params);
             },
             name, current_timer);
-        fragment.output = Stream<ContextChunk>(fragment.morsel_step);
+        task->gates = {before};
+        fragment.output = task;
+        fragment.morsel_step = task;
+        fragment.linear_step = nullptr;
         AdvanceTimer(current_timer, i, plan.operators_.size());
         continue;
       }
       if (fragment.morsel_step &&
           op.pipeline_behavior() == PipelineBehavior::kChunkLocal) {
-        auto* transform = &op;
-        auto* storage = &storage_;
-        auto params = params_;
         fragment.morsel_step->Append(
-            name, current_timer, [transform, storage, params](OprTimer* timer) {
-              return transform->CreateState(*storage, params, timer);
+            name, current_timer,
+            [operator_plan, storage, params](OprTimer* timer) {
+              return operator_plan->CreateState(*storage, params, timer);
             });
         AdvanceTimer(current_timer, i, plan.operators_.size());
         continue;
       }
-      fragment.morsel_step.reset();
+      fragment.morsel_step = nullptr;
       auto children = op.sub_pipelines();
-      std::vector<Stream<ContextChunk>> inputs;
-      std::shared_ptr<BuildProbeState> build_state;
+      BuildPipelineTask* build_state = nullptr;
       if (children.mode == SubPipelineMode::kBuildProbe) {
         if (children.plans.size() != 2) {
           throw std::logic_error("Build/probe requires two inputs");
         }
-        auto seed =
-            std::make_shared<PipelineBuffer>(std::move(fragment.output));
-        auto seed_id =
-            graph_.Add(name + "/input", std::move(fragment.dependencies),
-                       [seed] { return seed->Fill(); });
+        auto* seed = execution_.Add<BufferTask>(fragment.output);
         auto* left_timer = ChildTimer(current_timer);
         auto* right_timer = ChildTimer(current_timer);
-        auto right =
-            Build(children.build_plan(),
-                  {ReadBuffer(seed), {seed_id}, {seed_id}}, right_timer);
-        auto build_input =
-            std::make_shared<Stream<ContextChunk>>(std::move(right.output));
-        build_state = op.CreateBuildState(scheduler_.concurrency());
-        auto prepare_id =
-            graph_.Add(name + "/prepare", std::move(right.dependencies),
-                       [state = build_state, current_timer, build_input] {
-                         auto prepare = [&] {
-                           auto input = collect_chunk(std::move(*build_input));
-                           if (!input) {
-                             return input.error();
-                           }
-                           return state->PrepareBuild(std::move(*input));
-                         };
-                         if (current_timer) {
-                           double charged = 0;
-                           PhaseTimerScope scope(*current_timer, charged);
-                           return prepare();
-                         }
-                         return prepare();
-                       });
-        std::vector<PipelineGraph::NodeId> partitions;
-        auto times = std::make_shared<std::vector<double>>(
-            build_state->BuildPartitions(), 0.0);
-        for (size_t part = 0; part < build_state->BuildPartitions(); ++part) {
-          partitions.push_back(
-              graph_.Add(name + "/build" + std::to_string(part), {prepare_id},
-                         [state = build_state, part, times, current_timer] {
-                           if (!current_timer) {
-                             return state->BuildPartition(part);
-                           }
-                           TimerUnit clock;
-                           clock.start();
-                           auto status = state->BuildPartition(part);
-                           (*times)[part] = clock.elapsed();
-                           return status;
-                         }));
-        }
-        if (partitions.empty()) {
-          partitions.push_back(prepare_id);
-        }
-        auto build_id =
-            graph_.Add(name + "/finalize", std::move(partitions),
-                       [state = build_state, current_timer, times] {
-                         if (current_timer) {
-                           for (auto elapsed : *times) {
-                             current_timer->add_elapsed(elapsed);
-                           }
-                           double charged = 0;
-                           PhaseTimerScope scope(*current_timer, charged);
-                           return state->FinalizeBuild();
-                         }
-                         return state->FinalizeBuild();
-                       });
+        auto right = Build(children.build_plan(),
+                           Replay(seed, fragment.columns, {seed}), right_timer);
+        auto* build_input = execution_.Add<BufferTask>(right.output);
+        build_state = execution_.Add<BuildPipelineTask>(
+            build_input,
+            [operator_plan, workers = execution_.workers()] {
+              return operator_plan->CreateBuildState(workers);
+            },
+            current_timer);
         auto left =
             Build(children.probe_plan(),
-                  {ReadBuffer(seed), {build_id}, {build_id}}, left_timer);
-        fragment.dependencies = std::move(left.dependencies);
+                  Replay(seed, fragment.columns, {build_state}), left_timer);
+        fragment.output = left.output;
+        fragment.columns = left.columns;
+        fragment.linear_step = nullptr;
         if (left.morsel_step) {
           left.morsel_step->Append(
               name, current_timer, [state = build_state](OprTimer*) {
                 return make_chunk_kernel([state](ContextChunk chunk) {
-                  return state->ProbeChunk(std::move(chunk));
+                  return state->state().ProbeChunk(std::move(chunk));
                 });
               });
-          fragment.output = std::move(left.output);
-          fragment.morsel_step = std::move(left.morsel_step);
-          fragment.linear_step.reset();
+          fragment.morsel_step = left.morsel_step;
           AdvanceTimer(current_timer, i, plan.operators_.size());
           continue;
-        }
-        fragment.output = std::move(left.output);
-        fragment.linear_step.reset();
-      } else if (children.mode == SubPipelineMode::kMaterialized) {
-        auto seed =
-            std::make_shared<PipelineBuffer>(std::move(fragment.output));
-        auto seed_id =
-            graph_.Add(name + "/input", std::move(fragment.dependencies),
-                       [seed] { return seed->Fill(); });
-        fragment.dependencies.clear();
-        for (size_t child = 0; child < children.plans.size(); ++child) {
-          auto branch = Build(*children.plans[child],
-                              {ReadBuffer(seed), {seed_id}, {seed_id}},
-                              ChildTimer(current_timer));
-          auto result =
-              std::make_shared<PipelineBuffer>(std::move(branch.output));
-          auto id = graph_.Add(name + "/branch" + std::to_string(child),
-                               std::move(branch.dependencies),
-                               [result] { return result->Fill(); });
-          fragment.dependencies.push_back(id);
-          inputs.emplace_back(ReadBuffer(result));
         }
       } else if (children.mode == SubPipelineMode::kStreaming) {
         if (children.plans.size() != 1) {
@@ -711,61 +825,58 @@ class PipelineBuilder {
         }
         fragment = Build(*children.plans[0], std::move(fragment),
                          ChildTimer(current_timer));
-        inputs.emplace_back(std::move(fragment.output));
+        fragment.linear_step = nullptr;
       } else if (!children.plans.empty()) {
-        auto seed =
-            std::make_shared<PipelineBuffer>(std::move(fragment.output));
+        auto* seed = execution_.Add<BufferTask>(fragment.output);
+        std::vector<PipelineTask*> inputs, completed;
+        std::vector<int> columns = fragment.columns;
+        PipelineTask* previous = seed;
         for (auto* child : children.plans) {
-          inputs.emplace_back(
-              std::make_shared<LazyBranchState>(*child, storage_, params_, seed,
-                                                ChildTimer(current_timer)),
-              seed->metadata);
+          auto branch =
+              Build(*child, Replay(seed, fragment.columns, {previous}),
+                    ChildTimer(current_timer));
+          if (inputs.empty()) {
+            columns = branch.columns;
+          }
+          if (children.mode == SubPipelineMode::kMaterialized) {
+            auto* buffer = execution_.Add<BufferTask>(branch.output);
+            completed.push_back(buffer);
+            inputs.push_back(execution_.Add<ReplayTask>(buffer));
+            // Writes stay in plan order even when several branch gates become
+            // ready.
+            if (storage_.writable()) {
+              previous = buffer;
+            }
+          } else {
+            inputs.push_back(branch.output);
+          }
         }
+        auto* concat = execution_.Add<ConcatTask>(std::move(inputs));
+        concat->gates = std::move(completed);
+        fragment.output = concat;
+        fragment.columns = std::move(columns);
+        fragment.linear_step = nullptr;
       }
-
-      if (!inputs.empty()) {
-        auto branches = std::make_shared<std::vector<Stream<ContextChunk>>>(
-            std::move(inputs));
-        auto index = std::make_shared<size_t>(0);
-        auto metadata = branches->front().metadata();
-        fragment.output = Stream<ContextChunk>(
-            [branches, index]() -> Stream<ContextChunk>::NextResult {
-              while (*index < branches->size()) {
-                GS_AUTO(next, (*branches)[*index].Next());
-                if (next) {
-                  return next;
-                }
-                ++*index;
-              }
-              return std::optional<ContextChunk>{};
-            },
-            std::move(metadata));
-        fragment.linear_step.reset();
-      }
-      fragment.morsel_step.reset();
+      fragment.morsel_step = nullptr;
       if (!fragment.linear_step) {
-        auto metadata = fragment.output.metadata();
         fragment.linear_step =
-            std::make_shared<LinearPipelineState>(std::move(fragment.output));
-        fragment.output =
-            Stream<ContextChunk>(fragment.linear_step, std::move(metadata));
+            execution_.Add<LinearPipelineTask>(fragment.output);
+        fragment.output = fragment.linear_step;
       }
-      auto* kernel = &op;
-      auto* storage = &storage_;
-      auto params = params_;
       fragment.linear_step->Append(
           name, current_timer,
-          [kernel, storage, params, build_state](OprTimer* timer) -> Kernel {
+          [operator_plan, storage, params,
+           build_state](OprTimer* timer) -> Kernel {
             if (build_state) {
               return make_chunk_kernel([build_state](ContextChunk chunk) {
-                return build_state->ProbeChunk(std::move(chunk));
+                return build_state->state().ProbeChunk(std::move(chunk));
               });
             }
-            return kernel->CreateState(*storage, params, timer);
+            return operator_plan->CreateState(*storage, params, timer);
           },
-          fragment.output.metadata().output_columns);
+          fragment.columns);
       if (auto columns = op.output_columns()) {
-        fragment.output.set_metadata(StreamMetadata{std::move(*columns)});
+        fragment.columns = std::move(*columns);
       }
       AdvanceTimer(current_timer, i, plan.operators_.size());
     }
@@ -773,6 +884,12 @@ class PipelineBuilder {
   }
 
  private:
+  PipelineFragment Replay(BufferTask* buffer, const std::vector<int>& columns,
+                          std::vector<PipelineTask*> gates) {
+    auto* task = execution_.Add<ReplayTask>(buffer);
+    task->gates.insert(task->gates.end(), gates.begin(), gates.end());
+    return {task, std::move(gates), columns};
+  }
   void AdvanceTimer(OprTimer*& timer, size_t index, size_t count) {
     if (timer && index + 1 < count) {
       timer->set_next(std::make_unique<OprTimer>());
@@ -790,45 +907,56 @@ class PipelineBuilder {
   }
   IStorageInterface& storage_;
   const ParamsMap& params_;
-  PipelineGraph& graph_;
-  TaskScheduler& scheduler_;
+  QueueExecution& execution_;
 };
+
+QueryResultReader::QueryResultReader() = default;
+QueryResultReader::~QueryResultReader() = default;
+QueryResultReader::QueryResultReader(QueryResultReader&&) noexcept = default;
+QueryResultReader& QueryResultReader::operator=(QueryResultReader&&) noexcept =
+    default;
+QueryResultReader::QueryResultReader(std::unique_ptr<QueueExecution> execution,
+                                     std::vector<int> columns)
+    : execution_(std::move(execution)), output_columns_(std::move(columns)) {}
+QueryResultReader::NextResult QueryResultReader::Next() {
+  if (error_) {
+    return tl::unexpected(*error_);
+  }
+  if (!execution_) {
+    return std::optional<ContextChunk>{};
+  }
+  auto output = CaptureWork([&] { return execution_->Next(); });
+  if (!output) {
+    error_ = output.error();
+    execution_.reset();
+  } else if (!*output) {
+    execution_.reset();
+  }
+  return output;
+}
 
 result<Context> Pipeline::Execute(IStorageInterface& graph, Context&& ctx,
                                   const ParamsMap& params, OprTimer* timer) {
-  return materialize(
-      ExecuteStream(graph, stream_from_context(std::move(ctx)), params, timer));
+  return materialize(ExecuteReader(graph, std::move(ctx), params, timer));
 }
-
-namespace {
-Stream<ContextChunk> BuildExecution(Pipeline& plan, IStorageInterface& storage,
-                                    Stream<ContextChunk> input,
-                                    const ParamsMap& params, OprTimer* timer,
-                                    size_t workers, TaskScheduler::Mode mode) {
-  auto graph = std::make_shared<PipelineGraph>();
-  auto scheduler = std::make_shared<TaskScheduler>(workers, mode);
-  auto fragment = PipelineBuilder(storage, params, *graph, *scheduler)
-                      .Build(plan, {std::move(input), {}, {}}, timer);
-  auto metadata = fragment.output.metadata();
-  return Stream<ContextChunk>(
-      std::make_shared<PipelineExecutionState>(
-          std::move(scheduler), std::move(graph), std::move(fragment)),
-      std::move(metadata));
-}
-}  // namespace
-
-Stream<ContextChunk> Pipeline::ExecuteStream(IStorageInterface& graph,
-                                             Stream<ContextChunk> input,
-                                             const ParamsMap& params,
-                                             OprTimer* timer, size_t workers) {
-  if (workers == 0) {
-    return error_stream<ContextChunk>(
-        Status(StatusCode::ERR_INVALID_ARGUMENT,
-               "Execution requires at least one worker"));
+QueryResultReader Pipeline::ExecuteReader(IStorageInterface& storage,
+                                          Context input,
+                                          const ParamsMap& params,
+                                          OprTimer* timer, size_t workers) {
+  if (!workers) {
+    QueryResultReader reader;
+    reader.error_ = Status(StatusCode::ERR_INVALID_ARGUMENT,
+                           "Execution requires at least one worker");
+    return reader;
   }
-  return BuildExecution(*this, graph, std::move(input), params, timer,
-                        graph.writable() ? 1 : workers,
-                        TaskScheduler::Mode::kWorkerPool);
+  auto execution =
+      std::make_unique<QueueExecution>(storage.writable() ? 1 : workers);
+  auto columns = std::move(input.tag_ids);
+  auto* source = execution->Add<InputTask>(std::move(input.chunks()));
+  auto fragment = PipelineBuilder(storage, params, *execution)
+                      .Build(*this, {source, {}, std::move(columns)}, timer);
+  execution->SetRoot(fragment.output);
+  return QueryResultReader(std::move(execution), std::move(fragment.columns));
 }
 
 neug::result<std::unique_ptr<OprTimer>> Pipeline::explain_tree(

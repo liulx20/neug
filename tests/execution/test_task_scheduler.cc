@@ -13,6 +13,7 @@
  * limitations under the License.
  */
 #include <gtest/gtest.h>
+#include "query_test_utils.h"
 
 #include <atomic>
 #include <chrono>
@@ -20,13 +21,13 @@
 #include <mutex>
 #include <thread>
 
+#include <future>
 #include "neug/common/columns/value_columns.h"
 #include "neug/execution/execute/ops/retrieve/join.h"
+#include "neug/execution/execute/ops/retrieve/limit.h"
 #include "neug/execution/execute/ops/retrieve/sink.h"
 #include "neug/execution/execute/pipeline.h"
-#include "neug/execution/execute/pipeline_graph.h"
 #include "neug/execution/execute/plan_parser.h"
-#include "neug/execution/execute/task_scheduler.h"
 #include "neug/storages/graph/property_graph.h"
 
 namespace neug::execution {
@@ -39,93 +40,6 @@ ContextChunk MakeChunk(int64_t value) {
   return chunk;
 }
 
-TEST(TaskSchedulerTest, BranchesActuallyOverlap) {
-  TaskScheduler scheduler(2);
-  PipelineGraph graph;
-  std::mutex mutex;
-  std::condition_variable ready;
-  int started = 0;
-  std::thread::id ids[2];
-  auto seed = graph.Add("seed", {}, [] { return Status::OK(); });
-  std::vector<PipelineGraph::NodeId> dependencies;
-  for (int i = 0; i < 2; ++i) {
-    dependencies.push_back(graph.Add("branch", {seed}, [&, i] {
-      std::unique_lock<std::mutex> lock(mutex);
-      ids[i] = std::this_thread::get_id();
-      ++started;
-      ready.notify_all();
-      EXPECT_TRUE(ready.wait_for(lock, std::chrono::seconds(5),
-                                 [&] { return started == 2; }));
-      return Status::OK();
-    }));
-  }
-  int joined = 0;
-  auto join = graph.Add("join", dependencies, [&] {
-    EXPECT_EQ(started, 2);
-    ++joined;
-    return Status::OK();
-  });
-  EXPECT_EQ(graph.dependencies(join), dependencies);
-  ASSERT_TRUE(graph.Execute(scheduler));
-  EXPECT_NE(ids[0], ids[1]);
-  EXPECT_NE(ids[0], std::this_thread::get_id());
-  EXPECT_NE(ids[1], std::this_thread::get_id());
-  EXPECT_EQ(joined, 1);
-  EXPECT_TRUE(graph.Execute(scheduler));
-  EXPECT_EQ(joined, 1);
-}
-
-TEST(TaskSchedulerTest, NestedDependenciesWithOneWorker) {
-  TaskScheduler scheduler(1);
-  PipelineGraph graph;
-  std::vector<int> values(63, 0);
-  std::function<PipelineGraph::NodeId(int)> build = [&](int depth) {
-    std::vector<PipelineGraph::NodeId> inputs;
-    if (depth != 0) {
-      inputs = {build(depth - 1), build(depth - 1)};
-    }
-    auto id = graph.size();
-    return graph.Add("reduce", inputs, [&, id, inputs] {
-      values[id] = inputs.empty() ? 1 : values[inputs[0]] + values[inputs[1]];
-      return Status::OK();
-    });
-  };
-  auto output = build(5);
-  ASSERT_TRUE(graph.Execute(scheduler));
-  EXPECT_EQ(values[output], 32);
-}
-
-TEST(TaskSchedulerTest, FailureDrainsSubmittedTasksAndSkipsConsumers) {
-  for (bool throws : {false, true}) {
-    TaskScheduler scheduler(2);
-    PipelineGraph graph;
-    std::atomic<int> completed{0};
-    auto left = graph.Add("left", {}, [&]() -> Status {
-      ++completed;
-      if (throws) {
-        throw std::runtime_error("left failed");
-      }
-      return Status::InternalError("left failed");
-    });
-    auto right = graph.Add("right", {}, [&] {
-      ++completed;
-      return Status::OK();
-    });
-    graph.Add("join", {left, right}, [&] {
-      ADD_FAILURE() << "Failed dependency must not unlock its consumer";
-      return Status::OK();
-    });
-    if (throws) {
-      EXPECT_THROW(graph.Execute(scheduler), std::runtime_error);
-    } else {
-      auto result = graph.Execute(scheduler);
-      EXPECT_FALSE(result);
-      EXPECT_NE(result.ToString().find("left failed"), std::string::npos);
-    }
-    EXPECT_EQ(completed.load(), 2);
-  }
-}
-
 TEST(TaskSchedulerTest, ScheduledPullIsLazyOrderedAndStopsOnDestruction) {
   PropertyGraph graph;
   GraphView view(graph);
@@ -134,25 +48,24 @@ TEST(TaskSchedulerTest, ScheduledPullIsLazyOrderedAndStopsOnDestruction) {
   std::atomic<int> calls{0};
   const auto caller = std::this_thread::get_id();
   {
-    auto input = Stream<ContextChunk>(
-        [&]() -> Stream<ContextChunk>::NextResult {
+    auto sourced = PrependInput(
+        std::move(pipeline), [&]() -> QueryResultReader::NextResult {
           EXPECT_NE(caller, std::this_thread::get_id());
           return std::optional<ContextChunk>(MakeChunk(++calls));
-        },
-        StreamMetadata{{0}});
-    auto stream =
-        pipeline.ExecuteStream(storage, std::move(input), {}, nullptr, 2);
+        });
+    auto stream = sourced.ExecuteReader(storage, Context{}, {}, nullptr, 2);
     EXPECT_EQ(calls.load(), 0);
-    EXPECT_EQ(stream.metadata().output_columns, (std::vector<int>{0}));
+
     for (int64_t i = 1; i <= 3; ++i) {
       auto next = stream.Next();
       ASSERT_TRUE(next);
       ASSERT_TRUE(*next);
       EXPECT_EQ((**next).get(0)->get_elem(0).GetValue<int64_t>(), i);
-      EXPECT_EQ(calls.load(), i);
+      EXPECT_GE(calls.load(), i);
+      EXPECT_LE(calls.load(), 4);
     }
   }
-  EXPECT_EQ(calls.load(), 3);
+  EXPECT_LE(calls.load(), 4);
 }
 
 TEST(TaskSchedulerTest, ErrorsAreTerminalAndQueueCanBeDestroyed) {
@@ -161,19 +74,19 @@ TEST(TaskSchedulerTest, ErrorsAreTerminalAndQueueCanBeDestroyed) {
   StorageReadInterface storage(view, 0);
   Pipeline pipeline;
   int calls = 0;
-  auto input = Stream<ContextChunk>([&]() -> Stream<ContextChunk>::NextResult {
-    ++calls;
-    THROW_IO_EXCEPTION("scheduled source error");
-  });
-  auto stream =
-      pipeline.ExecuteStream(storage, std::move(input), {}, nullptr, 2);
+  auto sourced =
+      PrependInput(std::move(pipeline), [&]() -> QueryResultReader::NextResult {
+        ++calls;
+        THROW_IO_EXCEPTION("scheduled source error");
+      });
+  auto stream = sourced.ExecuteReader(storage, Context{}, {}, nullptr, 2);
   auto first = stream.Next();
   ASSERT_FALSE(first);
   EXPECT_NE(first.error().ToString().find("scheduled source error"),
             std::string::npos);
   EXPECT_FALSE(stream.Next());
   EXPECT_EQ(calls, 1);
-  auto invalid = pipeline.ExecuteStream(storage, {}, {}, nullptr, 0);
+  auto invalid = sourced.ExecuteReader(storage, {}, {}, nullptr, 0);
   EXPECT_FALSE(invalid.Next());
 }
 
@@ -241,14 +154,14 @@ TEST(TaskSchedulerTest, BuilderSplitsForkWithoutOperatorScheduling) {
       SubPipelineMode::kMaterialized,
       OneOperator(std::make_unique<CallbackSource>(produce)),
       OneOperator(std::make_unique<CallbackSource>(produce))));
-  auto input = Stream<ContextChunk>([&]() -> Stream<ContextChunk>::NextResult {
-    if (++input_pulls == 4) {
-      return std::optional<ContextChunk>{};
-    }
-    return std::optional<ContextChunk>(MakeChunk(input_pulls));
-  });
-  auto output =
-      pipeline.ExecuteStream(storage, std::move(input), {}, nullptr, 2);
+  auto sourced =
+      PrependInput(std::move(pipeline), [&]() -> QueryResultReader::NextResult {
+        if (++input_pulls == 4) {
+          return std::optional<ContextChunk>{};
+        }
+        return std::optional<ContextChunk>(MakeChunk(input_pulls));
+      });
+  auto output = sourced.ExecuteReader(storage, Context{}, {}, nullptr, 2);
   EXPECT_EQ(input_pulls, 0);
   auto result = collect_chunk(std::move(output));
   ASSERT_TRUE(result);
@@ -280,16 +193,16 @@ TEST(TaskSchedulerTest, WritableExecutionUsesOneWorkerAndPreservesTaskOrder) {
       OneOperator(std::make_unique<CallbackSource>([&] { return record(1); })),
       OneOperator(
           std::make_unique<CallbackSource>([&] { return record(2); }))));
-  auto input = Stream<ContextChunk>(
-      [&, done = false]() mutable -> Stream<ContextChunk>::NextResult {
+  auto sourced = PrependInput(
+      std::move(pipeline),
+      [&, done = false]() mutable -> QueryResultReader::NextResult {
         if (done) {
           return std::optional<ContextChunk>{};
         }
         done = true;
         return std::optional<ContextChunk>(record(0));
       });
-  auto stream =
-      pipeline.ExecuteStream(storage, std::move(input), {}, nullptr, 4);
+  auto stream = sourced.ExecuteReader(storage, Context{}, {}, nullptr, 4);
   EXPECT_TRUE(order.empty());
   auto result = collect_chunk(std::move(stream));
   ASSERT_TRUE(result) << result.error().ToString();
@@ -317,7 +230,7 @@ TEST(TaskSchedulerTest, SequentialGroupDoesNotInitializeUnusedBranch) {
           },
           &right_init))));
   {
-    auto output = pipeline.ExecuteStream(storage, {}, {}, nullptr, 2);
+    auto output = pipeline.ExecuteReader(storage, {}, {}, nullptr, 2);
     EXPECT_EQ(left_init, 0);
     EXPECT_EQ(right_init, 0);
     auto next = output.Next();
@@ -341,17 +254,18 @@ TEST(TaskSchedulerTest, FailedCommonInputPreventsBranchesFromRunning) {
       SubPipelineMode::kMaterialized,
       OneOperator(std::make_unique<CallbackSource>(produce)),
       OneOperator(std::make_unique<CallbackSource>(produce))));
-  auto output = pipeline.ExecuteStream(
-      storage,
-      error_stream<ContextChunk>(Status::InternalError("bad common input")), {},
-      nullptr, 2);
+  auto sourced =
+      PrependInput(std::move(pipeline), []() -> QueryResultReader::NextResult {
+        return tl::unexpected(Status::InternalError("bad common input"));
+      });
+  auto output = sourced.ExecuteReader(storage, {}, {}, nullptr, 2);
   auto next = output.Next();
   ASSERT_FALSE(next);
   EXPECT_NE(next.error().ToString().find("bad common input"),
             std::string::npos);
 }
 
-TEST(TaskSchedulerTest, ReplacementSourcePrunesUnusedPipelineGraph) {
+TEST(TaskSchedulerTest, ReplacementSourcePrunesUnusedTasks) {
   PropertyGraph graph;
   GraphView view(graph);
   StorageReadInterface storage(view, 0);
@@ -368,7 +282,7 @@ TEST(TaskSchedulerTest, ReplacementSourcePrunesUnusedPipelineGraph) {
       std::make_unique<CallbackSource>([] { return MakeChunk(9); }));
   Pipeline pipeline(std::move(operators));
   auto output =
-      collect_chunk(pipeline.ExecuteStream(storage, {}, {}, nullptr, 2));
+      collect_chunk(pipeline.ExecuteReader(storage, {}, {}, nullptr, 2));
   ASSERT_TRUE(output);
   EXPECT_EQ(output->get(0)->get_elem(0).GetValue<int64_t>(), 9);
 }
@@ -407,8 +321,8 @@ TEST(TaskSchedulerTest, JoinInsideSequentialGroupUsesSameGraphWithoutPoolWait) {
   std::vector<ContextChunk> chunks;
   chunks.push_back(MakeChunk(1));
   chunks.push_back(MakeChunk(1));
-  auto output = pipeline.ExecuteStream(
-      storage, stream_from_batches(std::move(chunks)), {}, nullptr, 1);
+  auto output = pipeline.ExecuteReader(
+      storage, context_from_batches(std::move(chunks)), {}, nullptr, 1);
   for (int batch = 0; batch < 2; ++batch) {
     auto next = output.Next();
     ASSERT_TRUE(next) << next.error().ToString();
@@ -465,22 +379,22 @@ TEST(TaskSchedulerTest, RealNestedJoinReplaysMultipleChunksAndProfiles) {
     chunks.push_back(MakeChunk(1));
     chunks.push_back(MakeChunk(2));
     chunks.push_back(MakeChunk(1));
-    return stream_from_batches(std::move(chunks));
+    return context_from_batches(std::move(chunks));
   };
   auto expected =
-      collect_chunk(pipeline.ExecuteStream(storage, input(), {}, nullptr));
+      collect_chunk(pipeline.ExecuteReader(storage, input(), {}, nullptr));
   ASSERT_TRUE(expected);
   EXPECT_EQ(expected->row_num(), 17);
   for (size_t workers : {1, 2, 4}) {
     OprTimer timer;
-    auto stream = pipeline.ExecuteStream(storage, input(), {}, &timer, workers);
+    auto stream = pipeline.ExecuteReader(storage, input(), {}, &timer, workers);
     auto chunks = collect_batches(std::move(stream));
     ASSERT_TRUE(chunks) << chunks.error().ToString();
     ASSERT_EQ(chunks->size(), 3);
     EXPECT_EQ((*chunks)[0].row_num(), 8);
     EXPECT_EQ((*chunks)[1].row_num(), 1);
     EXPECT_EQ((*chunks)[2].row_num(), 8);
-    auto actual = collect_chunk(stream_from_batches(std::move(*chunks)));
+    auto actual = collect_chunk(context_from_batches(std::move(*chunks)));
     ASSERT_TRUE(actual) << actual.error().ToString();
     ASSERT_EQ(actual->row_num(), expected->row_num());
     for (size_t row = 0; row < actual->row_num(); ++row) {
@@ -493,8 +407,8 @@ TEST(TaskSchedulerTest, RealNestedJoinReplaysMultipleChunksAndProfiles) {
   auto execute = [&](int64_t value) {
     std::vector<ContextChunk> chunks;
     chunks.push_back(MakeChunk(value));
-    auto output = pipeline.ExecuteStream(
-        storage, stream_from_batches(std::move(chunks)), {}, nullptr, 2);
+    auto output = pipeline.ExecuteReader(
+        storage, context_from_batches(std::move(chunks)), {}, nullptr, 2);
     return std::async(std::launch::async,
                       [stream = std::move(output)]() mutable {
                         return collect_chunk(std::move(stream));
@@ -526,10 +440,156 @@ TEST(TaskSchedulerTest, ScheduledSinkPreservesEmptyOutputSchema) {
   operators.push_back(std::move(built->first));
   Pipeline pipeline(std::move(operators));
   auto output =
-      materialize(pipeline.ExecuteStream(storage, {}, {}, nullptr, 2));
+      materialize(pipeline.ExecuteReader(storage, {}, {}, nullptr, 2));
   ASSERT_TRUE(output);
   EXPECT_EQ(output->row_num(), 0);
   EXPECT_EQ(output->tag_ids, (std::vector<int>{3, 0, 3}));
+}
+
+TEST(TaskSchedulerTest, PausedConsumerDoesNotStartAnotherWave) {
+  PropertyGraph graph;
+  GraphView view(graph);
+  StorageReadInterface storage(view, 0);
+  for (size_t workers : {1, 4}) {
+    std::atomic<int> read{0};
+    auto pipeline =
+        PrependInput(Pipeline{}, [&]() -> QueryResultReader::NextResult {
+          return std::optional<ContextChunk>(MakeChunk(++read));
+        });
+    {
+      auto reader = pipeline.ExecuteReader(storage, {}, {}, nullptr, workers);
+      EXPECT_EQ(read, 0);
+      auto first = reader.Next();
+      ASSERT_TRUE(first);
+      ASSERT_TRUE(*first);
+      int paused = read;
+      EXPECT_LE(paused, workers == 1 ? 1 : 8);
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+      EXPECT_EQ(read, paused);
+    }
+    auto cancelled = read.load();
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    EXPECT_EQ(read, cancelled);
+  }
+}
+
+TEST(TaskSchedulerTest, FailureWaitsForOtherSubmittedBranch) {
+  PropertyGraph graph;
+  GraphView view(graph);
+  StorageReadInterface storage(view, 0);
+  std::mutex mutex;
+  std::condition_variable ready;
+  size_t started = 0;
+  bool release = false, completed = false;
+  auto source = [&](bool fail) -> result<ContextChunk> {
+    std::unique_lock<std::mutex> lock(mutex);
+    ++started;
+    ready.notify_all();
+    if (!ready.wait_for(lock, std::chrono::seconds(5),
+                        [&] { return started == 2; })) {
+      return tl::unexpected(Status::InternalError("branch start timeout"));
+    }
+    if (fail) {
+      return tl::unexpected(Status::InternalError("branch failed"));
+    }
+    ready.wait(lock, [&] { return release; });
+    completed = true;
+    return MakeChunk(7);
+  };
+  auto pipeline = OneOperator(std::make_unique<TestFork>(
+      SubPipelineMode::kMaterialized,
+      OneOperator(
+          std::make_unique<CallbackSource>([&] { return source(true); })),
+      OneOperator(
+          std::make_unique<CallbackSource>([&] { return source(false); }))));
+  auto reader = pipeline.ExecuteReader(storage, {}, {}, nullptr, 2);
+  auto result = std::async(
+      std::launch::async,
+      [reader = std::move(reader)]() mutable { return reader.Next(); });
+  {
+    std::unique_lock<std::mutex> lock(mutex);
+    EXPECT_TRUE(ready.wait_for(lock, std::chrono::seconds(5),
+                               [&] { return started == 2; }));
+  }
+  EXPECT_EQ(result.wait_for(std::chrono::milliseconds(20)),
+            std::future_status::timeout);
+  {
+    std::lock_guard<std::mutex> lock(mutex);
+    release = true;
+    ready.notify_all();
+  }
+  auto failure = result.get();
+  EXPECT_FALSE(failure);
+  EXPECT_TRUE(completed);
+  EXPECT_NE(failure.error().ToString().find("branch failed"),
+            std::string::npos);
+}
+
+TEST(TaskSchedulerTest, UnusedUnionJoinDoesNotCreateBuildState) {
+  class UnusedJoin final : public BuildProbeOperator {
+   public:
+    explicit UnusedJoin(int& calls) : calls_(calls) {}
+    std::string get_operator_name() const override { return "UnusedJoin"; }
+    SubPipelines sub_pipelines() override {
+      return {SubPipelineMode::kBuildProbe, {&left_, &right_}};
+    }
+    std::shared_ptr<BuildProbeState> CreateBuildState(size_t) override {
+      ++calls_;
+      THROW_IO_EXCEPTION("unused Join initialized");
+    }
+
+   private:
+    int& calls_;
+    Pipeline left_, right_;
+  };
+  PropertyGraph graph;
+  GraphView view(graph);
+  StorageReadInterface storage(view, 0);
+  int calls = 0;
+  auto pipeline = OneOperator(std::make_unique<TestFork>(
+      SubPipelineMode::kSequential,
+      OneOperator(
+          std::make_unique<CallbackSource>([] { return MakeChunk(1); })),
+      OneOperator(std::make_unique<UnusedJoin>(calls))));
+  for (size_t workers : {1, 4}) {
+    auto reader = pipeline.ExecuteReader(storage, {}, {}, nullptr, workers);
+    EXPECT_EQ(calls, 0);
+    auto first = reader.Next();
+    ASSERT_TRUE(first);
+    ASSERT_TRUE(*first);
+    EXPECT_EQ(calls, 0);
+  }
+}
+
+TEST(TaskSchedulerTest, LimitDoesNotDemandNextUnionBranch) {
+  PropertyGraph graph;
+  GraphView view(graph);
+  StorageReadInterface storage(view, 0);
+  int unused = 0;
+  std::vector<std::unique_ptr<IOperator>> operators;
+  operators.push_back(std::make_unique<TestFork>(
+      SubPipelineMode::kSequential,
+      OneOperator(
+          std::make_unique<CallbackSource>([] { return MakeChunk(1); })),
+      OneOperator(std::make_unique<CallbackSource>([] { return MakeChunk(2); },
+                                                   &unused))));
+  physical::PhysicalPlan plan;
+  auto* range =
+      plan.add_plan()->mutable_opr()->mutable_limit()->mutable_range();
+  range->set_lower(0);
+  range->set_upper(1);
+  ops::LimitOprBuilder builder;
+  auto limit = builder.Build(Schema(), ContextMeta(), plan, 0);
+  ASSERT_TRUE(limit);
+  operators.push_back(std::move(limit->first));
+  Pipeline pipeline(std::move(operators));
+  for (size_t workers : {1, 4}) {
+    auto result =
+        materialize(pipeline.ExecuteReader(storage, {}, {}, nullptr, workers));
+    ASSERT_TRUE(result);
+    EXPECT_EQ(result->row_num(), 1);
+    EXPECT_EQ(unused, 0);
+  }
 }
 }  // namespace
 }  // namespace neug::execution

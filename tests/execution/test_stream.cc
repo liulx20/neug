@@ -18,16 +18,15 @@
 #include "neug/common/columns/list_columns.h"
 #include "neug/common/columns/value_columns.h"
 #include "neug/execution/common/operators/retrieve/sink.h"
-#include "neug/execution/common/stream.h"
 #include "neug/execution/execute/ops/batch/batch_update_utils.h"
 #include "neug/execution/execute/ops/retrieve/limit.h"
 #include "neug/execution/execute/ops/retrieve/sink.h"
 #include "neug/execution/execute/pipeline.h"
 #include "neug/storages/graph/property_graph.h"
+#include "query_test_utils.h"
 
 namespace neug::execution {
 namespace {
-using ChunkStream = Stream<ContextChunk>;
 
 DataChunk chunk(int64_t value, int alias = 0) {
   ValueColumnBuilder<int64_t> builder;
@@ -37,7 +36,7 @@ DataChunk chunk(int64_t value, int alias = 0) {
   return out;
 }
 
-TEST(StreamTest, NestedColumnsMergeAcrossBatchesAndSerialize) {
+TEST(QueryResultTest, NestedColumnsMergeAcrossBatchesAndSerialize) {
   std::function<void(const Value&, const Value&)> expect_value;
   expect_value = [&](const Value& actual, const Value& expected) {
     ASSERT_EQ(actual.type(), expected.type());
@@ -83,15 +82,20 @@ TEST(StreamTest, NestedColumnsMergeAcrossBatchesAndSerialize) {
       batch.set(0, builder->finish());
       batches.push_back(std::move(batch));
     }
-    auto merged = collect_chunk(stream_from_batches(batches));
+    auto merged = collect_chunk(context_from_batches(batches));
     ASSERT_TRUE(merged);
     ASSERT_EQ(merged->row_num(), values.size());
     for (size_t row = 0; row < values.size(); ++row) {
       expect_value(merged->get(0)->get_elem(row), values[row]);
     }
     EXPECT_EQ(merged->head(), merged->get(0));
-    auto result = materialize(
-        stream_from_batches(std::move(batches), StreamMetadata{{0}}));
+    PropertyGraph result_graph;
+    GraphView result_view(result_graph);
+    StorageReadInterface result_storage(result_view, 0);
+    Pipeline result_pipeline;
+    auto result = result_pipeline.Execute(
+        result_storage, context_from_batches(std::move(batches), {0}), {},
+        nullptr);
     ASSERT_TRUE(result);
     PropertyGraph graph;
     GraphView view(graph);
@@ -103,16 +107,21 @@ TEST(StreamTest, NestedColumnsMergeAcrossBatchesAndSerialize) {
   }
 }
 
-TEST(StreamTest, IsLazyAndReleasesCursorOnCancellation) {
+TEST(QueryResultTest, IsLazyAndReleasesCursorOnCancellation) {
   int pulls = 0;
   std::weak_ptr<int> weak;
   {
     auto lifetime = std::make_shared<int>(0);
     weak = lifetime;
-    ChunkStream stream([&, lifetime]() -> ChunkStream::NextResult {
-      ++pulls;
-      return std::optional<ContextChunk>(std::in_place, chunk(pulls));
-    });
+    PropertyGraph graph;
+    GraphView view(graph);
+    StorageReadInterface storage(view, 0);
+    auto pipeline = PrependInput(
+        Pipeline{}, [&, lifetime]() -> QueryResultReader::NextResult {
+          ++pulls;
+          return std::optional<ContextChunk>(std::in_place, chunk(pulls));
+        });
+    auto stream = pipeline.ExecuteReader(storage, {}, {}, nullptr, 1);
     EXPECT_EQ(pulls, 0);
     ASSERT_TRUE(stream.Next());
     EXPECT_EQ(pulls, 1);
@@ -121,15 +130,20 @@ TEST(StreamTest, IsLazyAndReleasesCursorOnCancellation) {
   EXPECT_EQ(pulls, 1);
 }
 
-TEST(StreamTest, ErrorIsTerminalAndIsNotEndOfStream) {
+TEST(QueryResultTest, ErrorIsTerminalAndIsNotEndOfStream) {
   int pulls = 0;
-  ChunkStream stream([&]() -> ChunkStream::NextResult {
-    ++pulls;
-    if (pulls == 1) {
-      return std::optional<ContextChunk>(std::in_place, chunk(1));
-    }
-    THROW_IO_EXCEPTION("late read failure");
-  });
+  PropertyGraph graph;
+  GraphView view(graph);
+  StorageReadInterface storage(view, 0);
+  auto pipeline =
+      PrependInput(Pipeline{}, [&]() -> QueryResultReader::NextResult {
+        ++pulls;
+        if (pulls == 1) {
+          return std::optional<ContextChunk>(std::in_place, chunk(1));
+        }
+        THROW_IO_EXCEPTION("late read failure");
+      });
+  auto stream = pipeline.ExecuteReader(storage, {}, {}, nullptr, 1);
   ASSERT_TRUE(stream.Next());
   auto failed = stream.Next();
   ASSERT_FALSE(failed);
@@ -139,7 +153,7 @@ TEST(StreamTest, ErrorIsTerminalAndIsNotEndOfStream) {
   EXPECT_EQ(pulls, 2);
 }
 
-TEST(StreamTest, PreservesHeadsTagsSparseAliasesAndEmptyBatches) {
+TEST(QueryResultTest, PreservesHeadsTagsSparseAliasesAndEmptyBatches) {
   auto first = chunk(7, 3);
   auto head = first.get(3);
   Context original;
@@ -150,7 +164,11 @@ TEST(StreamTest, PreservesHeadsTagsSparseAliasesAndEmptyBatches) {
   empty.set(3, empty_builder.finish());
   original.append_chunk(std::move(empty));
   original.append_chunk(DataChunk(), head);
-  auto restored = materialize(stream_from_context(std::move(original)));
+  PropertyGraph graph;
+  GraphView view(graph);
+  StorageReadInterface storage(view, 0);
+  Pipeline pipeline;
+  auto restored = pipeline.Execute(storage, std::move(original), {}, nullptr);
   ASSERT_TRUE(restored);
   EXPECT_EQ(restored->tag_ids, (std::vector<int>{-1, 3}));
   ASSERT_EQ(restored->chunk_num(), 3);
@@ -160,7 +178,7 @@ TEST(StreamTest, PreservesHeadsTagsSparseAliasesAndEmptyBatches) {
   EXPECT_EQ(restored->chunk(2).row_num(), 1);
 }
 
-TEST(StreamTest, ChunkKernelPreservesColumnIdentity) {
+TEST(QueryResultTest, ChunkKernelPreservesColumnIdentity) {
   auto data = chunk(42, 3);
   auto column = data.get(3);
   auto state = make_chunk_kernel(
@@ -173,7 +191,7 @@ TEST(StreamTest, ChunkKernelPreservesColumnIdentity) {
   EXPECT_TRUE(state->Finalize()->empty());
 }
 
-TEST(StreamTest, StorageBridgeMapsProvidedBatchesAndStopsAtEnd) {
+TEST(QueryResultTest, StorageBridgeMapsProvidedBatchesAndStopsAtEnd) {
   auto input = chunk(5, 2);
   input.set(0, chunk(9).get(0));
   ops::BatchChunkSupplier supplier(one_chunk(ContextChunk(std::move(input))),
@@ -187,13 +205,13 @@ TEST(StreamTest, StorageBridgeMapsProvidedBatchesAndStopsAtEnd) {
   EXPECT_EQ(supplier.rows_read(), 1);
 }
 
-TEST(StreamTest, CopyResultPreservesCardinalityWithoutInputColumns) {
+TEST(QueryResultTest, CopyResultPreservesCardinalityWithoutInputColumns) {
   auto output = ops::batch_insert_result(1000000);
   EXPECT_EQ(output.row_num(), 1000000);
   EXPECT_EQ(output.col_num(), 0);
 }
 
-TEST(StreamTest, DeepPipelineRunsKernelsIterativelyAndFinalizesOnce) {
+TEST(QueryResultTest, DeepPipelineRunsKernelsIterativelyAndFinalizesOnce) {
   class State final : public OperatorState {
    public:
     State(size_t index, size_t width, size_t& processed, size_t& finalized)
@@ -254,7 +272,7 @@ TEST(StreamTest, DeepPipelineRunsKernelsIterativelyAndFinalizesOnce) {
   EXPECT_EQ(finalized, width);
 }
 
-TEST(StreamTest, GlobalFinalizeStopsAtDownstreamLimit) {
+TEST(QueryResultTest, GlobalFinalizeStopsAtDownstreamLimit) {
   class Buffer final : public IOperator {
    public:
     std::string get_operator_name() const override { return "Buffer"; }
@@ -331,7 +349,7 @@ class CountingProject final : public IOperator {
   Counts& counts_;
 };
 
-TEST(StreamTest, GlobalKernelFinalizesAfterAllInput) {
+TEST(QueryResultTest, GlobalKernelFinalizesAfterAllInput) {
   int calls = 0;
   auto state =
       make_global_kernel([&](ContextChunk input) -> result<ContextChunk> {
@@ -349,7 +367,7 @@ TEST(StreamTest, GlobalKernelFinalizesAfterAllInput) {
   EXPECT_EQ(calls, 1);
 }
 
-TEST(StreamTest, SinkMetadataPreservesOutputOrderAndEmptyResults) {
+TEST(QueryResultTest, SinkMetadataPreservesOutputOrderAndEmptyResults) {
   PropertyGraph graph;
   GraphView view(graph);
   StorageReadInterface storage(view, 0);
@@ -378,7 +396,7 @@ TEST(StreamTest, SinkMetadataPreservesOutputOrderAndEmptyResults) {
   }
 }
 
-TEST(StreamTest, PipelineReportsInitializationFailureOnlyWhenPulled) {
+TEST(QueryResultTest, PipelineReportsInitializationFailureOnlyWhenPulled) {
   class FailingSource final : public IOperator {
    public:
     explicit FailingSource(int& calls) : calls_(calls) {}
@@ -401,8 +419,7 @@ TEST(StreamTest, PipelineReportsInitializationFailureOnlyWhenPulled) {
   PropertyGraph graph;
   GraphView view(graph);
   StorageReadInterface storage(view, 0);
-  auto output =
-      pipeline.ExecuteStream(storage, Stream<ContextChunk>(), {}, nullptr);
+  auto output = pipeline.ExecuteReader(storage, Context{}, {}, nullptr);
   EXPECT_EQ(calls, 0);
   auto error = output.Next();
   ASSERT_FALSE(error);
@@ -412,7 +429,7 @@ TEST(StreamTest, PipelineReportsInitializationFailureOnlyWhenPulled) {
   EXPECT_EQ(calls, 1);
 }
 
-TEST(StreamTest, PipelinePullsThroughChunkwiseOperatorsAndProfilesRows) {
+TEST(QueryResultTest, PipelinePullsThroughChunkwiseOperatorsAndProfilesRows) {
   Counts counts;
   std::vector<std::unique_ptr<IOperator>> operators;
   operators.push_back(std::make_unique<CountingSource>(counts));

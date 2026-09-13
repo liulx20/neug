@@ -14,7 +14,7 @@
  */
 #pragma once
 
-#include "neug/execution/common/stream.h"
+#include "neug/execution/common/query_result_reader.h"
 #include "neug/execution/execute/operator.h"
 #include "neug/storages/graph/graph_interface.h"
 
@@ -34,15 +34,14 @@ class Pipeline {
       : operators_(std::move(operators)) {}
   ~Pipeline() = default;
 
-  // Caller keeps this pipeline, storage and timer alive until the stream is
+  // Caller keeps this pipeline, storage and timer alive until the reader is
   // consumed or destroyed. Params are captured by value by lazy operators.
   // All executions use the task graph. Writable storage uses one worker to
   // preserve transaction sequencing; read-only callers may request more.
-  Stream<ContextChunk> ExecuteStream(IStorageInterface& graph,
-                                     Stream<ContextChunk> input,
-                                     const ParamsMap& params,
-                                     OprTimer* timer = nullptr,
-                                     size_t workers = 1);
+  QueryResultReader ExecuteReader(IStorageInterface& graph, Context input,
+                                  const ParamsMap& params,
+                                  OprTimer* timer = nullptr,
+                                  size_t workers = 1);
 
   neug::result<Context> Execute(IStorageInterface& graph, Context&& ctx,
                                 const ParamsMap& params, OprTimer* timer);

@@ -18,6 +18,7 @@
 #include <mutex>
 #include <set>
 #include <thread>
+#include "query_test_utils.h"
 
 #include "neug/common/columns/value_columns.h"
 #include "neug/execution/execute/ops/retrieve/join.h"
@@ -202,7 +203,7 @@ TEST(MorselExecutionTest, JoinBuildAndProbeUsePartitionedSources) {
     operators.push_back(std::make_unique<EvenProject>());
     Pipeline pipeline(std::move(operators));
     OprTimer timer;
-    auto stream = pipeline.ExecuteStream(storage, {}, {}, &timer, workers);
+    auto stream = pipeline.ExecuteReader(storage, {}, {}, &timer, workers);
     auto result = collect_chunk(std::move(stream));
     ASSERT_TRUE(result) << result.error().ToString();
     ASSERT_EQ(result->row_num(), 62);
@@ -233,7 +234,7 @@ TEST(MorselExecutionTest, ClaimsRangesDynamicallyAndFusesLocalTransforms) {
       operators.push_back(std::make_unique<EvenProject>());
       Pipeline pipeline(std::move(operators));
       OprTimer timer;
-      auto output = pipeline.ExecuteStream(storage, {}, {}, &timer, workers);
+      auto output = pipeline.ExecuteReader(storage, {}, {}, &timer, workers);
       EXPECT_EQ(observed.started, 0);
       auto chunks = collect_batches(std::move(output));
       ASSERT_TRUE(chunks) << chunks.error().ToString();
@@ -279,7 +280,7 @@ TEST(MorselExecutionTest, GlobalLimitIsNotDuplicatedAcrossWorkers) {
   operators.push_back(std::move(limit->first));
   Pipeline pipeline(std::move(operators));
   auto output =
-      collect_chunk(pipeline.ExecuteStream(storage, {}, {}, nullptr, 4));
+      collect_chunk(pipeline.ExecuteReader(storage, {}, {}, nullptr, 4));
   ASSERT_TRUE(output);
   ASSERT_EQ(output->row_num(), 12);
   for (size_t row = 0; row < output->row_num(); ++row) {
@@ -298,7 +299,7 @@ TEST(MorselExecutionTest, DeferredReadErrorDrainsWorkAndRemainsTerminal) {
   std::vector<std::unique_ptr<IOperator>> operators;
   operators.push_back(std::make_unique<RangeSourceOpr>(1000, observed));
   Pipeline pipeline(std::move(operators));
-  auto output = pipeline.ExecuteStream(storage, {}, {}, nullptr, 4);
+  auto output = pipeline.ExecuteReader(storage, {}, {}, nullptr, 4);
   for (int chunk = 0; chunk < 4; ++chunk) {
     auto next = output.Next();
     ASSERT_TRUE(next);

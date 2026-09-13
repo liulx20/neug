@@ -5,13 +5,12 @@ objects retain plan configuration; each execution owns separate state objects.
 Operators do not receive a scheduler and cannot submit or wait for tasks.
 
 ```cpp
-auto stream = pipeline.ExecuteStream(
-    storage, stream_from_context(Context()), params, nullptr, 4);
-auto result = materialize(std::move(stream));
+auto reader = pipeline.ExecuteReader(storage, Context(), params, nullptr, 4);
+auto result = materialize(std::move(reader));
 ```
 
-`ExecuteStream` is the single execution entry point for reads, writes, DDL and
-other commands. `Execute` materializes that stream for existing result consumers.
+`ExecuteReader` is the single execution entry point for reads, writes, DDL and
+other commands. `Execute` materializes that reader for existing result consumers.
 Every execution uses the same pipeline builder, dependency graph and task runner.
 There is no separate scheduled API or per-operator admission switch.
 
@@ -19,7 +18,7 @@ The default worker count is one. Read-only executions may request more workers;
 writable storage is constrained to one worker even when a higher count is
 requested, preserving transaction sequencing. This enables worker execution of
 writes without introducing concurrent mutation within one transaction. Keep the
-plan, storage and optional profiling timer alive until the stream is consumed or
+plan, storage and optional profiling timer alive until the reader is consumed or
 destroyed. The worker pool is joined before the completed execution returns to
 its transaction owner. There is no Python/SQL worker-count switch yet.
 
@@ -30,20 +29,20 @@ its transaction owner. There is no Python/SQL worker-count switch yet.
 | `IOperator` | Plan configuration, input declarations and kernel selection |
 | `OperatorState` | One execution's inputs, cursors and intermediate data |
 | `PipelineBuilder` | Connect operator inputs and construct subpipeline boundaries |
-| `PipelineFragment` | Output stream, prerequisite nodes, fork barriers and current morsel step |
-| `MorselPipelineState` | Shared source allocation, local readers, transforms and bounded output waves |
-| `PipelineGraph` | Dependency counts, ready nodes, completion notifications and failures |
+| `PipelineFragment` | Output task, result columns, fork barriers and current segment |
+| `MorselPipelineTask` | Shared source allocation, local readers, transforms and bounded output waves |
+| `QueueExecution` | Dependency gates, ready queue, one-slot mailboxes, completion events and failures |
 | `TaskScheduler` | Worker pool and queue of runnable tasks |
-| `PipelineExecutionState` | Own the graph, worker pool and final output pipeline |
+| `QueryResultReader` | External result access and ownership of the execution |
 
 `IOperator::sub_pipelines()` declares child plans and how they consume input:
 
 - `kMaterialized`: all child results are required before the consumer can run.
 - `kBuildProbe`: input 1 feeds a blocking build phase; input 0 streams through
   the probe phase after build completion. Ordinary Join uses this mode.
-- `kStreaming`: a single child stream feeds the operator. Primary-key Join uses
-  this mode and can stay in the same pull pipeline as its child and downstream.
-- `kSequential`: child streams are consumed one after another on demand. Union
+- `kStreaming`: a single child pipeline feeds the operator. Primary-key Join uses
+  this mode.
+- `kSequential`: child outputs are consumed one after another on demand. Union
   uses this mode.
 
 `CreateState(storage, params, timer)` creates a `Kernel` owning one execution's
@@ -63,7 +62,7 @@ batch boundaries until finalization. Source operators have a separate
 `CreateMorselSource` factory. Join's independent build state receives prepared
 right-side data and exposes build/finalize/probe kernels to the builder.
 
-`KernelChain` runs adjacent operators with an iterative loop. `LinearPipelineState`
+`KernelChain` runs adjacent operators with an iterative loop. `LinearPipelineTask`
 keeps global states across batches, forwards completion in pipeline order and
 stops upstream work when a kernel finishes early. A morsel task uses the same
 kernel driver for its local segment. No per-operator Stream or recursive
@@ -71,11 +70,35 @@ kernel driver for its local segment. No per-operator Stream or recursive
 `defer_stream`, `reduce_stream`, `generate_chunk` and `prepend_chunk` have been
 removed. Plugins implementing the C++ operator interface must be rebuilt.
 
-`Stream<ContextChunk>` remains a result-reader adapter at execution/pipeline
-boundaries. It reports chunks, EOF and terminal errors; it does not own or wire
-SQL operator states. Union's branch cursor and shared-input readers belong to
-the execution runtime. Ordinary Join probes a published table using `ProbeChunk`
-in both local and global segments, without a second pull-based Join path.
+There is no generic `Stream`, `StreamState`, stream conversion helper or
+boundary-level pull chain. `QueryResultReader` is a concrete external handle;
+`Next()` requests a result chunk and drives completion events until data, EOF or
+an error is available. Only this caller waits. Workers execute ready kernel,
+morsel or build tasks and post a completion notification; they never call
+another pipeline's `Next()` or wait for work in the same pool.
+
+Each boundary has a one-slot mailbox. A consumer waiting for input registers
+with its producer and suspends. Publishing a chunk or completing a dependency
+puts the waiting consumer on the ready queue. Consuming a chunk does not
+prefetch the next one: another upstream task runs only when the downstream
+requests more data. Completed work within a kernel invocation or morsel wave
+can retain multiple chunks, so the mailbox capacity is not a byte memory limit.
+The coordinator runs on the thread calling `Next()`; no additional coordinator
+thread or polling scan over the task graph is required.
+
+Union's `ConcatTask` demands only its current branch. Later branches are part of
+the same graph and pool, but their execution state and suppliers are not
+initialized until demanded. Join's shared-input and build buffers are explicit
+`BufferTask` barriers. `ReplayTask` keeps an independent cursor over a completed
+buffer and publishes batches through its mailbox. Ordinary Join probes a
+published table through `ProbeChunk` in both local and global segments.
+
+A successful end is distinct from a failure. Errors remain terminal on the
+reader. On error, destruction or a downstream early stop, no additional source
+work is requested. All submitted tasks are drained before execution-owned state
+is destroyed or the transaction owner receives EOF/error. Running storage calls
+are not forcibly interrupted. A source's successful finalizer is not called
+merely because the consumer stopped early.
 
 COPY's insert state receives chunks from the driver. For each chunk it passes a
 finite `BatchChunkSupplier` to the storage API, and accumulates result cardinality
@@ -124,56 +147,37 @@ Nested build/probe and materialized forks are recursively expanded into the
 same DAG. The left pipeline's prerequisites depend on the right build node. The builder is driven by
 input declarations, not operator names or Join-specific scheduler calls.
 
-The external consumer runs the coordinator on first `Next()`:
-
-1. Mark the ancestors needed by the output pipeline.
-2. Enqueue nodes with no unfinished dependencies.
-3. Receive worker completion notifications and unlock successor nodes.
-4. Once output prerequisites finish, enqueue one pull of the output pipeline.
-
-Subsequent `Next()` calls enqueue further output pulls without rerunning the
-completed graph. At most one output pull is in flight for a stream.
-
-A pipeline-step coordinator may itself run on a worker. When it waits for its
-finite batch of morsel tasks, it helps execute queued work. Tasks submitted from
-a worker go to the front of the queue, ahead of unrelated ready graph nodes.
-This allows the same execution flow to make progress with one worker and keeps
-serial transaction work ordered. Only the execution runtime uses this mechanism;
-SQL operators do not submit or wait for tasks. Nested Join build phases remain
-connected by dependency edges.
-
 ## Demand and failures
 
-Union creates each child execution only when that branch is demanded. The child
-uses the same builder, graph and execution state, with ready tasks executed
-inline on the current worker. This avoids creating a nested pool or blocking a
-worker on its own pool, and preserves the enclosing transaction's single-worker
-constraint. Nested Joins retain their build/probe dependencies in this local
-graph. An unconsumed branch is neither initialized nor read, so early termination
-does not trigger errors or side effects from an unused branch. Conditional
-graphs are not yet distributed across the enclosing worker pool.
+On `Next()`, the external consumer requests the output task. Missing input or
+unfinished gates register a waiter and enqueue the required upstream task.
+Workers run only ready work. Completion events resume the waiting tasks; the
+coordinator sleeps on a condition variable when no task can advance. The graph
+is built once, and subsequent calls resume its execution state.
 
-An operator such as Scan can declare that it does not consume its incoming data
-stream. The builder prunes those unused data dependencies while retaining any
-mandatory enclosing-fork barrier. Thus a Join's common input still completes
-before either branch begins, even when a branch starts with a fresh scan.
+Union branches are built into the same graph but activated sequentially. An
+unused branch's operator state and supplier are never initialized. Nested Joins
+retain their build/probe gates and can use the enclosing pool, including when
+that pool has only one worker. There is no nested executor or worker-side wait.
 
-A failed prerequisite does not unlock its consumers. The coordinator stops
-submitting new nodes and waits for every submitted task to finish before
-returning the error. Both task exceptions and coordinator-side failures drain
-in-flight work. Errors and EOF remain terminal through `Stream::Next()`.
+An operator such as Scan can declare that it does not consume incoming data.
+The builder prunes unused data dependencies while retaining mandatory enclosing
+fork barriers. Thus a Join's common input completes before either branch starts,
+even if a branch begins with a fresh scan. Materialized write branches also have
+explicit ordering gates, preserving plan order with the single write worker.
 
-The worker pool starts on first demand. Thread-start failures also pass through
-`Next()`'s error boundary. Destroying a partially consumed result joins the pool
-without starting further output pulls. There is no mid-call cancellation or
-preemption of a running synchronous kernel.
+A failed task does not unlock its consumers. The coordinator stops submitting
+new work and drains all submitted tasks before returning the error. The pool
+starts on first demand, so thread-start errors also pass through the reader's
+error boundary. Destruction stops future demand and joins the pool; it does not
+preempt a running synchronous kernel.
 
 ## Morsel pipelines
 
 `pipeline_behavior()` declares a source, a chunk-local transform, or a global
 boundary. The default is global, so an operator must explicitly opt into local
 execution. The builder groups a source and adjacent local transforms into one
-`MorselPipelineState`:
+`MorselPipelineTask`:
 
 ```text
 shared source: Pick() -> range 0, range 1, ...
@@ -216,7 +220,7 @@ call the source's successful-completion finalizer.
 
 Ordinary Join attaches its probe kernel to the left morsel step when possible.
 If the left input ends at a global boundary or reads a shared materialized input,
-probing remains a single stream consumer. Global Limit, DISTINCT, aggregation,
+probing remains a single task segment. Global Limit, DISTINCT, aggregation,
 sort/TopK and fused expansion-count operators are not cloned per worker.
 Primary-key Join currently ends a morsel step.
 
@@ -227,18 +231,19 @@ Primary-key Join currently ends a morsel step.
 - Join builds local hash tables concurrently and merges them serially. There is
   no hash exchange, partition-local probe routing or spill implementation.
 - Aggregation, dedup and sorting retain their global execution kernels.
-- Conditional Union child graphs remain inline, preserving unused-branch laziness.
+- Conditional Union branches use the same ready queue and worker pool, preserving
+  unused-branch laziness.
 - The graph has no byte-based memory budget or cross-query admission control.
   Every execution has its own worker pool; writes use the same flow with one worker.
-- `Stream` remains the result/error interface at pipeline boundaries.
-  Tasks run ranges through a pipeline segment, rather than scheduling each `Next()`
-  or each operator as an individual task. This is not compiled kernel fusion.
+- `QueryResultReader::Next()` is the external result/error interface. Internal
+  boundaries exchange chunks through mailboxes. Tasks run a kernel segment or
+  source range; local operator fusion is an interpreted loop, not compiled code.
 
 Each worker lane has independent profiling counters. The step merges counters
 only after all wave tasks complete, without merging or modifying the plan's child
-timer tree from worker tasks. Join build time includes consuming the right input,
-local table construction and finalization; child timers also record their own
-work. Sum of concurrent task durations is not query wall time. Read-ahead can
+timer tree from worker tasks. Join build time includes merging the collected right rows, local table
+construction and finalization; right-side pipeline tasks record their own work
+without charging queue waits to the Join. Sum of concurrent task durations is not query wall time. Read-ahead can
 make upstream row counts exceed the rows ultimately consumed by a Limit.
 
 ## Validation
@@ -272,3 +277,10 @@ joins across range boundaries.
 kernels over multiple chunks and verifies processing order and one completion
 per state. COPY tests cover late input errors and rollback across batches;
 export tests verify column order across the Context-based extension ABI boundary.
+
+`PausedConsumerDoesNotStartAnotherWave` verifies bounded source read-ahead and
+no work after consumer cancellation. `FailureWaitsForOtherSubmittedBranch`
+holds one branch in flight while its sibling fails and verifies that the error
+is not returned before draining. `LimitDoesNotDemandNextUnionBranch` checks that
+normal EOF after a Limit does not initialize the unused Union tail, with both
+one and four workers.

@@ -32,15 +32,13 @@ namespace execution {
 
 /**
  * @brief Context is a materialized multi-chunk container for internal
- * algorithms and public query results. Operators exchange Stream<ContextChunk>
+ * algorithms and public query results. Operators process ContextChunk batches
  * instead.
  *
  * A Context holds one or more ContextChunks (DataChunk + head pairs) that
- * share the same schema. Operators iterate chunks via `apply_chunks`, whose
- * callback receives a `ContextChunk&&` (by-value ownership) and returns
- * `result<ContextChunk>`. The single-chunk case (today's typical query path)
- * always has exactly one chunk at index 0; multi-chunk support enables batch
- * IO scenarios where data arrives in chunks.
+ * share the same schema. The execution driver passes individual chunks to
+ * operator states; Context remains the materialized result and extension ABI
+ * container.
  */
 class Context {
  public:

@@ -21,8 +21,8 @@
 #include "neug/common/columns/value_columns.h"
 #include "neug/common/columns/vertex_columns.h"
 #include "neug/execution/common/operators/retrieve/join.h"
-#include "neug/execution/common/stream.h"
 #include "neug/execution/utils/params.h"
+#include "query_test_utils.h"
 
 namespace neug::execution {
 namespace {
@@ -139,7 +139,7 @@ result<ContextChunk> Batched(const std::vector<Row>& rows, bool right,
     chunks.push_back(VertexChunk(
         std::vector<Row>(rows.begin() + begin, rows.begin() + end), right));
   }
-  return collect_chunk(stream_from_batches(std::move(chunks)));
+  return collect_chunk(context_from_batches(std::move(chunks)));
 }
 
 TEST(HashJoinTest, MatchesAcrossChunkBoundariesRetainAllDuplicates) {
