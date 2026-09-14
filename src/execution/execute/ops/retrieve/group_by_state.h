@@ -49,9 +49,14 @@ class TypedAggregateColumn final : public AggregateColumn {
  public:
   explicit TypedAggregateColumn(AggrKind kind) : kind_(kind) {}
   void Resize(size_t size) override {
-    values_.resize(size);
-    sums_.resize(size);
-    counts_.resize(size);
+    if (kind_ == AggrKind::kAvg) {
+      sums_.resize(size);
+    } else if (kind_ != AggrKind::kCount) {
+      values_.resize(size);
+    }
+    if (kind_ != AggrKind::kSum) {
+      counts_.resize(size);
+    }
   }
   void Consume(const IContextColumn* input, const sel_vec_t& groups) override {
     for (size_t row = 0; row < groups.size(); ++row) {
@@ -66,6 +71,7 @@ class TypedAggregateColumn final : public AggregateColumn {
       auto value = input->get_elem(row).template GetValue<T>();
       if (kind_ == AggrKind::kSum) {
         values_[dest] = Add(values_[dest], value);
+        continue;
       } else if (kind_ == AggrKind::kAvg) {
         if constexpr (std::is_arithmetic_v<T>) {
           sums_[dest] += static_cast<double>(value);
@@ -81,12 +87,14 @@ class TypedAggregateColumn final : public AggregateColumn {
   void Merge(const AggregateColumn& input, size_t source,
              size_t dest) override {
     const auto& other = static_cast<const TypedAggregateColumn&>(input);
+    if (kind_ == AggrKind::kSum) {
+      values_[dest] = Add(values_[dest], other.values_[source]);
+      return;
+    }
     if (!other.counts_[source]) {
       return;
     }
-    if (kind_ == AggrKind::kSum) {
-      values_[dest] = Add(values_[dest], other.values_[source]);
-    } else if (kind_ == AggrKind::kAvg) {
+    if (kind_ == AggrKind::kAvg) {
       sums_[dest] += other.sums_[source];
     } else if (kind_ != AggrKind::kCount &&
                (!counts_[dest] ||
@@ -98,6 +106,14 @@ class TypedAggregateColumn final : public AggregateColumn {
     counts_[dest] += other.counts_[source];
   }
   std::shared_ptr<IContextColumn> Finish() const override {
+    if (kind_ == AggrKind::kSum) {
+      ValueColumnBuilder<T> output;
+      output.reserve(values_.size());
+      for (const auto& value : values_) {
+        output.push_back_opt(value);
+      }
+      return output.finish();
+    }
     if (kind_ == AggrKind::kCount) {
       ValueColumnBuilder<int64_t> output;
       output.reserve(counts_.size());
@@ -121,7 +137,7 @@ class TypedAggregateColumn final : public AggregateColumn {
     ValueColumnBuilder<T> output;
     output.reserve(counts_.size());
     for (size_t i = 0; i < counts_.size(); ++i) {
-      if (counts_[i] || kind_ == AggrKind::kSum) {
+      if (counts_[i]) {
         output.push_back_opt(values_[i]);
       } else {
         output.push_back_null();

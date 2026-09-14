@@ -149,6 +149,43 @@ TEST(ParallelDedupTest, ScalarEdgePropertyIdentityUsesEstablishedHelper) {
   Check({chunk, chunk}, {0});
 }
 
+TEST(ParallelDedupTest, NativeIntegerKeysDistinguishNullAndExtremeValues) {
+  auto check = []<typename T>() {
+    ChunkBatch input;
+    for (size_t batch = 0; batch < 3; ++batch) {
+      ValueColumnBuilder<T> values;
+      ValueColumnBuilder<int64_t> second;
+      for (size_t row = 0; row < 128; ++row) {
+        switch (row % 4) {
+        case 0:
+          values.push_back_null();
+          break;
+        case 1:
+          values.push_back_opt(std::numeric_limits<T>::max());
+          break;
+        case 2:
+          values.push_back_opt(std::numeric_limits<T>::min());
+          break;
+        default:
+          values.push_back_opt(static_cast<T>(-1));
+          break;
+        }
+        second.push_back_opt((row + batch) % 3);
+      }
+      ContextChunk chunk;
+      chunk.set(0, values.finish());
+      chunk.set(1, second.finish());
+      input.push_back(std::move(chunk));
+    }
+    Check(input, {0});
+    Check(input, {0, 1});
+  };
+  check.operator()<int32_t>();
+  check.operator()<int64_t>();
+  check.operator()<uint32_t>();
+  check.operator()<uint64_t>();
+}
+
 TEST(ParallelDedupTest, ScalarFloatNullabilityAndSignedZeroRemainCompatible) {
   for (bool optional : {false, true}) {
     ChunkBatch input;

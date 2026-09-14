@@ -12,3 +12,11 @@ add_neug_test(
 	test_value.cc
 	test_value_column.cc
 	test_runtime_column.cc)
+
+# Optional diagnostic: state-kernel timings without the scheduler or storage.
+if(UNIX)
+    add_executable(partition_phases EXCLUDE_FROM_ALL
+        ../../tools/benchmarks/partition_phases.cc)
+    target_link_libraries(partition_phases PRIVATE neug ${Protobuf_LIBRARIES}
+        ${GLOG_LIBRARIES} ${ARROW_LIB} ${YAML_CPP_LIBRARIES})
+endif()

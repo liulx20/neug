@@ -414,3 +414,91 @@ aggregate PROFILE collection; plan evidence is in the partitioned report.
 
 Raw reports: [partial](benchmarks/task_queue_aggregate_1m.json),
 [collected](benchmarks/task_queue_aggregate_collected_1m.json).
+
+## Reducing Dedup and GroupBy overhead
+
+This revision uses native optional-integer keys throughout scalar integer Dedup,
+reuses encoding buffers for other keys, removes the second global Dedup pass for
+composite keys, and skips the final merge/reshuffle for a single partition.
+GroupBy allocates only aggregate fields that are used. In particular, SUM does
+not need a count array because its empty/all-null result is zero. COUNT plus
+SUM(INT64) now uses 16 rather than 48 bytes per group for aggregate-array payloads;
+this is not a claim that total process memory falls by the same factor.
+
+Whole-query execute medians, one million rows and five repetitions, compared
+with the previously recorded partitioned implementations:
+
+| Query | Previous 1 worker | Current 1 worker | Previous 4 workers | Current 4 workers |
+| --- | ---: | ---: | ---: | ---: |
+| Dedup: 17 keys | 93.709 ms | 41.402 ms | 29.847 ms | 13.677 ms |
+| Dedup: 1m unique keys | 67.702 ms | 63.587 ms | 50.109 ms | 50.241 ms |
+| Dedup: 1,717 composite keys | 213.158 ms | 169.471 ms | 64.200 ms | 48.574 ms |
+| GroupBy: 1m groups, COUNT/SUM | 365.858 ms | 267.880 ms | 275.310 ms | 253.039 ms |
+
+Dedup's repeated-integer and composite cases improve substantially. Unique
+scalar keys remain close to the prior implementation. High-cardinality GroupBy
+improves, especially with one worker, but is still slower than the original
+collected helper (153.155/212.308 ms at one/four workers). This does not resolve
+all of its regression: duplicated local/partition grouping still remains.
+These measurements combine several changes; individual speedup contributions
+are not isolated. All result row counts/checksums match the previous reports.
+
+### Is integer sampling still useful?
+
+A separate experimental build disabled scalar integer sampling entirely while
+retaining native integer local/partition hashing. It was not retained in the
+implementation. At four workers, unique-key Dedup measured 89.566 ms without
+sampling, versus about 50 ms with it. Native keys reduce overhead, but do not
+make an unconditional hash build plus final ordering competitive for this case.
+The final code therefore retains the heuristic with native integer samples.
+It can still misclassify nonrepresentative prefixes; it is not a cost model.
+
+### Direct state-phase diagnostic
+
+With BUILD_TEST enabled, build the optional diagnostic target (excluded from the
+default build and CTest):
+
+```sh
+cmake --build build --target partition_phases -j4
+build/tests/execution/partition_phases dedup 1000000 17
+build/tests/execution/partition_phases composite 1000000 1000000
+build/tests/execution/partition_phases group 1000000 1000000
+```
+
+The tool generates two INT64 columns: `i % cardinality` and `i % 101`, in
+1,024-row chunks. Dedup uses the first column, composite Dedup uses both, and
+GroupBy computes COUNT(*) and SUM(second column) grouped by the first column.
+It directly runs one partition on one thread, timing local processing, partition
+merge and finalization separately. Input generation and state construction are
+outside the timers; there is no storage scan, task queue, result serialization
+or worker overlap. Time between measured calls, including some destruction,
+is excluded. These numbers must not be read as multithreaded end-to-end timings.
+
+Five fresh-process repetitions per case produced these medians:
+
+| Operation / key cardinality | Local | Merge | Finalize | Peak process RSS |
+| --- | ---: | ---: | ---: | ---: |
+| dedup / 17 | 13.511 ms | 0.204 ms | 0.245 ms | 29.0 MiB |
+| dedup / 1000000 | 1.985 ms | 0.063 ms | 33.113 ms | 49.2 MiB |
+| composite / 17 | 93.481 ms | 15.142 ms | 0.466 ms | 30.1 MiB |
+| composite / 1000000 | 93.519 ms | 59.836 ms | 59.572 ms | 145.1 MiB |
+| group / 17 | 23.797 ms | 0.301 ms | 0.004 ms | 28.7 MiB |
+| group / 1000000 | 80.636 ms | 114.181 ms | 9.288 ms | 166.9 MiB |
+
+The high-cardinality GroupBy diagnostic spends approximately 81 ms locally and
+114 ms merging, versus 9 ms finalizing. Its main remaining cost is grouping and
+partial-state handling, not final output construction in this one-partition
+experiment. Multiple partitions add ordering and column merging, so this does
+not measure their exact contribution at four workers. Unique scalar Dedup skips
+hash reduction and spends most of its measured time in final normalization;
+composite-key Dedup still pays encoded-key processing costs.
+
+Peak RSS is the maximum over these five process runs and includes libraries,
+generated input, allocator retention and output; it is neither operator-only
+memory nor a before/after memory comparison. No builds/tests or other benchmark
+cases ran concurrently. Correctness is covered separately by regression tests,
+including integer extrema/NULL identity, exact row order and cleared output head.
+
+Raw reports: [end-to-end](benchmarks/task_queue_reduction_cost_1m.json),
+[no-sampling experiment](benchmarks/task_queue_native_no_sampling_1m.json),
+[state phases and process memory](benchmarks/partition_phases_1m.json).

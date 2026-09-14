@@ -35,6 +35,31 @@ namespace execution {
 class OprTimer;
 
 namespace ops {
+using IntegerKey = std::optional<uint64_t>;
+
+static bool IsInteger(DataTypeId type) {
+  return type == DataTypeId::kInt32 || type == DataTypeId::kInt64 ||
+         type == DataTypeId::kUInt32 || type == DataTypeId::kUInt64;
+}
+
+static IntegerKey ReadInteger(const Value& value) {
+  if (value.IsNull()) {
+    return std::nullopt;
+  }
+  switch (value.type().id()) {
+  case DataTypeId::kInt32:
+    return static_cast<uint64_t>(value.GetValue<int32_t>());
+  case DataTypeId::kInt64:
+    return static_cast<uint64_t>(value.GetValue<int64_t>());
+  case DataTypeId::kUInt32:
+    return value.GetValue<uint32_t>();
+  case DataTypeId::kUInt64:
+    return value.GetValue<uint64_t>();
+  default:
+    throw std::logic_error("Expected integer key");
+  }
+}
+
 class DedupState final : public PartitionState {
  public:
   DedupState(std::vector<int32_t> keys, size_t partitions)
@@ -46,6 +71,8 @@ class DedupState final : public PartitionState {
   struct Input final : Batch {
     ContextChunk chunk;
     std::vector<std::vector<std::pair<std::string, sel_t>>> buckets;
+    std::vector<std::vector<std::pair<IntegerKey, sel_t>>> integer_buckets;
+    bool integer = false;
     bool retain_all = false;
   };
   std::shared_ptr<Batch> PartitionBuild(ContextChunk chunk) const override {
@@ -55,6 +82,7 @@ class DedupState final : public PartitionState {
     if (keys_.size() == 1) {
       auto column = chunk.get(keys_[0]);
       auto type = column->elem_type().id();
+      input->integer = IsInteger(type);
       // Typed single-column equality can differ from encoded equality, e.g.
       // floating signed zero or edge property identity. Preserve all candidates
       // for the established final helper in these cases.
@@ -70,15 +98,24 @@ class DedupState final : public PartitionState {
         // Hashing nearly unique scalar keys costs more than the native final
         // sort. Sampling only chooses whether to reduce this batch early;
         // the final helper still guarantees global uniqueness in either case.
-        flat_hash_set<std::string> sample;
         auto rows = std::min<size_t>(64, chunk.row_num());
-        for (size_t row = 0; row < rows; ++row) {
+        if (input->integer) {
+          flat_hash_set<IntegerKey> sample;
+          for (size_t row = 0; row < rows; ++row) {
+            sample.insert(ReadInteger(column->get_elem(row)));
+          }
+          input->retain_all = sample.size() > rows / 2;
+        } else {
+          flat_hash_set<std::string> sample;
           vector_t<char> bytes;
-          Encoder encoder(bytes);
-          encode_value(column->get_elem(row), encoder);
-          sample.emplace(bytes.begin(), bytes.end());
+          for (size_t row = 0; row < rows; ++row) {
+            bytes.clear();
+            Encoder encoder(bytes);
+            encode_value(column->get_elem(row), encoder);
+            sample.emplace(bytes.begin(), bytes.end());
+          }
+          input->retain_all = sample.size() > rows / 2;
         }
-        input->retain_all = sample.size() > rows / 2;
         break;
       }
       case DataTypeId::kVertex:
@@ -100,10 +137,27 @@ class DedupState final : public PartitionState {
     if (input->retain_all) {
       return input;
     }
+    if (input->integer) {
+      input->integer_buckets.resize(partitions_.size());
+      flat_hash_set<IntegerKey> local;
+      sel_vec_t selected;
+      auto column = chunk.get(keys_[0]);
+      for (size_t row = 0; row < chunk.row_num(); ++row) {
+        auto key = ReadInteger(column->get_elem(row));
+        if (local.insert(key).second) {
+          auto part = std::hash<IntegerKey>{}(key) % partitions_.size();
+          input->integer_buckets[part].emplace_back(key, selected.size());
+          selected.push_back(row);
+        }
+      }
+      input->chunk.reshuffle(selected);
+      return input;
+    }
     flat_hash_set<std::string> local;
     sel_vec_t selected;
+    vector_t<char> bytes;
     for (size_t row = 0; row < chunk.row_num(); ++row) {
-      vector_t<char> bytes((keys_.size() + 7) / 8, 0);
+      bytes.assign((keys_.size() + 7) / 8, 0);
       Encoder encoder(bytes);
       for (size_t key = 0; key < keys_.size(); ++key) {
         auto value = chunk.get(keys_[key])->get_elem(row);
@@ -137,9 +191,17 @@ class DedupState final : public PartitionState {
       partition.output.push_back(std::move(output));
       return Status::OK();
     }
-    for (const auto& entry : input.buckets[part]) {
-      if (partition.seen.insert(entry.first).second) {
-        output.rows.push_back(entry.second);
+    if (input.integer) {
+      for (const auto& entry : input.integer_buckets[part]) {
+        if (partition.integer_seen.insert(entry.first).second) {
+          output.rows.push_back(entry.second);
+        }
+      }
+    } else {
+      for (const auto& entry : input.buckets[part]) {
+        if (partition.seen.insert(entry.first).second) {
+          output.rows.push_back(entry.second);
+        }
       }
     }
     // Release duplicate payloads as soon as this batch finishes appending.
@@ -157,7 +219,7 @@ class DedupState final : public PartitionState {
       }
     }
     for (size_t batch = 0; batch < batches; ++batch) {
-      if (partitions_[0].output[batch].passthrough) {
+      if (partitions_.size() == 1 || partitions_[0].output[batch].passthrough) {
         candidates.Add(std::move(partitions_[0].output[batch].chunk));
         continue;
       }
@@ -185,8 +247,17 @@ class DedupState final : public PartitionState {
     for (auto& partition : partitions_) {
       partition.output.clear();
       partition.seen.clear();
+      partition.integer_seen.clear();
     }
     auto chunk = candidates.Finish();
+    if (keys_.size() > 1 && chunk) {
+      // Composite keys always use encoded equality and never bypass reduction.
+      // The partition sets already guarantee uniqueness; input order is
+      // restored.
+      chunk->head().reset();
+      output_ = one_chunk(std::move(*chunk));
+      return Status::OK();
+    }
     // The single-column helpers may sort by value. Running the established
     // normalization on reduced candidates retains that order and null behavior.
     auto result =
@@ -207,6 +278,7 @@ class DedupState final : public PartitionState {
   };
   struct Partition {
     flat_hash_set<std::string> seen;
+    flat_hash_set<IntegerKey> integer_seen;
     std::vector<Selected> output;
   };
   std::vector<int32_t> keys_;

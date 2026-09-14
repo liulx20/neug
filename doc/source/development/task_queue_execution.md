@@ -322,11 +322,13 @@ input order and can advance independently of the other partitions. There is no
 shared seen-set lock and no scheduling code inside the Dedup operator.
 
 After all batches have been appended, finalization reconstructs first-occurrence
-input order across partitions and batches. It then invokes the existing Dedup
-helper on the surviving candidates. This preserves the existing sorted order for
+input order across partitions and batches. For single-column keys it then invokes the existing Dedup
+helper on the surviving candidates. Composite keys are already unique after
+partition processing and do not run a second global Dedup pass. This preserves the existing sorted order for
 ordinary non-null scalar columns and first-occurrence order for composite or
 nullable keys. The final result is still materialized as one chunk, and final
-normalization runs on one worker. A downstream range segment can consume that
+normalization runs on one worker. With one partition, selected rows are already
+in input order, so finalization skips the redundant merge and reshuffle. A downstream range segment can consume that
 result in parallel.
 
 Pre-reduction is selective. For sortable scalar types, each batch samples up to
@@ -334,7 +336,11 @@ Pre-reduction is selective. For sortable scalar types, each batch samples up to
 rows. This avoids replacing an efficient scalar sort with an expensive hash
 build for nearly unique inputs. Mixed reduced and retained batches still pass
 through the same task and final helper, which enforces global uniqueness.
-The threshold is a local heuristic, not a compiler cardinality estimate.
+The threshold is a local heuristic, not a compiler cardinality estimate. Signed
+and unsigned 32/64-bit keys now use native integer hash sets in sampling, local
+reduction and partition reduction; NULL has a separate optional-key identity.
+Other encoded paths reuse their byte buffer across rows instead of allocating a
+new buffer every time.
 
 Single-column floating-point, edge and other types whose native equality has not
 been matched to key encoding retain all candidates. For example, nullable and
@@ -392,6 +398,11 @@ bits; cancellation, large magnitudes, overflow and non-finite values can produce
 larger differences. Integer SUM uses unsigned addition and bit-preserving
 conversion for fixed-width wrapping, avoiding signed-overflow undefined behavior
 in new partial-state code; it does not add checked-overflow errors or widen types.
+
+Partial columns allocate only fields used by their aggregate. COUNT needs a
+count array, SUM a value array, AVG a sum and count, and MIN/MAX values and counts.
+For COUNT plus SUM(INT64), these array payloads total 16 bytes per group rather
+than 48; this excludes group tables, keys, vector capacity and result buffers.
 
 The slot limit is not a total memory budget. Group tables and result state grow
 with distinct groups, and batches with nearly unique keys gain little from local

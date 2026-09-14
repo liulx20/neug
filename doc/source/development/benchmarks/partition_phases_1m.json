@@ -1,0 +1,382 @@
+{
+  "platform": "macOS-13.2.1-arm64-arm-64bit",
+  "rows": 1000000,
+  "batch_rows": 1024,
+  "repeats": 5,
+  "workers": 1,
+  "scope": "direct state kernels, no scheduler/storage; input generation and state construction excluded; peak is whole process including input and libraries",
+  "cases": [
+    {
+      "mode": "dedup",
+      "cardinality": 17,
+      "samples": [
+        {
+          "mode": "dedup",
+          "rows": 1000000,
+          "cardinality": 17,
+          "local_ms": 14.6021,
+          "merge_ms": 0.219873,
+          "finalize_ms": 0.457375,
+          "result_rows": 17,
+          "process_peak_bytes": 30392320
+        },
+        {
+          "mode": "dedup",
+          "rows": 1000000,
+          "cardinality": 17,
+          "local_ms": 13.5105,
+          "merge_ms": 0.203583,
+          "finalize_ms": 0.213541,
+          "result_rows": 17,
+          "process_peak_bytes": 30130176
+        },
+        {
+          "mode": "dedup",
+          "rows": 1000000,
+          "cardinality": 17,
+          "local_ms": 13.8143,
+          "merge_ms": 0.196962,
+          "finalize_ms": 0.2495,
+          "result_rows": 17,
+          "process_peak_bytes": 30359552
+        },
+        {
+          "mode": "dedup",
+          "rows": 1000000,
+          "cardinality": 17,
+          "local_ms": 13.2941,
+          "merge_ms": 0.203846,
+          "finalize_ms": 0.203708,
+          "result_rows": 17,
+          "process_peak_bytes": 30130176
+        },
+        {
+          "mode": "dedup",
+          "rows": 1000000,
+          "cardinality": 17,
+          "local_ms": 13.0418,
+          "merge_ms": 0.201136,
+          "finalize_ms": 0.245458,
+          "result_rows": 17,
+          "process_peak_bytes": 30244864
+        }
+      ],
+      "medians_ms": {
+        "local_ms": 13.5105,
+        "merge_ms": 0.203583,
+        "finalize_ms": 0.245458
+      },
+      "peak_process_mib": 28.984375
+    },
+    {
+      "mode": "dedup",
+      "cardinality": 1000000,
+      "samples": [
+        {
+          "mode": "dedup",
+          "rows": 1000000,
+          "cardinality": 1000000,
+          "local_ms": 2.06744,
+          "merge_ms": 0.060542,
+          "finalize_ms": 34.085,
+          "result_rows": 1000000,
+          "process_peak_bytes": 51527680
+        },
+        {
+          "mode": "dedup",
+          "rows": 1000000,
+          "cardinality": 1000000,
+          "local_ms": 1.98772,
+          "merge_ms": 0.077118,
+          "finalize_ms": 33.113,
+          "result_rows": 1000000,
+          "process_peak_bytes": 51576832
+        },
+        {
+          "mode": "dedup",
+          "rows": 1000000,
+          "cardinality": 1000000,
+          "local_ms": 1.98515,
+          "merge_ms": 0.063152,
+          "finalize_ms": 33.2253,
+          "result_rows": 1000000,
+          "process_peak_bytes": 51494912
+        },
+        {
+          "mode": "dedup",
+          "rows": 1000000,
+          "cardinality": 1000000,
+          "local_ms": 1.94204,
+          "merge_ms": 0.069645,
+          "finalize_ms": 32.9739,
+          "result_rows": 1000000,
+          "process_peak_bytes": 51478528
+        },
+        {
+          "mode": "dedup",
+          "rows": 1000000,
+          "cardinality": 1000000,
+          "local_ms": 1.97402,
+          "merge_ms": 0.057082,
+          "finalize_ms": 32.695,
+          "result_rows": 1000000,
+          "process_peak_bytes": 51429376
+        }
+      ],
+      "medians_ms": {
+        "local_ms": 1.98515,
+        "merge_ms": 0.063152,
+        "finalize_ms": 33.113
+      },
+      "peak_process_mib": 49.1875
+    },
+    {
+      "mode": "composite",
+      "cardinality": 17,
+      "samples": [
+        {
+          "mode": "composite",
+          "rows": 1000000,
+          "cardinality": 17,
+          "local_ms": 94.713,
+          "merge_ms": 15.1422,
+          "finalize_ms": 0.4375,
+          "result_rows": 1717,
+          "process_peak_bytes": 31473664
+        },
+        {
+          "mode": "composite",
+          "rows": 1000000,
+          "cardinality": 17,
+          "local_ms": 93.7629,
+          "merge_ms": 15.3873,
+          "finalize_ms": 0.469584,
+          "result_rows": 1717,
+          "process_peak_bytes": 31522816
+        },
+        {
+          "mode": "composite",
+          "rows": 1000000,
+          "cardinality": 17,
+          "local_ms": 92.3546,
+          "merge_ms": 14.9683,
+          "finalize_ms": 0.447875,
+          "result_rows": 1717,
+          "process_peak_bytes": 31031296
+        },
+        {
+          "mode": "composite",
+          "rows": 1000000,
+          "cardinality": 17,
+          "local_ms": 92.1705,
+          "merge_ms": 15.0622,
+          "finalize_ms": 0.4665,
+          "result_rows": 1717,
+          "process_peak_bytes": 30670848
+        },
+        {
+          "mode": "composite",
+          "rows": 1000000,
+          "cardinality": 17,
+          "local_ms": 93.4812,
+          "merge_ms": 15.2974,
+          "finalize_ms": 0.465667,
+          "result_rows": 1717,
+          "process_peak_bytes": 31178752
+        }
+      ],
+      "medians_ms": {
+        "local_ms": 93.4812,
+        "merge_ms": 15.1422,
+        "finalize_ms": 0.465667
+      },
+      "peak_process_mib": 30.0625
+    },
+    {
+      "mode": "composite",
+      "cardinality": 1000000,
+      "samples": [
+        {
+          "mode": "composite",
+          "rows": 1000000,
+          "cardinality": 1000000,
+          "local_ms": 94.2823,
+          "merge_ms": 63.7029,
+          "finalize_ms": 60.278,
+          "result_rows": 1000000,
+          "process_peak_bytes": 152092672
+        },
+        {
+          "mode": "composite",
+          "rows": 1000000,
+          "cardinality": 1000000,
+          "local_ms": 93.519,
+          "merge_ms": 59.8356,
+          "finalize_ms": 59.9942,
+          "result_rows": 1000000,
+          "process_peak_bytes": 152174592
+        },
+        {
+          "mode": "composite",
+          "rows": 1000000,
+          "cardinality": 1000000,
+          "local_ms": 93.248,
+          "merge_ms": 57.3067,
+          "finalize_ms": 59.5724,
+          "result_rows": 1000000,
+          "process_peak_bytes": 151928832
+        },
+        {
+          "mode": "composite",
+          "rows": 1000000,
+          "cardinality": 1000000,
+          "local_ms": 95.3296,
+          "merge_ms": 64.6711,
+          "finalize_ms": 58.563,
+          "result_rows": 1000000,
+          "process_peak_bytes": 151748608
+        },
+        {
+          "mode": "composite",
+          "rows": 1000000,
+          "cardinality": 1000000,
+          "local_ms": 92.6223,
+          "merge_ms": 57.6117,
+          "finalize_ms": 58.1955,
+          "result_rows": 1000000,
+          "process_peak_bytes": 151961600
+        }
+      ],
+      "medians_ms": {
+        "local_ms": 93.519,
+        "merge_ms": 59.8356,
+        "finalize_ms": 59.5724
+      },
+      "peak_process_mib": 145.125
+    },
+    {
+      "mode": "group",
+      "cardinality": 17,
+      "samples": [
+        {
+          "mode": "group",
+          "rows": 1000000,
+          "cardinality": 17,
+          "local_ms": 23.6156,
+          "merge_ms": 0.535241,
+          "finalize_ms": 0.003333,
+          "result_rows": 17,
+          "process_peak_bytes": 29900800
+        },
+        {
+          "mode": "group",
+          "rows": 1000000,
+          "cardinality": 17,
+          "local_ms": 23.7968,
+          "merge_ms": 0.295921,
+          "finalize_ms": 0.004416,
+          "result_rows": 17,
+          "process_peak_bytes": 29900800
+        },
+        {
+          "mode": "group",
+          "rows": 1000000,
+          "cardinality": 17,
+          "local_ms": 23.8152,
+          "merge_ms": 0.300869,
+          "finalize_ms": 0.004083,
+          "result_rows": 17,
+          "process_peak_bytes": 30081024
+        },
+        {
+          "mode": "group",
+          "rows": 1000000,
+          "cardinality": 17,
+          "local_ms": 23.8082,
+          "merge_ms": 0.311613,
+          "finalize_ms": 0.004625,
+          "result_rows": 17,
+          "process_peak_bytes": 29949952
+        },
+        {
+          "mode": "group",
+          "rows": 1000000,
+          "cardinality": 17,
+          "local_ms": 23.7771,
+          "merge_ms": 0.298782,
+          "finalize_ms": 0.004042,
+          "result_rows": 17,
+          "process_peak_bytes": 29949952
+        }
+      ],
+      "medians_ms": {
+        "local_ms": 23.7968,
+        "merge_ms": 0.300869,
+        "finalize_ms": 0.004083
+      },
+      "peak_process_mib": 28.6875
+    },
+    {
+      "mode": "group",
+      "cardinality": 1000000,
+      "samples": [
+        {
+          "mode": "group",
+          "rows": 1000000,
+          "cardinality": 1000000,
+          "local_ms": 80.7544,
+          "merge_ms": 114.181,
+          "finalize_ms": 11.0853,
+          "result_rows": 1000000,
+          "process_peak_bytes": 175030272
+        },
+        {
+          "mode": "group",
+          "rows": 1000000,
+          "cardinality": 1000000,
+          "local_ms": 80.6359,
+          "merge_ms": 110.899,
+          "finalize_ms": 8.76521,
+          "result_rows": 1000000,
+          "process_peak_bytes": 160661504
+        },
+        {
+          "mode": "group",
+          "rows": 1000000,
+          "cardinality": 1000000,
+          "local_ms": 80.0548,
+          "merge_ms": 109.76,
+          "finalize_ms": 8.91804,
+          "result_rows": 1000000,
+          "process_peak_bytes": 167313408
+        },
+        {
+          "mode": "group",
+          "rows": 1000000,
+          "cardinality": 1000000,
+          "local_ms": 81.3246,
+          "merge_ms": 124.025,
+          "finalize_ms": 10.0919,
+          "result_rows": 1000000,
+          "process_peak_bytes": 173195264
+        },
+        {
+          "mode": "group",
+          "rows": 1000000,
+          "cardinality": 1000000,
+          "local_ms": 80.2511,
+          "merge_ms": 116.751,
+          "finalize_ms": 9.28767,
+          "result_rows": 1000000,
+          "process_peak_bytes": 174964736
+        }
+      ],
+      "medians_ms": {
+        "local_ms": 80.6359,
+        "merge_ms": 114.181,
+        "finalize_ms": 9.28767
+      },
+      "peak_process_mib": 166.921875
+    }
+  ]
+}
