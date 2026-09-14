@@ -80,3 +80,112 @@ def test_profile_parallel_query(parallel_conn):
     metrics = result.get_profile_metrics()["operators"]
     assert metrics
     assert all(op["output_rows"] >= 0 for op in metrics)
+
+
+@pytest.mark.parametrize("workers", [1, 2, 4])
+def test_parallel_graph_expansion(parallel_conn, tmp_path, workers):
+    conn = parallel_conn
+    edges = [
+        (src, (src + hop + 1) % 5003, hop)
+        for src in range(4500)
+        for hop in range(src % 4)
+    ]
+    # Parallel edges preserve multiplicity; isolated vertices exercise optional output.
+    edges += [(src, (src + 1) % 5003, 9) for src in range(0, 4500, 13)]
+    path = tmp_path / "edges.csv"
+    path.write_text(
+        "src|dst|weight\n"
+        + "".join(f"{src}|{dst}|{weight}\n" for src, dst, weight in edges)
+    )
+    conn.execute(
+        "CREATE REL TABLE parallel_link(FROM parallel_item TO parallel_item, weight INT64)"
+    )
+    conn.execute(f'COPY parallel_link FROM "{path}"')
+    outgoing = {}
+    for src, dst, weight in edges:
+        outgoing.setdefault(src, []).append((dst, weight))
+    cases = [
+        (
+            "MATCH (a:parallel_item)-[e:parallel_link]->(b:parallel_item) "
+            "RETURN a.id, b.id, e.weight",
+            edges,
+        ),
+        (
+            "MATCH (a:parallel_item)<-[e:parallel_link]-(b:parallel_item) "
+            "RETURN a.id, b.id, e.weight",
+            [(dst, src, w) for src, dst, w in edges],
+        ),
+        (
+            "MATCH (a:parallel_item)-[e:parallel_link]-(b:parallel_item) "
+            "RETURN a.id, b.id, e.weight",
+            edges + [(dst, src, w) for src, dst, w in edges],
+        ),
+        (
+            "MATCH (a:parallel_item)-[e:parallel_link]->(b:parallel_item) "
+            "WHERE e.weight > 1 RETURN a.id, b.id, e.weight",
+            [e for e in edges if e[2] > 1],
+        ),
+        (
+            "MATCH (a:parallel_item)-[e:parallel_link]->(b:parallel_item) "
+            "WHERE b.grp = 3 RETURN a.id, b.id, e.weight",
+            [e for e in edges if e[1] % 17 == 3],
+        ),
+        (
+            "MATCH (a:parallel_item)-[e:parallel_link]->(b:parallel_item) "
+            "WHERE b.grp + e.weight > 12 RETURN a.id, b.id, e.weight",
+            [e for e in edges if e[1] % 17 + e[2] > 12],
+        ),
+        (
+            "MATCH (a:parallel_item) OPTIONAL MATCH (a)-[e:parallel_link]->(b:parallel_item) "
+            "RETURN a.id, b.id, e.weight",
+            edges + [(src, None, None) for src in range(5003) if src not in outgoing],
+        ),
+        (
+            "MATCH (a:parallel_item)-[:parallel_link]->(b:parallel_item)-[:parallel_link]->(c:parallel_item) "
+            "RETURN a.id, b.id, c.id",
+            [
+                (src, dst, end)
+                for src, dst, _ in edges
+                for end, _ in outgoing.get(dst, [])
+            ],
+        ),
+        (
+            "MATCH (a:parallel_item)-[:parallel_link]->(b:parallel_item) "
+            "RETURN a.id, count(b)",
+            [(src, len(nbrs)) for src, nbrs in outgoing.items()],
+        ),
+    ]
+    # Vertex-only outputs exercise expansion implementations that do not keep e.
+    cases += [
+        (
+            "MATCH (a:parallel_item)-[:parallel_link]->(b:parallel_item) "
+            "RETURN a.id, b.id",
+            [(src, dst) for src, dst, _ in edges],
+        ),
+        (
+            "MATCH (a:parallel_item)-[e:parallel_link]->(b:parallel_item) "
+            "WHERE e.weight > 1 RETURN a.id, b.id",
+            [(src, dst) for src, dst, weight in edges if weight > 1],
+        ),
+        (
+            "MATCH (a:parallel_item)-[:parallel_link]->(b:parallel_item) "
+            "WHERE b.grp = 3 RETURN a.id, b.id",
+            [(src, dst) for src, dst, _ in edges if dst % 17 == 3],
+        ),
+        (
+            "MATCH (a:parallel_item)-[:parallel_link]->(b:parallel_item) "
+            "WHERE b.grp + 1 > 12 RETURN a.id, b.id",
+            [(src, dst) for src, dst, _ in edges if dst % 17 + 1 > 12],
+        ),
+    ]
+    for query, expected in cases:
+        actual = list(conn.execute(query, num_threads=workers))
+        assert sorted(map(tuple, actual), key=repr) == sorted(expected, key=repr), query
+    ordered = cases[0][0] + " ORDER BY a.id, b.id, e.weight SKIP 1000 LIMIT 25"
+    assert list(conn.execute(ordered, num_threads=workers)) == [
+        list(e) for e in sorted(edges)[1000:1025]
+    ]
+    profiled = conn.execute("PROFILE " + cases[0][0], num_threads=workers)
+    assert len(list(profiled)) == len(edges)
+    names = [op["operator_name"] for op in profiled.get_profile_metrics()["operators"]]
+    assert any("EdgeExpand" in name for name in names), names

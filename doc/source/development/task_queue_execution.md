@@ -244,6 +244,29 @@ preempt a running synchronous kernel.
 
 ## Morsel pipelines
 
+Ordinary edge expansion and GetV now declare chunk-local behavior, like Filter
+and Project. This includes edge/neighbor output, specialized edge and neighbor
+predicates, general predicates, optional expansion, and per-input degree output.
+The immutable operator configuration is shared; each invocation binds its own
+predicate and owns traversal temporaries, selection vectors, and result columns.
+The common morsel executor runs these kernels on independent input ranges and
+preserves each range's row mapping and duplicate edges. No operator creates its
+own threads. A high-degree vertex is still processed within one input range;
+this is not parallel traversal of a single adjacency list.
+
+Path/shortest-path operators, Intersect and the global ExpandCount fusion are
+not changed by this step. Ordinary GetV and the seven EdgeExpand variants in
+`edge.cc` are the enabled implementations; write parallelism is not broadened.
+
+The graph integration test uses 5,003 vertices, parallel edges and isolated
+vertices, and checks 1/2/4 workers against independently generated expected rows.
+It covers outgoing/incoming/undirected traversal, edge and neighbor predicates,
+optional NULL rows, two-hop multiplicity, degree counts, vertex-only output,
+and downstream ORDER BY/SKIP/LIMIT. PROFILE verifies an expansion operator is
+present. The rebuilt engine passes 189 C++ and 371 embedded Python tests
+(28 skipped, 20 deselected); 54 concurrency-related tests pass 20 repetitions.
+This validation establishes correctness coverage, not a graph-workload speedup.
+
 `pipeline_behavior()` declares a source, a chunk-local transform, or a global
 boundary. The default is global, so an operator must explicitly opt into local
 execution. The builder groups a source and adjacent local transforms into one

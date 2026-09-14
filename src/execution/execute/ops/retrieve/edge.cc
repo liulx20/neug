@@ -93,6 +93,10 @@ bool edge_expand_get_v_fusable(const physical::PhysicalPlan& plan, int idx,
 
 class EdgeExpandVWithEPCmpOpr : public IOperator {
  public:
+  PipelineBehavior pipeline_behavior() const override {
+    return PipelineBehavior::kChunkLocal;
+  }
+
   EdgeExpandVWithEPCmpOpr(const EdgeExpandParams& eep,
                           const SpecialPredicateConfig& config,
                           std::unique_ptr<ExprBase>&& pred)
@@ -139,6 +143,10 @@ class EdgeExpandVWithEPCmpOpr : public IOperator {
 
 class EdgeExpandVOpr : public IOperator {
  public:
+  PipelineBehavior pipeline_behavior() const override {
+    return PipelineBehavior::kChunkLocal;
+  }
+
   EdgeExpandVOpr(const EdgeExpandParams& eep, std::unique_ptr<ExprBase>&& pred)
       : eep_(eep), pred_(std::move(pred)) {}
 
@@ -176,6 +184,10 @@ class EdgeExpandVOpr : public IOperator {
 
 class EdgeExpandEWithSPredOpr : public IOperator {
  public:
+  PipelineBehavior pipeline_behavior() const override {
+    return PipelineBehavior::kChunkLocal;
+  }
+
   EdgeExpandEWithSPredOpr(const EdgeExpandParams& eep,
                           const SpecialPredicateConfig& config)
       : eep_(eep), config_(config) {}
@@ -206,6 +218,10 @@ class EdgeExpandEWithSPredOpr : public IOperator {
 
 class EdgeExpandEOpr : public IOperator {
  public:
+  PipelineBehavior pipeline_behavior() const override {
+    return PipelineBehavior::kChunkLocal;
+  }
+
   EdgeExpandEOpr(const EdgeExpandParams& eep, std::unique_ptr<ExprBase>&& pred)
       : eep_(eep), pred_(std::move(pred)) {}
 
@@ -242,6 +258,10 @@ class EdgeExpandEOpr : public IOperator {
 
 class EdgeExpandVWithSPVertexPredOpr : public IOperator {
  public:
+  PipelineBehavior pipeline_behavior() const override {
+    return PipelineBehavior::kChunkLocal;
+  }
+
   EdgeExpandVWithSPVertexPredOpr(const EdgeExpandParams& eep,
                                  const SpecialPredicateConfig& config)
       : eep_(eep), config_(config) {}
@@ -271,6 +291,10 @@ class EdgeExpandVWithSPVertexPredOpr : public IOperator {
 
 class EdgeExpandVWithGPVertexPredOpr : public IOperator {
  public:
+  PipelineBehavior pipeline_behavior() const override {
+    return PipelineBehavior::kChunkLocal;
+  }
+
   EdgeExpandVWithGPVertexPredOpr(const EdgeExpandParams& eep,
                                  std::unique_ptr<ExprBase>&& pred)
       : eep_(eep), pred_(std::move(pred)) {}
@@ -302,6 +326,10 @@ class EdgeExpandVWithGPVertexPredOpr : public IOperator {
 
 class EdgeExpandDegreeOpr : public IOperator {
  public:
+  PipelineBehavior pipeline_behavior() const override {
+    return PipelineBehavior::kChunkLocal;
+  }
+
   EdgeExpandDegreeOpr(const EdgeExpandParams& eep) : eep_(eep) {}
 
   Kernel CreateState(IStorageInterface& graph_interface,

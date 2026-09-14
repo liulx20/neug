@@ -34,6 +34,10 @@ namespace ops {
 
 class GetVFromEdgesOpr : public IOperator {
  public:
+  PipelineBehavior pipeline_behavior() const override {
+    return PipelineBehavior::kChunkLocal;
+  }
+
   GetVFromEdgesOpr(std::unique_ptr<ExprBase>&& pred, const GetVParams& p)
       : pred_(std::move(pred)), v_params_(p) {}
 
