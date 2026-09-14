@@ -122,8 +122,8 @@ transaction's existing commit/rollback boundary. All writes still use one worker
 
 ## Batch merging
 
-Global input kernels, Join build preparation, Context flattening and result
-column serialization use `OrderedBatchAccumulator`. Level i retains a consecutive
+Global input kernels, Join build preparation, Context flattening and general
+result column serialization use `OrderedBatchAccumulator`. Level i retains a consecutive
 group of 2^i input batches. Adding a batch merges occupied levels from low to
 high, always keeping older rows on the left. Completion combines the occupied
 levels from high to low. Empty typed batches remain part of this sequence.
@@ -134,6 +134,22 @@ input keeps column ownership unchanged. Row order, nulls, sparse aliases and
 head alignment are preserved for batches sharing the same schema. The operation
 still materializes all rows where required; it is not a memory budget, spill
 implementation or parallel aggregate. See the baseline's before/after results.
+
+
+Primitive result serialization bypasses this merge for multiple native value
+chunks. Boolean, signed/unsigned 32/64-bit integers, float/double and strings
+append directly into one reserved protobuf array per output column. Validity
+bits are concatenated by row index, including boundaries not divisible by eight;
+a nullable chunk makes the full output validity bitmap explicit. Chunk order,
+empty typed chunks, sparse/repeated output aliases and the wire representation
+are preserved. All backing columns are checked before values are written.
+Single chunks use the existing direct serializer. Other types or column
+representations still use the general column accumulator and serializer.
+
+This removes intermediate primitive-column concatenation, not result buffering:
+`materialize` still retains output chunks, and the response arrays still contain
+the complete result. Serialization remains on the consumer thread. Operator
+scheduling and pipeline boundaries are unchanged.
 
 ## Ordinary Join graph
 

@@ -1,0 +1,665 @@
+{
+  "note": "Temporary instrumented build, summed queue metrics overlap across workers; sink is timed separately after materialization.",
+  "runs": [
+    {
+      "query": "aggregate_repeated",
+      "workers": 1,
+      "wall_ms": 99.9592,
+      "coordinator_wait_ms": 96.0228,
+      "phases": [
+        {
+          "name": "N4neug9execution12_GLOBAL__N_118LinearPipelineTaskE",
+          "jobs": 2,
+          "queue_ms": 0.003083,
+          "work_ms": 0.003459,
+          "completion_ms": 0.003207
+        },
+        {
+          "name": "N4neug9execution12_GLOBAL__N_118MorselPipelineTask10LocalStateE",
+          "jobs": 246,
+          "queue_ms": 0.615211,
+          "work_ms": 34.2643,
+          "completion_ms": 1.13276
+        },
+        {
+          "name": "N4neug9execution12_GLOBAL__N_118MorselPipelineTaskE",
+          "jobs": 2,
+          "queue_ms": 0.004834,
+          "work_ms": 0.002041,
+          "completion_ms": 0.003459
+        },
+        {
+          "name": "N4neug9execution12_GLOBAL__N_121PartitionPipelineTask4LaneE",
+          "jobs": 977,
+          "queue_ms": 2.27973,
+          "work_ms": 0.851359,
+          "completion_ms": 2.45848
+        },
+        {
+          "name": "N4neug9execution12_GLOBAL__N_121PartitionPipelineTask4SlotE",
+          "jobs": 977,
+          "queue_ms": 2.33074,
+          "work_ms": 49.9377,
+          "completion_ms": 4.17801
+        },
+        {
+          "name": "N4neug9execution12_GLOBAL__N_121PartitionPipelineTaskE",
+          "jobs": 2,
+          "queue_ms": 0.054001,
+          "work_ms": 0.006874,
+          "completion_ms": 0.005625
+        }
+      ],
+      "sink": {
+        "chunks": 1,
+        "rows": 17,
+        "ms": 0.023792
+      }
+    },
+    {
+      "query": "aggregate_repeated",
+      "workers": 1,
+      "wall_ms": 98.7298,
+      "coordinator_wait_ms": 94.7341,
+      "phases": [
+        {
+          "name": "N4neug9execution12_GLOBAL__N_118LinearPipelineTaskE",
+          "jobs": 2,
+          "queue_ms": 0.003124,
+          "work_ms": 0.003417,
+          "completion_ms": 0.003
+        },
+        {
+          "name": "N4neug9execution12_GLOBAL__N_118MorselPipelineTask10LocalStateE",
+          "jobs": 246,
+          "queue_ms": 0.581331,
+          "work_ms": 33.701,
+          "completion_ms": 1.14866
+        },
+        {
+          "name": "N4neug9execution12_GLOBAL__N_118MorselPipelineTaskE",
+          "jobs": 2,
+          "queue_ms": 0.003667,
+          "work_ms": 0.001375,
+          "completion_ms": 0.003583
+        },
+        {
+          "name": "N4neug9execution12_GLOBAL__N_121PartitionPipelineTask4LaneE",
+          "jobs": 977,
+          "queue_ms": 2.31358,
+          "work_ms": 0.937693,
+          "completion_ms": 2.27416
+        },
+        {
+          "name": "N4neug9execution12_GLOBAL__N_121PartitionPipelineTask4SlotE",
+          "jobs": 977,
+          "queue_ms": 2.35551,
+          "work_ms": 49.7257,
+          "completion_ms": 3.894
+        },
+        {
+          "name": "N4neug9execution12_GLOBAL__N_121PartitionPipelineTaskE",
+          "jobs": 2,
+          "queue_ms": 0.031834,
+          "work_ms": 0.00725,
+          "completion_ms": 0.005084
+        }
+      ],
+      "sink": {
+        "chunks": 1,
+        "rows": 17,
+        "ms": 0.0275
+      }
+    },
+    {
+      "query": "aggregate_repeated",
+      "workers": 4,
+      "wall_ms": 29.6403,
+      "coordinator_wait_ms": 20.5364,
+      "phases": [
+        {
+          "name": "N4neug9execution12_GLOBAL__N_118LinearPipelineTaskE",
+          "jobs": 2,
+          "queue_ms": 0.004751,
+          "work_ms": 0.001916,
+          "completion_ms": 0.003125
+        },
+        {
+          "name": "N4neug9execution12_GLOBAL__N_118MorselPipelineTask10LocalStateE",
+          "jobs": 250,
+          "queue_ms": 2.05033,
+          "work_ms": 36.2495,
+          "completion_ms": 2.07542
+        },
+        {
+          "name": "N4neug9execution12_GLOBAL__N_118MorselPipelineTaskE",
+          "jobs": 2,
+          "queue_ms": 0.01025,
+          "work_ms": 0.002668,
+          "completion_ms": 0.008332
+        },
+        {
+          "name": "N4neug9execution12_GLOBAL__N_121PartitionPipelineTask4LaneE",
+          "jobs": 3908,
+          "queue_ms": 35.3132,
+          "work_ms": 2.50377,
+          "completion_ms": 38.1975
+        },
+        {
+          "name": "N4neug9execution12_GLOBAL__N_121PartitionPipelineTask4SlotE",
+          "jobs": 977,
+          "queue_ms": 11.8311,
+          "work_ms": 52.2563,
+          "completion_ms": 9.20759
+        },
+        {
+          "name": "N4neug9execution12_GLOBAL__N_121PartitionPipelineTaskE",
+          "jobs": 2,
+          "queue_ms": 0.055375,
+          "work_ms": 0.019333,
+          "completion_ms": 0.006709
+        }
+      ],
+      "sink": {
+        "chunks": 1,
+        "rows": 17,
+        "ms": 0.0415
+      }
+    },
+    {
+      "query": "aggregate_repeated",
+      "workers": 1,
+      "wall_ms": 100.294,
+      "coordinator_wait_ms": 96.1627,
+      "phases": [
+        {
+          "name": "N4neug9execution12_GLOBAL__N_118LinearPipelineTaskE",
+          "jobs": 2,
+          "queue_ms": 0.003,
+          "work_ms": 0.003917,
+          "completion_ms": 0.003458
+        },
+        {
+          "name": "N4neug9execution12_GLOBAL__N_118MorselPipelineTask10LocalStateE",
+          "jobs": 246,
+          "queue_ms": 0.592328,
+          "work_ms": 34.2018,
+          "completion_ms": 1.18729
+        },
+        {
+          "name": "N4neug9execution12_GLOBAL__N_118MorselPipelineTaskE",
+          "jobs": 2,
+          "queue_ms": 0.003625,
+          "work_ms": 0.001626,
+          "completion_ms": 0.005624
+        },
+        {
+          "name": "N4neug9execution12_GLOBAL__N_121PartitionPipelineTask4LaneE",
+          "jobs": 977,
+          "queue_ms": 2.52634,
+          "work_ms": 0.877251,
+          "completion_ms": 2.56166
+        },
+        {
+          "name": "N4neug9execution12_GLOBAL__N_121PartitionPipelineTask4SlotE",
+          "jobs": 977,
+          "queue_ms": 2.53425,
+          "work_ms": 49.8082,
+          "completion_ms": 4.08602
+        },
+        {
+          "name": "N4neug9execution12_GLOBAL__N_121PartitionPipelineTaskE",
+          "jobs": 2,
+          "queue_ms": 0.0265,
+          "work_ms": 0.007042,
+          "completion_ms": 0.006499
+        }
+      ],
+      "sink": {
+        "chunks": 1,
+        "rows": 17,
+        "ms": 0.015916
+      }
+    },
+    {
+      "query": "aggregate_repeated",
+      "workers": 4,
+      "wall_ms": 29.5345,
+      "coordinator_wait_ms": 21.3487,
+      "phases": [
+        {
+          "name": "N4neug9execution12_GLOBAL__N_118LinearPipelineTaskE",
+          "jobs": 2,
+          "queue_ms": 0.003708,
+          "work_ms": 0.002041,
+          "completion_ms": 0.0045
+        },
+        {
+          "name": "N4neug9execution12_GLOBAL__N_118MorselPipelineTask10LocalStateE",
+          "jobs": 250,
+          "queue_ms": 1.96408,
+          "work_ms": 36.2589,
+          "completion_ms": 2.09031
+        },
+        {
+          "name": "N4neug9execution12_GLOBAL__N_118MorselPipelineTaskE",
+          "jobs": 2,
+          "queue_ms": 0.013208,
+          "work_ms": 0.001459,
+          "completion_ms": 0.025666
+        },
+        {
+          "name": "N4neug9execution12_GLOBAL__N_121PartitionPipelineTask4LaneE",
+          "jobs": 3908,
+          "queue_ms": 31.326,
+          "work_ms": 2.32931,
+          "completion_ms": 44.575
+        },
+        {
+          "name": "N4neug9execution12_GLOBAL__N_121PartitionPipelineTask4SlotE",
+          "jobs": 977,
+          "queue_ms": 11.2001,
+          "work_ms": 52.5637,
+          "completion_ms": 9.17958
+        },
+        {
+          "name": "N4neug9execution12_GLOBAL__N_121PartitionPipelineTaskE",
+          "jobs": 2,
+          "queue_ms": 0.052208,
+          "work_ms": 0.018417,
+          "completion_ms": 0.004834
+        }
+      ],
+      "sink": {
+        "chunks": 1,
+        "rows": 17,
+        "ms": 0.016291
+      }
+    },
+    {
+      "query": "aggregate_repeated",
+      "workers": 4,
+      "wall_ms": 29.5847,
+      "coordinator_wait_ms": 20.1499,
+      "phases": [
+        {
+          "name": "N4neug9execution12_GLOBAL__N_118LinearPipelineTaskE",
+          "jobs": 2,
+          "queue_ms": 0.008083,
+          "work_ms": 0.003542,
+          "completion_ms": 0.005833
+        },
+        {
+          "name": "N4neug9execution12_GLOBAL__N_118MorselPipelineTask10LocalStateE",
+          "jobs": 250,
+          "queue_ms": 2.11224,
+          "work_ms": 36.2825,
+          "completion_ms": 2.58705
+        },
+        {
+          "name": "N4neug9execution12_GLOBAL__N_118MorselPipelineTaskE",
+          "jobs": 2,
+          "queue_ms": 0.005125,
+          "work_ms": 0.001708,
+          "completion_ms": 0.011417
+        },
+        {
+          "name": "N4neug9execution12_GLOBAL__N_121PartitionPipelineTask4LaneE",
+          "jobs": 3908,
+          "queue_ms": 35.8316,
+          "work_ms": 2.67503,
+          "completion_ms": 35.5035
+        },
+        {
+          "name": "N4neug9execution12_GLOBAL__N_121PartitionPipelineTask4SlotE",
+          "jobs": 977,
+          "queue_ms": 12.5549,
+          "work_ms": 52.6071,
+          "completion_ms": 9.38722
+        },
+        {
+          "name": "N4neug9execution12_GLOBAL__N_121PartitionPipelineTaskE",
+          "jobs": 2,
+          "queue_ms": 0.046333,
+          "work_ms": 0.016792,
+          "completion_ms": 0.020001
+        }
+      ],
+      "sink": {
+        "chunks": 1,
+        "rows": 17,
+        "ms": 0.01875
+      }
+    },
+    {
+      "query": "aggregate_unique",
+      "workers": 1,
+      "wall_ms": 123.704,
+      "coordinator_wait_ms": 121.472,
+      "phases": [
+        {
+          "name": "N4neug9execution12_GLOBAL__N_118LinearPipelineTaskE",
+          "jobs": 2,
+          "queue_ms": 0.008208,
+          "work_ms": 0.005291,
+          "completion_ms": 0.004876
+        },
+        {
+          "name": "N4neug9execution12_GLOBAL__N_118MorselPipelineTask10LocalStateE",
+          "jobs": 246,
+          "queue_ms": 0.411008,
+          "work_ms": 31.8751,
+          "completion_ms": 0.547665
+        },
+        {
+          "name": "N4neug9execution12_GLOBAL__N_118MorselPipelineTaskE",
+          "jobs": 2,
+          "queue_ms": 0.006416,
+          "work_ms": 0.007542,
+          "completion_ms": 0.004875
+        },
+        {
+          "name": "N4neug9execution12_GLOBAL__N_121PartitionPipelineTask4LaneE",
+          "jobs": 977,
+          "queue_ms": 1.45924,
+          "work_ms": 63.5714,
+          "completion_ms": 2.07737
+        },
+        {
+          "name": "N4neug9execution12_GLOBAL__N_121PartitionPipelineTask4SlotE",
+          "jobs": 977,
+          "queue_ms": 1.55253,
+          "work_ms": 13.8371,
+          "completion_ms": 1.77792
+        },
+        {
+          "name": "N4neug9execution12_GLOBAL__N_121PartitionPipelineTaskE",
+          "jobs": 2,
+          "queue_ms": 0.059708,
+          "work_ms": 5.64708,
+          "completion_ms": 0.016875
+        }
+      ],
+      "sink": {
+        "chunks": 1,
+        "rows": 1000000,
+        "ms": 13.0017
+      }
+    },
+    {
+      "query": "aggregate_unique",
+      "workers": 1,
+      "wall_ms": 125.005,
+      "coordinator_wait_ms": 122.566,
+      "phases": [
+        {
+          "name": "N4neug9execution12_GLOBAL__N_118LinearPipelineTaskE",
+          "jobs": 2,
+          "queue_ms": 0.004791,
+          "work_ms": 0.004126,
+          "completion_ms": 0.007916
+        },
+        {
+          "name": "N4neug9execution12_GLOBAL__N_118MorselPipelineTask10LocalStateE",
+          "jobs": 246,
+          "queue_ms": 0.414739,
+          "work_ms": 32.267,
+          "completion_ms": 0.560552
+        },
+        {
+          "name": "N4neug9execution12_GLOBAL__N_118MorselPipelineTaskE",
+          "jobs": 2,
+          "queue_ms": 0.003626,
+          "work_ms": 0.004625,
+          "completion_ms": 0.003833
+        },
+        {
+          "name": "N4neug9execution12_GLOBAL__N_121PartitionPipelineTask4LaneE",
+          "jobs": 977,
+          "queue_ms": 1.9686,
+          "work_ms": 63.3573,
+          "completion_ms": 2.08576
+        },
+        {
+          "name": "N4neug9execution12_GLOBAL__N_121PartitionPipelineTask4SlotE",
+          "jobs": 977,
+          "queue_ms": 1.62415,
+          "work_ms": 14.2468,
+          "completion_ms": 1.9205
+        },
+        {
+          "name": "N4neug9execution12_GLOBAL__N_121PartitionPipelineTaskE",
+          "jobs": 2,
+          "queue_ms": 0.035666,
+          "work_ms": 5.59875,
+          "completion_ms": 0.009959
+        }
+      ],
+      "sink": {
+        "chunks": 1,
+        "rows": 1000000,
+        "ms": 12.3605
+      }
+    },
+    {
+      "query": "aggregate_unique",
+      "workers": 4,
+      "wall_ms": 67.1161,
+      "coordinator_wait_ms": 57.3835,
+      "phases": [
+        {
+          "name": "N4neug9execution12_GLOBAL__N_118LinearPipelineTaskE",
+          "jobs": 978,
+          "queue_ms": 3.64823,
+          "work_ms": 0.479003,
+          "completion_ms": 2.10391
+        },
+        {
+          "name": "N4neug9execution12_GLOBAL__N_118MorselPipelineTask10LocalStateE",
+          "jobs": 492,
+          "queue_ms": 3.30549,
+          "work_ms": 43.2868,
+          "completion_ms": 3.53758
+        },
+        {
+          "name": "N4neug9execution12_GLOBAL__N_118MorselPipelineTaskE",
+          "jobs": 2,
+          "queue_ms": 0.043875,
+          "work_ms": 0.002542,
+          "completion_ms": 0.007708
+        },
+        {
+          "name": "N4neug9execution12_GLOBAL__N_121PartitionPipelineTask4LaneE",
+          "jobs": 3908,
+          "queue_ms": 33.0943,
+          "work_ms": 77.7353,
+          "completion_ms": 29.6034
+        },
+        {
+          "name": "N4neug9execution12_GLOBAL__N_121PartitionPipelineTask4SlotE",
+          "jobs": 977,
+          "queue_ms": 15.822,
+          "work_ms": 15.4193,
+          "completion_ms": 6.92346
+        },
+        {
+          "name": "N4neug9execution12_GLOBAL__N_121PartitionPipelineTaskE",
+          "jobs": 2,
+          "queue_ms": 0.060874,
+          "work_ms": 19.0009,
+          "completion_ms": 0.015291
+        }
+      ],
+      "sink": {
+        "chunks": 977,
+        "rows": 1000000,
+        "ms": 89.2145
+      }
+    },
+    {
+      "query": "aggregate_unique",
+      "workers": 1,
+      "wall_ms": 129.143,
+      "coordinator_wait_ms": 126.717,
+      "phases": [
+        {
+          "name": "N4neug9execution12_GLOBAL__N_118LinearPipelineTaskE",
+          "jobs": 2,
+          "queue_ms": 0.004499,
+          "work_ms": 0.006334,
+          "completion_ms": 0.006875
+        },
+        {
+          "name": "N4neug9execution12_GLOBAL__N_118MorselPipelineTask10LocalStateE",
+          "jobs": 246,
+          "queue_ms": 0.405458,
+          "work_ms": 32.3066,
+          "completion_ms": 0.573081
+        },
+        {
+          "name": "N4neug9execution12_GLOBAL__N_118MorselPipelineTaskE",
+          "jobs": 2,
+          "queue_ms": 0.004708,
+          "work_ms": 0.002042,
+          "completion_ms": 0.007083
+        },
+        {
+          "name": "N4neug9execution12_GLOBAL__N_121PartitionPipelineTask4LaneE",
+          "jobs": 977,
+          "queue_ms": 1.87003,
+          "work_ms": 66.0006,
+          "completion_ms": 2.11038
+        },
+        {
+          "name": "N4neug9execution12_GLOBAL__N_121PartitionPipelineTask4SlotE",
+          "jobs": 977,
+          "queue_ms": 1.57424,
+          "work_ms": 14.1258,
+          "completion_ms": 1.87034
+        },
+        {
+          "name": "N4neug9execution12_GLOBAL__N_121PartitionPipelineTaskE",
+          "jobs": 2,
+          "queue_ms": 0.039,
+          "work_ms": 7.352,
+          "completion_ms": 0.013875
+        }
+      ],
+      "sink": {
+        "chunks": 1,
+        "rows": 1000000,
+        "ms": 12.4874
+      }
+    },
+    {
+      "query": "aggregate_unique",
+      "workers": 4,
+      "wall_ms": 68.7314,
+      "coordinator_wait_ms": 58.6492,
+      "phases": [
+        {
+          "name": "N4neug9execution12_GLOBAL__N_118LinearPipelineTaskE",
+          "jobs": 978,
+          "queue_ms": 3.60036,
+          "work_ms": 0.49748,
+          "completion_ms": 2.38335
+        },
+        {
+          "name": "N4neug9execution12_GLOBAL__N_118MorselPipelineTask10LocalStateE",
+          "jobs": 492,
+          "queue_ms": 3.13145,
+          "work_ms": 43.3048,
+          "completion_ms": 4.57799
+        },
+        {
+          "name": "N4neug9execution12_GLOBAL__N_118MorselPipelineTaskE",
+          "jobs": 2,
+          "queue_ms": 0.047084,
+          "work_ms": 0.010958,
+          "completion_ms": 0.020959
+        },
+        {
+          "name": "N4neug9execution12_GLOBAL__N_121PartitionPipelineTask4LaneE",
+          "jobs": 3908,
+          "queue_ms": 32.3481,
+          "work_ms": 75.0387,
+          "completion_ms": 29.0206
+        },
+        {
+          "name": "N4neug9execution12_GLOBAL__N_121PartitionPipelineTask4SlotE",
+          "jobs": 977,
+          "queue_ms": 14.9073,
+          "work_ms": 15.3278,
+          "completion_ms": 6.92537
+        },
+        {
+          "name": "N4neug9execution12_GLOBAL__N_121PartitionPipelineTaskE",
+          "jobs": 2,
+          "queue_ms": 0.082708,
+          "work_ms": 20.86,
+          "completion_ms": 0.014833
+        }
+      ],
+      "sink": {
+        "chunks": 977,
+        "rows": 1000000,
+        "ms": 89.9128
+      }
+    },
+    {
+      "query": "aggregate_unique",
+      "workers": 4,
+      "wall_ms": 66.0265,
+      "coordinator_wait_ms": 56.1339,
+      "phases": [
+        {
+          "name": "N4neug9execution12_GLOBAL__N_118LinearPipelineTaskE",
+          "jobs": 978,
+          "queue_ms": 3.51344,
+          "work_ms": 0.508165,
+          "completion_ms": 2.19314
+        },
+        {
+          "name": "N4neug9execution12_GLOBAL__N_118MorselPipelineTask10LocalStateE",
+          "jobs": 492,
+          "queue_ms": 3.23733,
+          "work_ms": 43.3707,
+          "completion_ms": 3.31515
+        },
+        {
+          "name": "N4neug9execution12_GLOBAL__N_118MorselPipelineTaskE",
+          "jobs": 2,
+          "queue_ms": 0.01275,
+          "work_ms": 0.00275,
+          "completion_ms": 0.0035
+        },
+        {
+          "name": "N4neug9execution12_GLOBAL__N_121PartitionPipelineTask4LaneE",
+          "jobs": 3908,
+          "queue_ms": 31.9097,
+          "work_ms": 72.1874,
+          "completion_ms": 29.7043
+        },
+        {
+          "name": "N4neug9execution12_GLOBAL__N_121PartitionPipelineTask4SlotE",
+          "jobs": 977,
+          "queue_ms": 15.6658,
+          "work_ms": 15.3145,
+          "completion_ms": 7.01795
+        },
+        {
+          "name": "N4neug9execution12_GLOBAL__N_121PartitionPipelineTaskE",
+          "jobs": 2,
+          "queue_ms": 0.070291,
+          "work_ms": 19.3433,
+          "completion_ms": 0.011875
+        }
+      ],
+      "sink": {
+        "chunks": 977,
+        "rows": 1000000,
+        "ms": 89.9566
+      }
+    }
+  ]
+}

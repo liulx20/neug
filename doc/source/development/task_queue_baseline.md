@@ -720,3 +720,122 @@ task scheduling and supported aggregate eligibility are unchanged.
 
 Raw reports: [initial interleaved experiment](benchmarks/task_queue_group_interleaved_1m.json),
 [final interleaved verification](benchmarks/task_queue_group_final_interleaved_1m.json).
+
+
+## Result serialization hid the GroupBy worker speedup
+
+Starting from `c58eb3ea`, temporary instrumentation measured worker dispatch,
+work execution and completion delivery separately from result serialization.
+The diagnostic was removed from the final build. It did not turn ordinary
+queries into PROFILE queries or add permanent clocks to the scheduler.
+
+For the million-row unique-key COUNT/SUM query, three instrumented repetitions
+produced these medians before the change:
+
+| Workers | QueueExecution lifetime | Result chunks | Sink merge + serialization |
+| --- | ---: | ---: | ---: |
+| 1 | 125.005 ms | 1 | 12.487 ms |
+| 4 | 67.116 ms | 977 | 89.913 ms |
+
+`QueueExecution` lifetime runs from graph creation through reader destruction,
+including materializing published chunks. Sink is measured separately in the
+execution slot after that reader is destroyed. Whole-query execute also includes
+other boundary costs. These instrumented spans are diagnostic, not the final
+uninstrumented latency measurements below.
+
+The graph already benefited from four workers. Output after the global GroupBy
+was processed as multiple chunks, and `Sink::sink_results` concatenated each
+output column with `ColumnAccumulator` before serializing it. Its balanced merge
+avoids quadratic prefix copying, but still copies rows through multiple levels.
+This serial output work hid the graph's parallel speedup.
+
+### Small-task experiment
+
+The initial scheduler diagnostic counted 977 partition-input jobs and 3,908
+partition-lane jobs at four workers. Summed lane work took about 75.455 ms;
+summed dispatch-to-start and completion-to-consumer durations were about
+31.197 and 31.379 ms. These spans overlap across workers and must not be added
+to graph wall time or interpreted as independently removable latency. Consumer
+condition-variable waiting is mostly waiting for useful worker work, not a
+measurement of scheduler overhead alone.
+
+An experimental scheduler grouped consecutive already-ready batches into one
+lane dispatch, without increasing the existing pending-slot bound. It reduced
+lane jobs to roughly 2,425, but graph wall time moved only from 68.263 to
+66.904 ms in that separate diagnostic pair. The added completion accounting was
+not retained: the evidence pointed to output serialization as the larger issue.
+No task-queue, operator-state or pipeline-boundary change remains in this revision.
+
+### Direct primitive serialization
+
+Multiple native primitive columns now append directly into the final protobuf
+array in chunk order. The array reserves the full row count once; no intermediate
+concatenated value column is produced. Validity bits are rebuilt across row
+boundaries, so a three-row nullable chunk followed by another chunk does not
+introduce padding bits between chunks. Output aliases and their order are
+unchanged. The direct writer supports boolean, INT32/64, UINT32/64, float/double
+and string ValueColumns. Other representations/types retain their existing
+serializer. Single chunks already avoided concatenation and keep that path.
+The writer targets the response's array directly, including Arena-backed
+responses, rather than swapping an independently allocated protobuf array.
+
+After the change, the same instrumented unique-group case measured:
+
+| Workers | QueueExecution lifetime | Result chunks | Sink serialization |
+| --- | ---: | ---: | ---: |
+| 1 | 130.422 ms | 1 | 12.834 ms |
+| 4 | 71.149 ms | 977 | 13.085 ms |
+
+The diagnostic builds vary slightly in graph time, but the output-stage reduction
+is much larger. Serialization still runs on the consumer thread and the full
+result is still buffered; this is neither streaming response delivery nor a
+byte-based memory budget.
+
+Raw diagnostics (unique and repeated GroupBy queries):
+[original task phases](benchmarks/queue_group_phases_before_1m.json),
+[discarded task coalescing experiment](benchmarks/queue_group_phases_coalesced_1m.json),
+[before output phases](benchmarks/queue_sink_phases_before_1m.json),
+[after output phases](benchmarks/queue_sink_phases_after_1m.json).
+
+
+### Uninstrumented verification
+
+The before library is `c58eb3ea`; the after library changes primitive result
+serialization only. Four fresh processes ran in before/after/after/before order.
+Dynamic-loader paths were verified, library hashes are recorded, and neither
+version emitted diagnostic counters. Each process imported identical generated
+data and ran five warm-plan repetitions per worker count, shuffled per query.
+There were no concurrent builds or tests. The following are pooled medians of
+ten samples per version/worker, timing the same whole-query execute boundary as
+the previous benchmarks:
+
+| Query | Workers | Before | After |
+| --- | ---: | ---: | ---: |
+| filter_project | 1 | 84.481 ms | 67.657 ms |
+| filter_project | 4 | 38.233 ms | 21.759 ms |
+| hash_join | 1 | 207.794 ms | 157.101 ms |
+| hash_join | 4 | 99.475 ms | 48.769 ms |
+| group_sum | 1 | 63.680 ms | 63.799 ms |
+| group_sum | 4 | 18.257 ms | 18.064 ms |
+| aggregate_repeated | 1 | 90.200 ms | 90.240 ms |
+| aggregate_repeated | 4 | 25.310 ms | 25.269 ms |
+| aggregate_unique | 1 | 146.152 ms | 148.126 ms |
+| aggregate_unique | 4 | 156.933 ms | 83.370 ms |
+| aggregate_hot | 1 | 90.647 ms | 91.486 ms |
+| aggregate_hot | 4 | 23.036 ms | 23.692 ms |
+
+The unique-group query now benefits from four workers in end-to-end time as well
+as inside the graph. Hash Join also benefits because its primitive result spans
+many chunks. Single-chunk and low-cardinality cases show small differences;
+this experiment does not claim improvement for those cases or establish that
+all small differences are statistically significant.
+
+Every result count/checksum matches across all runs. The final build passed 185
+C++ tests, 368 Python tests (28 skipped, 20 deselected), and 51 concurrency tests
+repeated 20 times. The added serialization oracle compares complete protobuf
+bytes against collected columns for eight primitive types, including strings
+with embedded NUL, non-byte-aligned chunk lengths, mixed/all NULL rows, typed
+empty chunks, sparse/repeated aliases, and heap/Arena-backed responses. Existing
+nested-column tests continue exercising the general serializer.
+
+Raw report: [uninstrumented interleaved execute results](benchmarks/task_queue_direct_sink_1m.json).

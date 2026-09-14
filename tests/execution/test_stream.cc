@@ -12,6 +12,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#include <google/protobuf/arena.h>
 #include <gtest/gtest.h>
 
 #include "neug/common/columns/array_columns.h"
@@ -186,6 +187,63 @@ TEST(QueryResultTest, NestedColumnsMergeAcrossBatchesAndSerialize) {
     EXPECT_EQ(response.SerializeAsString(),
               expected_response.SerializeAsString());
   }
+}
+
+TEST(QueryResultTest, PrimitiveChunkSerializationMatchesCollectedColumns) {
+  PropertyGraph graph;
+  GraphView view(graph);
+  StorageReadInterface storage(view, 0);
+  auto check = [&]<typename T>() {
+    for (int mode : {0, 1, 2}) {
+      for (const auto& sizes :
+           {std::vector<size_t>{3, 0, 7, 5}, std::vector<size_t>{0, 0}}) {
+        Context input;
+        input.tag_ids = {2, 0, 2};
+        size_t offset = 0, batch = 0;
+        for (auto size : sizes) {
+          ValueColumnBuilder<T> values;
+          ValueColumnBuilder<int64_t> ordinals;
+          for (size_t row = 0; row < size; ++row) {
+            ordinals.push_back_opt(offset + row);
+            if (mode == 2 || (mode == 1 && batch % 2 == 0 && row % 3 == 1)) {
+              values.push_back_null();
+            } else if constexpr (std::is_same_v<T, std::string>) {
+              values.push_back_opt(std::string("a\0b", 3) +
+                                   std::to_string(offset + row));
+            } else {
+              values.push_back_opt(static_cast<T>(offset + row));
+            }
+          }
+          ContextChunk chunk;
+          chunk.set(0, ordinals.finish());
+          chunk.set(2, values.finish());
+          input.append_chunk(std::move(chunk));
+          offset += size;
+          ++batch;
+        }
+        Context reference = input;
+        reference.flatten();
+        QueryResponse actual, expected;
+        Sink::sink_results(input, storage, &actual);
+        Sink::sink_results(reference, storage, &expected);
+        EXPECT_EQ(actual.SerializeAsString(), expected.SerializeAsString());
+        google::protobuf::Arena arena;
+        auto* arena_response =
+            google::protobuf::Arena::CreateMessage<QueryResponse>(&arena);
+        Sink::sink_results(input, storage, arena_response);
+        EXPECT_EQ(arena_response->SerializeAsString(),
+                  expected.SerializeAsString());
+      }
+    }
+  };
+  check.template operator()<bool>();
+  check.template operator()<int32_t>();
+  check.template operator()<uint32_t>();
+  check.template operator()<int64_t>();
+  check.template operator()<uint64_t>();
+  check.template operator()<float>();
+  check.template operator()<double>();
+  check.template operator()<std::string>();
 }
 
 TEST(QueryResultTest, IsLazyAndReleasesCursorOnCancellation) {

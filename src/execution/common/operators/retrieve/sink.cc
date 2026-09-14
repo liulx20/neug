@@ -15,6 +15,8 @@
 
 #include "neug/execution/common/operators/retrieve/sink.h"
 
+#include <type_traits>
+
 #include "neug/common/columns/array_columns.h"
 #include "neug/common/columns/edge_columns.h"
 #include "neug/common/columns/list_columns.h"
@@ -547,19 +549,109 @@ static void add_column(const std::shared_ptr<IContextColumn>& col,
   }
   }
 }
+// Primitive wire arrays can consume chunks directly. Validate all backing
+// columns before writing, and concatenate validity bits by row rather than byte
+// so arbitrary chunk boundaries preserve NULL positions.
+template <typename T, typename ArrayType>
+static bool add_primitive_chunks(
+    const std::vector<std::shared_ptr<IContextColumn>>& columns,
+    ArrayType* output) {
+  std::vector<const ValueColumn<T>*> inputs;
+  inputs.reserve(columns.size());
+  size_t rows = 0;
+  bool optional = false;
+  for (const auto& column : columns) {
+    auto* input = dynamic_cast<const ValueColumn<T>*>(column.get());
+    if (!input) {
+      return false;
+    }
+    inputs.push_back(input);
+    rows += input->size();
+    optional = optional || input->is_optional();
+  }
+  auto* values = output->mutable_values();
+  values->Reserve(rows);
+  std::string validity(optional ? (rows + 7) / 8 : 0, 0);
+  size_t offset = 0;
+  for (auto* input : inputs) {
+    for (const auto& value : input->data()) {
+      if constexpr (std::is_same_v<T, std::string>) {
+        *values->Add() = value;
+      } else {
+        values->Add(value);
+      }
+    }
+    if (optional) {
+      for (size_t row = 0; row < input->size(); ++row) {
+        if (input->has_value(row)) {
+          auto index = offset + row;
+          validity[index / 8] |= (1 << (index % 8));
+        }
+      }
+    }
+    offset += input->size();
+  }
+  if (optional) {
+    output->set_validity(std::move(validity));
+  }
+  return true;
+}
+
+static bool add_primitive_chunks(
+    const std::vector<std::shared_ptr<IContextColumn>>& columns,
+    neug::Array* output) {
+  switch (columns[0]->elem_type().id()) {
+  case DataTypeId::kBoolean:
+    return add_primitive_chunks<bool>(columns, output->mutable_bool_array());
+  case DataTypeId::kInt32:
+    return add_primitive_chunks<int32_t>(columns,
+                                         output->mutable_int32_array());
+  case DataTypeId::kUInt32:
+    return add_primitive_chunks<uint32_t>(columns,
+                                          output->mutable_uint32_array());
+  case DataTypeId::kInt64:
+    return add_primitive_chunks<int64_t>(columns,
+                                         output->mutable_int64_array());
+  case DataTypeId::kUInt64:
+    return add_primitive_chunks<uint64_t>(columns,
+                                          output->mutable_uint64_array());
+  case DataTypeId::kFloat:
+    return add_primitive_chunks<float>(columns, output->mutable_float_array());
+  case DataTypeId::kDouble:
+    return add_primitive_chunks<double>(columns,
+                                        output->mutable_double_array());
+  case DataTypeId::kVarchar:
+    return add_primitive_chunks<std::string>(columns,
+                                             output->mutable_string_array());
+  default:
+    return false;
+  }
+}
+
 void Sink::sink_results(const Context& ctx, const StorageReadInterface& graph,
                         neug::QueryResponse* response) {
   response->set_row_count(ctx.row_num());
 
   response->mutable_arrays()->Reserve(ctx.tag_ids.size());
   for (size_t i : ctx.tag_ids) {
-    ColumnAccumulator columns;
+    std::vector<std::shared_ptr<IContextColumn>> inputs;
+    inputs.reserve(ctx.chunk_num());
     for (size_t c = 0; c < ctx.chunk_num(); ++c) {
       auto col = ctx.chunk(c).get(i);
-      if (col == nullptr) {
+      if (col != nullptr) {
+        inputs.push_back(std::move(col));
+      }
+    }
+    if (inputs.size() > 1) {
+      auto* array = response->add_arrays();
+      if (add_primitive_chunks(inputs, array)) {
         continue;
       }
-      columns.Add(std::move(col));
+      response->mutable_arrays()->RemoveLast();
+    }
+    ColumnAccumulator columns;
+    for (auto& input : inputs) {
+      columns.Add(std::move(input));
     }
     auto merged = columns.Finish();
     if (!merged) {
