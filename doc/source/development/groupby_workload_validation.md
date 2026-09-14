@@ -154,3 +154,70 @@ Use `--cases collect_unique collect_values` for the focused list comparison.
 Library overrides are checked against dynamic-loader output; hashes are recorded
 in the report. The fixture uses short strings; long strings, production data,
 and sustained concurrent queries require separate evaluation.
+
+## Composite-key encoding follow-up
+
+The state-kernel diagnostic now supports `group-composite`: integer + short
+string keys, COUNT and SUM, 1,024-row input batches. Its phases are executed
+serially even with four partitions. `local_ms` includes key encoding, adaptive
+local grouping and bucket assignment; `merge_ms` includes partition-table lookup,
+retained-key construction and aggregate updates; `finalize_ms` includes ordered
+output gathering. These are phase-work measurements, not worker wall times, and
+do not include scan, scheduling, or Sink serialization.
+
+The change resolves native INT32/INT64/string columns once per batch, reuses a
+batch-local encoding buffer, and encodes native values without temporary Value
+objects. Raw batches reserve signature storage and move completed signatures
+instead of copying them. NULL bitmap and payload bytes stay identical to the
+generic encoder. Unsupported types and column representations use that encoder.
+There is no new global state or change to partition assignment or output order.
+
+The encoding oracle covers raw and partial modes, ten key components, INT64_MIN,
+NULL and empty strings, embedded zero bytes, long strings, and generic boolean
+encoding. Existing grouping and query tests cover the resulting aggregates.
+
+State-kernel medians (three fresh runs, million unique groups), in milliseconds:
+
+| Partitions (serial diagnostic) | Prepare before / after | Update before / after | Finalize before / after |
+| --- | --- | --- | --- |
+| 1 | 209.4 / 66.1 | 274.2 / 320.1 | 137.9 / 156.7 |
+| 4 | 198.9 / 65.5 | 247.2 / 280.4 | 156.0 / 171.8 |
+
+Preparation improves substantially. Update and finalize measured slower in this
+non-interleaved diagnostic despite having unchanged code, so its preparation
+gain must not be reported as an equal whole-query gain. The interleaved query
+comparison below is the end-to-end check. These measurements also show why
+encoding alone cannot remove the remaining update and ordered-output costs.
+
+Raw phase data: [before](benchmarks/composite_key_phases_before_1m.json),
+[after](benchmarks/composite_key_phases_after_1m.json).
+Reproduce with `partition_phases group-composite 1000000 1000000 4`.
+
+Interleaved whole-query comparison: saved 98b73e60 versus this encoding change,
+two fresh processes per point and three warm executions per process, with the
+same fixture and verification method as above. All 36 processes passed the
+independent result checks. Times are medians of six samples, in milliseconds.
+
+| Case | Before 1 / 2 / 4 workers | After 1 / 2 / 4 workers |
+| --- | --- | --- |
+| Unique integer + string key | 750.0 / 571.8 / 505.4 | 622.3 / 487.3 / 425.1 |
+| Two integer keys, 1,717 groups | 149.9 / 80.2 / 44.5 | 119.9 / 60.0 / 33.0 |
+| Unique short string key | 393.6 / 301.8 / 239.4 | 361.3 / 252.9 / 217.6 |
+
+The unique-composite four-worker result improves about 16%, while scaling from
+one to four workers is still only about 1.46x. Partition-table updates and final
+ordered output remain substantial work; this change does not parallelize the
+latter or remove group-state materialization.
+
+Four-worker unique-composite peak RSS was 480.4–482.6 MiB before and
+434.7–446.3 MiB after (increases 345.3–355.6 versus 313.9–321.3 MiB).
+The low-cardinality case had higher absolute peak RSS in the after runs despite
+similar increments, and unique-string ranges overlap. These two-process samples
+do not establish a general memory reduction.
+
+Raw query report: [encoding comparison](benchmarks/composite_key_encoding_1m.json).
+
+Follow-up validation: final C++/Python binding build passed; 187 C++ tests and
+368 selected embedded Python tests passed (28 skipped, 20 deselected). All 52
+concurrency-related tests passed in each of 20 repetitions. Changed C++ files
+pass clang-format 10 and whitespace checks.

@@ -251,15 +251,40 @@ class GroupByState final : public PartitionState {
     flat_hash_map<std::string, size_t> groups;
     sel_vec_t row_groups;
     row_groups.reserve(chunk.row_num());
+    // Resolve native storage once per batch. Retain the generic encoder for
+    // other representations and types, with exactly the same key bytes.
+    struct KeyColumn {
+      const IContextColumn* column;
+      const ValueColumn<int64_t>* integers64;
+      const ValueColumn<int32_t>* integers32;
+      const ValueColumn<std::string>* strings;
+    };
+    std::vector<KeyColumn> columns;
+    for (auto [source, dest] : mappings_) {
+      auto* column = chunk.get(source).get();
+      columns.push_back(
+          {column, dynamic_cast<const ValueColumn<int64_t>*>(column),
+           dynamic_cast<const ValueColumn<int32_t>*>(column),
+           dynamic_cast<const ValueColumn<std::string>*>(column)});
+    }
+    vector_t<char> bytes;
     auto signature_at = [&](size_t row) {
-      vector_t<char> bytes((mappings_.size() + 7) / 8, 0);
+      bytes.assign((mappings_.size() + 7) / 8, 0);
       Encoder encoder(bytes);
-      for (size_t key = 0; key < mappings_.size(); ++key) {
-        auto value = chunk.get(mappings_[key].first)->get_elem(row);
-        if (value.IsNull()) {
+      for (size_t key = 0; key < columns.size(); ++key) {
+        const auto& column = columns[key];
+        if (!column.column->has_value(row)) {
           bytes[key >> 3] |= static_cast<char>(1U << (key & 7));
+          encoder.put_int(-1);
+        } else if (column.integers64) {
+          encoder.put_long(column.integers64->data()[row]);
+        } else if (column.integers32) {
+          encoder.put_int(column.integers32->data()[row]);
+        } else if (column.strings) {
+          encoder.put_string_view(column.strings->data()[row]);
+        } else {
+          encode_value(column.column->get_elem(row), encoder);
         }
-        encode_value(value, encoder);
       }
       return std::string(bytes.begin(), bytes.end());
     };
@@ -289,6 +314,9 @@ class GroupByState final : public PartitionState {
     }
     if (raw && !mappings_.empty()) {
       input->raw = true;
+      if (!integer_key) {
+        input->signatures.reserve(chunk.row_num());
+      }
       for (auto [source, dest] : mappings_) {
         input->keys.set(dest, chunk.get(source));
       }
@@ -296,9 +324,11 @@ class GroupByState final : public PartitionState {
         std::string signature;
         if (!integer_key) {
           signature = signature_at(row);
-          input->signatures.push_back(signature);
         }
         input->buckets[partition_at(row, signature)].push_back(row);
+        if (!integer_key) {
+          input->signatures.push_back(std::move(signature));
+        }
       }
       input->source = std::move(chunk);
       return input;

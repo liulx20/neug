@@ -26,9 +26,10 @@ using namespace neug::execution;
 
 int main(int argc, char** argv) {
   if (argc != 4 && argc != 5) {
-    std::cerr << "usage: partition_phases "
-                 "dedup|composite|group|group-raw|group-partial rows "
-                 "cardinality [partitions]\n";
+    std::cerr
+        << "usage: partition_phases "
+           "dedup|composite|group|group-raw|group-partial|group-composite rows "
+           "cardinality [partitions]\n";
     return 1;
   }
   std::string mode = argv[1];
@@ -36,26 +37,39 @@ int main(int argc, char** argv) {
   size_t partitions = argc == 5 ? std::stoull(argv[4]) : 1;
   if (!rows || !cardinality || !partitions ||
       (mode != "dedup" && mode != "composite" && mode != "group" &&
-       mode != "group-raw" && mode != "group-partial")) {
+       mode != "group-raw" && mode != "group-partial" &&
+       mode != "group-composite")) {
     return 1;
   }
   ChunkBatch chunks;
   for (size_t start = 0; start < rows; start += 1024) {
     ValueColumnBuilder<int64_t> keys, values;
+    ValueColumnBuilder<std::string> names;
     for (size_t row = start; row < std::min(rows, start + 1024); ++row) {
       keys.push_back_opt(row % cardinality);
       values.push_back_opt(row % 101);
+      if (mode == "group-composite") {
+        names.push_back_opt("item-" + std::to_string(row % cardinality));
+      }
     }
     ContextChunk chunk;
     chunk.set(0, keys.finish());
     chunk.set(1, values.finish());
+    if (mode == "group-composite") {
+      chunk.set(2, names.finish());
+    }
     chunks.push_back(std::move(chunk));
   }
   std::shared_ptr<PartitionState> state;
-  if (mode == "group" || mode == "group-raw" || mode == "group-partial") {
+  if (mode == "group" || mode == "group-raw" || mode == "group-partial" ||
+      mode == "group-composite") {
     state = std::make_shared<ops::GroupByState>(
-        std::vector<std::pair<int, int>>{{0, 0}},
-        std::vector<DataType>{DataType(DataTypeId::kInt64)},
+        mode == "group-composite"
+            ? std::vector<std::pair<int, int>>{{0, 0}, {2, 3}}
+            : std::vector<std::pair<int, int>>{{0, 0}},
+        mode == "group-composite"
+            ? std::vector<DataType>{DataType::INT64, DataType::VARCHAR}
+            : std::vector<DataType>{DataType::INT64},
         std::vector<ops::AggregateSpec>{
             {AggrKind::kCount, -1, 1, DataType(DataTypeId::kInt64)},
             {AggrKind::kSum, 1, 2, DataType(DataTypeId::kInt64)}},

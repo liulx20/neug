@@ -268,6 +268,62 @@ TEST(ParallelGroupByTest, FloatingSumAndAverageUsePartialCounts) {
   Check(input, Definition(true, {Kind::MIN, Kind::MAX}), false);
 }
 
+TEST(ParallelGroupByTest, NativeCompositeEncodingMatchesGenericValues) {
+  ContextChunk chunk;
+  ValueColumnBuilder<int64_t> integers64;
+  ValueColumnBuilder<int32_t> integers32;
+  ValueColumnBuilder<std::string> strings;
+  ValueColumnBuilder<bool> booleans;
+  for (size_t row = 0; row < 96; ++row) {
+    if (row % 7 == 0) {
+      integers64.push_back_null();
+      strings.push_back_null();
+    } else {
+      integers64.push_back_opt(row % 5 == 0 ? INT64_MIN : -int64_t(row % 3));
+      strings.push_back_opt(row % 3 == 0
+                                ? std::string("a\0b", 3)
+                                : row % 3 == 1 ? "" : std::string(128, 'x'));
+    }
+    if (row % 11 == 0) {
+      integers32.push_back_null();
+      booleans.push_back_null();
+    } else {
+      integers32.push_back_opt(-int32_t(row % 3));
+      booleans.push_back_opt(row % 2);
+    }
+  }
+  chunk.set(0, integers64.finish());
+  chunk.set(1, integers32.finish());
+  chunk.set(2, strings.finish());
+  chunk.set(3, booleans.finish());
+  std::vector<std::pair<int, int>> mappings;
+  std::vector<DataType> types;
+  for (int key = 0; key < 10; ++key) {
+    mappings.emplace_back(key % 4, key);
+    types.push_back(chunk.get(key % 4)->elem_type());
+  }
+  for (auto mode : {ops::GroupByState::InputMode::kRaw,
+                    ops::GroupByState::InputMode::kPartial}) {
+    ops::GroupByState state(mappings, types, {}, 4, mode);
+    auto batch = state.PartitionBuild(chunk);
+    const auto& input = static_cast<const ops::GroupByState::Input&>(*batch);
+    for (size_t group = 0; group < input.signatures.size(); ++group) {
+      auto row = input.raw ? group : input.offsets[group];
+      vector_t<char> bytes((mappings.size() + 7) / 8, 0);
+      Encoder encoder(bytes);
+      for (size_t key = 0; key < mappings.size(); ++key) {
+        auto value = chunk.get(mappings[key].first)->get_elem(row);
+        if (value.IsNull()) {
+          bytes[key >> 3] |= static_cast<char>(1U << (key & 7));
+        }
+        encode_value(value, encoder);
+      }
+      EXPECT_EQ(input.signatures[group],
+                std::string(bytes.begin(), bytes.end()));
+    }
+  }
+}
+
 TEST(ParallelGroupByTest, CompositeKeysAndNullableStrings) {
   ChunkBatch input;
   for (size_t batch = 0; batch < 4; ++batch) {
