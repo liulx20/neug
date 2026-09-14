@@ -268,3 +268,40 @@ precomputed columns instead. The compiler itself was not changed here.
 
 Raw samples and PROFILE evidence:
 [join shapes](benchmarks/task_queue_join_fast_paths_1m.json).
+
+## Parallel intermediate consumption
+
+Use `--intermediate` to measure projection after a global aggregation or sort.
+Each generated node has a distinct `id`; the aggregation emits one row per node,
+and the sort emits all nodes in descending ID order. Separate PROFILE runs record
+GroupBy/OrderBy before the final projections. Timings still exclude PROFILE.
+
+```sh
+PYTHONPATH=tools/python_bind python tools/benchmarks/task_queue.py --rows 1000000 --repeats 5 --intermediate --output /tmp/task_queue_intermediate.json
+```
+
+On the same machine, with five repetitions and 1/2/4 workers:
+
+| Rows | Query | 1 worker | 2 workers | 4 workers |
+| --- | --- | ---: | ---: | ---: |
+| 100k | Aggregation then projection | 14.664 ms | 14.417 ms | 13.146 ms |
+| 100k | Sort then projection | 60.011 ms | 59.045 ms | 57.085 ms |
+| 1m | Aggregation then projection | 177.875 ms | 196.859 ms | 180.677 ms |
+| 1m | Sort then projection | 699.318 ms | 715.539 ms | 694.311 ms |
+
+The 100k cases show modest scaling; the 1m cases show no consistent end-to-end
+improvement (the two-worker aggregation is slower than one worker). This change
+only parallelizes consumption after the global operator. Aggregation and sorting
+themselves remain serial; range slicing also copies data and incurs scheduling
+cost. These runs compare worker counts in this version, not old/new execution at
+the same worker count. Concurrency and ordering are established by deterministic
+C++ tests, not inferred from small timing differences.
+
+The unchanged 1m small-build Join measured 98.322 ms at four workers versus
+98.876 ms in the preceding run; this is not evidence of a material speedup or
+regression. All original query checksums and row counts match that baseline.
+New queries also check result equality across worker counts. Builds and tests
+were not run concurrently with benchmarks.
+
+Raw timings and PROFILE evidence: [100k](benchmarks/task_queue_intermediate_100k.json),
+[1m](benchmarks/task_queue_intermediate_1m.json).

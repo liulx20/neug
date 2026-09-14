@@ -1,0 +1,339 @@
+{
+  "platform": "macOS-13.2.1-arm64-arm-64bit",
+  "logical_cpus": 10,
+  "rows": 1000000,
+  "repeats": 5,
+  "timing": "execute only, includes task pool, materialization and native serialization; excludes Python row iteration, warm plan cache, no PROFILE",
+  "queries": {
+    "filter_project": {
+      "query": "MATCH (n:parallel_item) WHERE n.id % 3 = 0 RETURN n.id, n.id * 7 + n.grp",
+      "result_rows": 333334,
+      "sha256": "8faa7f825a27a6a97814258b571add2127851c2de1e849a8cbf2e217e64b2793",
+      "workers": {
+        "1": {
+          "median_ms": 81.931375,
+          "samples_ms": [
+            81.931375,
+            82.1445,
+            95.81675,
+            81.761375,
+            81.746042
+          ]
+        },
+        "2": {
+          "median_ms": 51.553333,
+          "samples_ms": [
+            51.701709,
+            51.961084,
+            51.553333,
+            51.481292,
+            51.231792
+          ]
+        },
+        "4": {
+          "median_ms": 36.672875,
+          "samples_ms": [
+            36.622459,
+            36.589416,
+            36.763084,
+            36.672875,
+            36.950708
+          ]
+        }
+      }
+    },
+    "hash_join": {
+      "query": "MATCH (a:parallel_item), (b:parallel_item) WHERE a.grp = b.grp AND b.id < 17 RETURN a.id, b.id",
+      "result_rows": 1000000,
+      "sha256": "b43a5d06d7c986ca6e51d2b6a92078523134d0936ce7e3eee1dcb0f183f7b18c",
+      "workers": {
+        "1": {
+          "median_ms": 202.750334,
+          "samples_ms": [
+            203.406625,
+            202.220958,
+            203.648041,
+            202.750334,
+            200.972417
+          ]
+        },
+        "2": {
+          "median_ms": 131.796125,
+          "samples_ms": [
+            133.196834,
+            131.796125,
+            131.574667,
+            131.857375,
+            131.335916
+          ]
+        },
+        "4": {
+          "median_ms": 98.322375,
+          "samples_ms": [
+            98.760917,
+            98.033375,
+            98.322375,
+            100.483625,
+            97.350708
+          ]
+        }
+      }
+    },
+    "group_sum": {
+      "query": "MATCH (n:parallel_item) RETURN n.grp, sum(n.id)",
+      "result_rows": 17,
+      "sha256": "69d0093b0e840c3fc79cab3608afe96c03fa87d5ffe556074fe1e0a7c0c3d344",
+      "workers": {
+        "1": {
+          "median_ms": 91.992666,
+          "samples_ms": [
+            91.992666,
+            91.890209,
+            94.355875,
+            92.276917,
+            91.771208
+          ]
+        },
+        "2": {
+          "median_ms": 71.655459,
+          "samples_ms": [
+            75.034458,
+            71.177084,
+            71.655459,
+            72.644083,
+            71.340167
+          ]
+        },
+        "4": {
+          "median_ms": 66.927375,
+          "samples_ms": [
+            66.927375,
+            67.316125,
+            66.219,
+            68.705834,
+            66.412458
+          ]
+        }
+      }
+    },
+    "limit_10": {
+      "query": "MATCH (n:parallel_item) RETURN n.id LIMIT 10",
+      "result_rows": 10,
+      "sha256": "e16be58a09795fdfcef17455a2f04981300b8ff55f3789f3b28dcb77203359d1",
+      "workers": {
+        "1": {
+          "median_ms": 0.195,
+          "samples_ms": [
+            0.195,
+            0.199333,
+            0.18475,
+            0.222708,
+            0.194833
+          ]
+        },
+        "2": {
+          "median_ms": 0.245375,
+          "samples_ms": [
+            0.264209,
+            0.239,
+            0.253208,
+            0.211,
+            0.245375
+          ]
+        },
+        "4": {
+          "median_ms": 0.2805,
+          "samples_ms": [
+            0.294333,
+            0.258542,
+            0.2805,
+            0.30375,
+            0.276709
+          ]
+        }
+      }
+    },
+    "materialized_project": {
+      "query": "MATCH (n:parallel_item) WITH n.id AS id, sum(n.grp) AS s RETURN id, s * 7 + 1",
+      "result_rows": 1000000,
+      "sha256": "7cc479b2bf578cc6faed5606389dcba904dfb28649fd5c1ed163dad2a37fea45",
+      "workers": {
+        "1": {
+          "median_ms": 177.874833,
+          "samples_ms": [
+            177.477042,
+            176.896584,
+            179.211834,
+            177.874833,
+            179.609708
+          ]
+        },
+        "2": {
+          "median_ms": 196.85925,
+          "samples_ms": [
+            200.367583,
+            196.379083,
+            196.290958,
+            203.375042,
+            196.85925
+          ]
+        },
+        "4": {
+          "median_ms": 180.67725,
+          "samples_ms": [
+            181.161125,
+            180.67725,
+            180.321792,
+            179.64975,
+            187.076834
+          ]
+        }
+      },
+      "profile": {
+        "total_elapsed_ms": 556.2616000000002,
+        "total_output_rows": 1000000,
+        "operators": [
+          {
+            "operator_id": 791137104,
+            "parent_id": -1,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 171.36376300000006,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 791100656,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 168.25208300000006,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 791219824,
+            "parent_id": -1,
+            "operator_name": "GroupByOpr",
+            "elapsed_ms": 138.00257400000007,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 791047744,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 39.400333999999994,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 790733472,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 39.094255,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 791156816,
+            "parent_id": -1,
+            "operator_name": "SinkOpr",
+            "elapsed_ms": 0.14859100000000033,
+            "output_rows": 1000000,
+            "child_ids": []
+          }
+        ]
+      }
+    },
+    "sorted_project": {
+      "query": "MATCH (n:parallel_item) WITH n ORDER BY n.id DESC RETURN n.id, n.id * 7 + n.grp",
+      "result_rows": 1000000,
+      "sha256": "435ee308460a5f45d78eacf95d744f1980c081e120b3097307ecbe054f381bb0",
+      "workers": {
+        "1": {
+          "median_ms": 699.318208,
+          "samples_ms": [
+            696.346209,
+            699.318208,
+            692.607375,
+            704.204292,
+            715.249416
+          ]
+        },
+        "2": {
+          "median_ms": 715.538792,
+          "samples_ms": [
+            719.563416,
+            736.000459,
+            709.849667,
+            703.424917,
+            715.538792
+          ]
+        },
+        "4": {
+          "median_ms": 694.311167,
+          "samples_ms": [
+            718.533917,
+            686.163833,
+            709.960875,
+            685.933625,
+            694.311167
+          ]
+        }
+      },
+      "profile": {
+        "total_elapsed_ms": 2202.8480119999995,
+        "total_output_rows": 1000000,
+        "operators": [
+          {
+            "operator_id": 791146944,
+            "parent_id": -1,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 692.910933,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 790734592,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 689.7878539999999,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 790763008,
+            "parent_id": -1,
+            "operator_name": "OrderByOpr",
+            "elapsed_ms": 674.1257899999999,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 791069472,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 73.08238400000002,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 790978848,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 72.78372600000002,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 791148480,
+            "parent_id": -1,
+            "operator_name": "SinkOpr",
+            "elapsed_ms": 0.15732499999999994,
+            "output_rows": 1000000,
+            "child_ids": []
+          }
+        ]
+      }
+    }
+  }
+}

@@ -420,14 +420,37 @@ class MorselPipelineTask final : public PipelineTask {
     names_.push_back(std::move(name));
     timers_.push_back(timer);
   }
-  void Append(std::string name, OprTimer* timer, Transform transform) {
+  MorselPipelineTask(size_t workers, PipelineTask* input)
+      : MorselPipelineTask(workers, SourceFactory{}, "IntermediateRanges",
+                           nullptr) {
+    input_ = input;
+  }
+  void Append(std::string name, OprTimer* timer, Transform transform,
+              std::vector<int> columns = {}) {
     names_.push_back(std::move(name));
     timers_.push_back(timer);
     transforms_.push_back(std::move(transform));
+    columns_.push_back(std::move(columns));
   }
 
   void Cancel() override { cancelled_ = true; }
   bool Advance(QueueExecution& execution) override {
+    if (!source_ && input_) {
+      if (!input_->output) {
+        if (input_->done) {
+          finished = true;
+          return true;
+        }
+        return execution.Need(*input_);
+      }
+      auto chunk = std::move(input_->output);
+      input_->output.reset();
+      source_ = std::make_unique<ChunkMorselSource>(
+          [chunk =
+               std::move(chunk)]() mutable -> QueryResultReader::NextResult {
+            return std::exchange(chunk, std::nullopt);
+          });
+    }
     if (!source_) {
       execution.Submit(*this, [this] {
         source_ = factory_();
@@ -460,6 +483,16 @@ class MorselPipelineTask final : public PipelineTask {
       if (worker_count_ > 1) {
         FillSlots(execution);
       }
+      return true;
+    }
+    if (exhausted_ && in_flight_ == 0 && input_) {
+      // The current input chunk has been consumed and every range delivered.
+      // Advance upstream only on downstream demand; never drain it eagerly.
+      for (auto* worker : workers_) {
+        worker->reader.reset();
+      }
+      source_.reset();
+      exhausted_ = false;
       return true;
     }
     if (exhausted_ && in_flight_ == 0) {
@@ -532,7 +565,8 @@ class MorselPipelineTask final : public PipelineTask {
     local.reader->Start(work);
     std::vector<KernelStep> steps;
     for (size_t i = 1; i < names_.size(); ++i) {
-      steps.push_back({names_[i], local.timers[i].get(), transforms_[i - 1]});
+      steps.push_back({names_[i], local.timers[i].get(), transforms_[i - 1],
+                       columns_[i - 1]});
     }
     KernelChain chain(std::move(steps));
     ChunkBatch output;
@@ -606,11 +640,13 @@ class MorselPipelineTask final : public PipelineTask {
   }
 
   size_t worker_count_;
+  PipelineTask* input_ = nullptr;
   SourceFactory factory_;
   std::unique_ptr<MorselSource> source_;
   std::vector<std::string> names_;
   std::vector<OprTimer*> timers_;
   std::vector<Transform> transforms_;
+  std::vector<std::vector<int>> columns_;
   std::vector<LocalState*> workers_;
   std::mutex pick_mutex_;
   std::atomic<bool> exhausted_{false};
@@ -871,6 +907,7 @@ struct PipelineFragment {
   std::vector<int> columns;
   MorselPipelineTask* morsel_step = nullptr;
   LinearPipelineTask* linear_step = nullptr;
+  BufferTask* replay_buffer = nullptr;
 };
 }  // namespace
 
@@ -889,6 +926,7 @@ class PipelineBuilder {
         current_timer->set_name(name);
       }
       if (!op.consumes_input()) {
+        fragment.replay_buffer = nullptr;
         fragment.output = execution_.Add<InputTask>(ChunkBatch{});
         fragment.output->gates = fragment.barriers;
         fragment.columns.clear();
@@ -913,13 +951,21 @@ class PipelineBuilder {
         AdvanceTimer(current_timer, i, plan.operators_.size());
         continue;
       }
+      if (op.consumes_input() &&
+          op.pipeline_behavior() == PipelineBehavior::kChunkLocal) {
+        Parallelize(fragment);
+      }
       if (fragment.morsel_step &&
           op.pipeline_behavior() == PipelineBehavior::kChunkLocal) {
         fragment.morsel_step->Append(
             name, current_timer,
             [operator_plan, storage, params](OprTimer* timer) {
               return operator_plan->CreateState(*storage, params, timer);
-            });
+            },
+            fragment.columns);
+        if (auto columns = op.output_columns()) {
+          fragment.columns = std::move(*columns);
+        }
         AdvanceTimer(current_timer, i, plan.operators_.size());
         continue;
       }
@@ -944,16 +990,19 @@ class PipelineBuilder {
         auto left =
             Build(children.probe_plan(),
                   Replay(seed, fragment.columns, {build_state}), left_timer);
+        Parallelize(left);
         fragment.output = left.output;
         fragment.columns = left.columns;
         fragment.linear_step = nullptr;
         if (left.morsel_step) {
           left.morsel_step->Append(
-              name, current_timer, [state = build_state](OprTimer*) {
+              name, current_timer,
+              [state = build_state](OprTimer*) {
                 return make_chunk_kernel([state](ContextChunk chunk) {
                   return state->state().ProbeChunk(std::move(chunk));
                 });
-              });
+              },
+              left.columns);
           fragment.morsel_step = left.morsel_step;
           AdvanceTimer(current_timer, i, plan.operators_.size());
           continue;
@@ -997,6 +1046,7 @@ class PipelineBuilder {
         fragment.linear_step = nullptr;
       }
       fragment.morsel_step = nullptr;
+      fragment.replay_buffer = nullptr;
       if (!fragment.linear_step) {
         fragment.linear_step =
             execution_.Add<LinearPipelineTask>(fragment.output);
@@ -1023,11 +1073,42 @@ class PipelineBuilder {
   }
 
  private:
+  void Parallelize(PipelineFragment& fragment) {
+    if (fragment.morsel_step || execution_.workers() == 1 ||
+        storage_.writable()) {
+      return;
+    }
+    MorselPipelineTask* task;
+    if (fragment.replay_buffer) {
+      auto* buffer = fragment.replay_buffer;
+      task = execution_.Add<MorselPipelineTask>(
+          execution_.workers(),
+          [buffer] {
+            return std::make_unique<ChunkMorselSource>(
+                [buffer,
+                 index = size_t{0}]() mutable -> QueryResultReader::NextResult {
+                  if (index == buffer->chunks.size()) {
+                    return std::optional<ContextChunk>{};
+                  }
+                  return std::optional<ContextChunk>{buffer->chunks[index++]};
+                });
+          },
+          "ReplayRanges", nullptr);
+      task->gates = fragment.output->gates;
+    } else {
+      task = execution_.Add<MorselPipelineTask>(execution_.workers(),
+                                                fragment.output);
+    }
+    fragment.output = task;
+    fragment.morsel_step = task;
+    fragment.linear_step = nullptr;
+    fragment.replay_buffer = nullptr;
+  }
   PipelineFragment Replay(BufferTask* buffer, const std::vector<int>& columns,
                           std::vector<PipelineTask*> gates) {
     auto* task = execution_.Add<ReplayTask>(buffer);
     task->gates.insert(task->gates.end(), gates.begin(), gates.end());
-    return {task, std::move(gates), columns};
+    return {task, std::move(gates), columns, nullptr, nullptr, buffer};
   }
   void AdvanceTimer(OprTimer*& timer, size_t index, size_t count) {
     if (timer && index + 1 < count) {

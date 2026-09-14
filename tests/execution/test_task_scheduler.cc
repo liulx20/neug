@@ -19,6 +19,7 @@
 #include <chrono>
 #include <condition_variable>
 #include <mutex>
+#include <set>
 #include <thread>
 
 #include <future>
@@ -754,6 +755,189 @@ TEST(TaskSchedulerTest, IncrementalBuildBoundsPendingInputAndDrainsFailure) {
       }
     }
   }
+}
+ContextChunk RangeChunk(int64_t begin, int64_t end) {
+  ValueColumnBuilder<int64_t> values;
+  for (auto i = begin; i < end; ++i) {
+    values.push_back_opt(i);
+  }
+  ContextChunk chunk;
+  chunk.set(0, values.finish());
+  return chunk;
+}
+
+struct RangeObservation {
+  std::mutex mutex;
+  std::condition_variable ready;
+  size_t entered = 0;
+  std::set<std::thread::id> threads;
+};
+
+class ObservedRangeMap final : public IOperator {
+ public:
+  ObservedRangeMap(RangeObservation& observation, int64_t bias)
+      : observation_(observation), bias_(bias) {}
+  std::string get_operator_name() const override { return "ObservedRangeMap"; }
+  PipelineBehavior pipeline_behavior() const override {
+    return PipelineBehavior::kChunkLocal;
+  }
+  Kernel CreateState(IStorageInterface&, const ParamsMap&, OprTimer*) override {
+    return make_chunk_kernel(
+        [this](ContextChunk chunk) -> result<ContextChunk> {
+          {
+            std::unique_lock<std::mutex> lock(observation_.mutex);
+            observation_.threads.insert(std::this_thread::get_id());
+            ++observation_.entered;
+            observation_.ready.notify_all();
+            // The first worker cannot finish until a second range is executing.
+            EXPECT_TRUE(observation_.ready.wait_for(
+                lock, std::chrono::seconds(5),
+                [&] { return observation_.entered >= 2; }));
+          }
+          ValueColumnBuilder<int64_t> values;
+          for (size_t row = 0; row < chunk.row_num(); ++row) {
+            values.push_back_opt(
+                chunk.get(0)->get_elem(row).GetValue<int64_t>() + bias_);
+          }
+          chunk.remove(0);
+          chunk.set(0, values.finish());
+          return chunk;
+        });
+  }
+
+ private:
+  RangeObservation& observation_;
+  int64_t bias_;
+};
+
+class GlobalRangeBarrier final : public IOperator {
+ public:
+  explicit GlobalRangeBarrier(bool collect = true) : collect_(collect) {}
+  std::string get_operator_name() const override {
+    return "GlobalRangeBarrier";
+  }
+  Kernel CreateState(IStorageInterface&, const ParamsMap&, OprTimer*) override {
+    auto identity = [](ContextChunk chunk) -> result<ContextChunk> {
+      return chunk;
+    };
+    return collect_ ? make_global_kernel(identity)
+                    : make_chunk_kernel(identity);
+  }
+
+ private:
+  bool collect_;
+};
+
+TEST(TaskSchedulerTest, MaterializedGlobalOutputRunsOrderedParallelRanges) {
+  for (bool collect : {false, true}) {
+    PropertyGraph graph;
+    GraphView view(graph);
+    StorageReadInterface storage(view, 0);
+    RangeObservation observation;
+    std::vector<std::unique_ptr<IOperator>> operators;
+    operators.push_back(std::make_unique<GlobalRangeBarrier>(collect));
+    operators.push_back(std::make_unique<ObservedRangeMap>(observation, 7));
+    Pipeline pipeline(std::move(operators));
+    ChunkBatch input;
+    input.push_back(RangeChunk(0, 8192));
+    input.push_back(RangeChunk(0, 0));
+    input.push_back(RangeChunk(8192, 16384));
+    auto result = collect_chunk(pipeline.ExecuteReader(
+        storage, context_from_batches(std::move(input)), {}, nullptr, 2));
+    ASSERT_TRUE(result);
+    ASSERT_EQ(result->row_num(), 16384);
+    EXPECT_GE(observation.threads.size(), 2);
+    for (size_t row = 0; row < result->row_num(); ++row) {
+      EXPECT_EQ(result->get(0)->get_elem(row).GetValue<int64_t>(), row + 7);
+    }
+  }
+}
+
+TEST(TaskSchedulerTest, SharedReplayBranchesOwnParallelCursors) {
+  PropertyGraph graph;
+  GraphView view(graph);
+  StorageReadInterface storage(view, 0);
+  RangeObservation left, right;
+  auto pipeline = OneOperator(std::make_unique<TestFork>(
+      SubPipelineMode::kSequential,
+      OneOperator(std::make_unique<ObservedRangeMap>(left, 1)),
+      OneOperator(std::make_unique<ObservedRangeMap>(right, 10000))));
+  ChunkBatch input;
+  for (int i = 0; i < 16; ++i) {
+    input.push_back(RangeChunk(i * 128, (i + 1) * 128));
+  }
+  auto result = collect_chunk(pipeline.ExecuteReader(
+      storage, context_from_batches(std::move(input)), {}, nullptr, 2));
+  ASSERT_TRUE(result);
+  ASSERT_EQ(result->row_num(), 4096);
+  EXPECT_GE(left.threads.size(), 2);
+  EXPECT_GE(right.threads.size(), 2);
+  for (size_t row = 0; row < 2048; ++row) {
+    EXPECT_EQ(result->get(0)->get_elem(row).GetValue<int64_t>(), row + 1);
+    EXPECT_EQ(result->get(0)->get_elem(row + 2048).GetValue<int64_t>(),
+              row + 10000);
+  }
+}
+
+TEST(TaskSchedulerTest,
+     JoinProbesMaterializedInputThenKeepsParallelTransforms) {
+  PlanParser::get().init();
+  PropertyGraph graph;
+  GraphView view(graph);
+  StorageReadInterface storage(view, 0);
+  physical::PhysicalPlan plan;
+  AddJoin(plan, 1);
+  ContextMeta meta;
+  meta.set(0, DataType::INT64);
+  auto join = ops::JoinOprBuilder().Build(graph.schema(), meta, plan, 0);
+  ASSERT_TRUE(join);
+  RangeObservation observation;
+  std::vector<std::unique_ptr<IOperator>> operators;
+  operators.push_back(std::make_unique<GlobalRangeBarrier>());
+  operators.push_back(std::move(join->first));
+  operators.push_back(std::make_unique<ObservedRangeMap>(observation, 0));
+  Pipeline pipeline(std::move(operators));
+  auto result = collect_chunk(pipeline.ExecuteReader(
+      storage, context_from_batches(one_chunk(RangeChunk(0, 16384))), {},
+      nullptr, 2));
+  ASSERT_TRUE(result);
+  ASSERT_EQ(result->row_num(), 16384);
+  EXPECT_GE(observation.threads.size(), 2);
+  for (size_t row = 0; row < result->row_num(); ++row) {
+    EXPECT_EQ(result->get(0)->get_elem(row).GetValue<int64_t>(), row);
+  }
+}
+TEST(TaskSchedulerTest, ParallelIntermediateLimitLeavesNextBranchUnused) {
+  PropertyGraph graph;
+  GraphView view(graph);
+  StorageReadInterface storage(view, 0);
+  RangeObservation observation;
+  int unused = 0;
+  std::vector<std::unique_ptr<IOperator>> first;
+  first.push_back(
+      std::make_unique<CallbackSource>([] { return RangeChunk(0, 16384); }));
+  first.push_back(std::make_unique<ObservedRangeMap>(observation, 0));
+  std::vector<std::unique_ptr<IOperator>> operators;
+  operators.push_back(std::make_unique<TestFork>(
+      SubPipelineMode::kSequential, Pipeline(std::move(first)),
+      OneOperator(std::make_unique<CallbackSource>([] { return MakeChunk(99); },
+                                                   &unused))));
+  physical::PhysicalPlan plan;
+  auto* range =
+      plan.add_plan()->mutable_opr()->mutable_limit()->mutable_range();
+  range->set_lower(0);
+  range->set_upper(1);
+  auto limit = ops::LimitOprBuilder().Build(Schema(), ContextMeta(), plan, 0);
+  ASSERT_TRUE(limit);
+  operators.push_back(std::move(limit->first));
+  Pipeline pipeline(std::move(operators));
+  auto result =
+      collect_chunk(pipeline.ExecuteReader(storage, {}, {}, nullptr, 2));
+  ASSERT_TRUE(result);
+  ASSERT_EQ(result->row_num(), 1);
+  EXPECT_EQ(result->get(0)->get_elem(0).GetValue<int64_t>(), 0);
+  EXPECT_GE(observation.threads.size(), 2);
+  EXPECT_EQ(unused, 0);
 }
 }  // namespace
 }  // namespace neug::execution

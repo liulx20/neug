@@ -278,9 +278,38 @@ storage call. Early termination does not call the source's successful finalizer.
 
 Ordinary Join attaches its probe kernel to the left morsel step when possible.
 If the left input ends at a global boundary or reads a shared materialized input,
-probing remains a single task segment. Global Limit, DISTINCT, aggregation,
-sort/TopK and fused expansion-count operators are not cloned per worker.
+the builder now starts a range step for probe and subsequent chunk-local kernels.
+Global Limit, DISTINCT, aggregation, sort/TopK and fused expansion-count operators
+are still not cloned per worker.
 Primary-key Join currently ends a morsel step.
+
+## Parallel consumption of intermediate results
+
+For read-only execution with multiple workers, the builder starts a range step
+when chunk-local kernels or Join probe follow a non-range segment. It reuses the
+existing morsel scheduler, ordered completion slots, cancellation and local
+profiling counters. Input column aliases are carried into each range kernel.
+
+A shared replay buffer gives each branch its own range source and chunk cursor.
+Workers in that branch claim different ranges; another branch independently
+visits all the same rows. Sources are created only after the branch's dependency
+gates complete, including Join build publication. Empty or unused branches retain
+the existing demand behavior.
+
+For an ordinary upstream mailbox, the coordinator acquires one chunk on demand
+and exposes 4,096-row ranges (read in batches up to 1,024 rows). After every range
+of that chunk is delivered, it acquires the next chunk. It does not add an eager
+whole-input materialization barrier. Empty typed chunks are delivered too. Worker
+readers are released before advancing to the next input chunk. Limit and errors
+stop requesting additional input and drain submitted work through the same
+executor cancellation path.
+
+This currently parallelizes ranges within one mailbox chunk; it does not overlap
+range execution across several small mailbox chunks. Shared replay buffers can
+supply ranges across chunk boundaries. Small inputs may offer too little work
+for several workers. Global operators themselves remain serial, and the existing
+single-worker/write behavior is preserved. Range slicing copies selected columns;
+there are no zero-copy slices or new byte-based memory limits here.
 
 ## Scope and profiling
 
@@ -288,8 +317,8 @@ Primary-key Join currently ends a morsel step.
   Index scans and other source types have not all been converted to range sources.
 - Join partitions incoming chunks concurrently and incrementally builds hash
   buckets through bounded batch slots. It retains build chunks until query
-  completion; there is no spill. Probe concurrency still depends on the left
-  pipeline's range-source support.
+  completion; there is no spill. Probe can now resume range execution after
+  global boundaries or from shared replay buffers.
 - Aggregation, dedup and sorting retain their global execution kernels.
 - Conditional Union branches use the same ready queue and worker pool, preserving
   unused-branch laziness.
@@ -362,3 +391,12 @@ bounded upstream consumption, input-order appends, the probe barrier and drainin
 on a build error. `IncrementalChunksArePartitionedConcurrentlyAndKeepMatchOrder`
 checks multiple retained chunks against the nested-loop oracle, including
 Cartesian, inner, outer, semi and anti joins.
+
+`MaterializedGlobalOutputRunsOrderedParallelRanges` checks both a global collected
+result and repeated mailbox chunks with an empty typed chunk between them.
+`SharedReplayBranchesOwnParallelCursors` checks parallel consumption of small
+shared chunks without lost rows or cross-branch mutation.
+`JoinProbesMaterializedInputThenKeepsParallelTransforms` checks shared build/probe
+input followed by concurrent transforms. These tests hold the first worker until
+a second range executes. `ParallelIntermediateLimitLeavesNextBranchUnused` checks
+early termination without initializing the next sequential branch.

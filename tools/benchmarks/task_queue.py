@@ -25,6 +25,11 @@ def main():
         action="store_true",
         help="include large and skewed join inputs with plan evidence",
     )
+    parser.add_argument(
+        "--intermediate",
+        action="store_true",
+        help="include transforms after global operators",
+    )
     args = parser.parse_args()
     if args.rows < 17 or args.repeats < 1 or min(args.workers) < 1:
         parser.error("rows >= 17, repeats >= 1 and positive workers are required")
@@ -49,6 +54,14 @@ def main():
                 "WHERE a.id = b.hot RETURN a.id, b.id",
             }
         )
+    intermediate_queries = {
+        "materialized_project": "MATCH (n:parallel_item) "
+        "WITH n.id AS id, sum(n.grp) AS s RETURN id, s * 7 + 1",
+        "sorted_project": "MATCH (n:parallel_item) "
+        "WITH n ORDER BY n.id DESC RETURN n.id, n.id * 7 + n.grp",
+    }
+    if args.intermediate:
+        queries.update(intermediate_queries)
     report = {
         "platform": platform.platform(),
         "logical_cpus": os.cpu_count(),
@@ -106,23 +119,26 @@ def main():
                         for workers, values in timings.items()
                     },
                 }
-                if args.join_shapes and name.startswith("hash_join"):
+                if (args.join_shapes and name.startswith("hash_join")) or (
+                    args.intermediate and name in intermediate_queries
+                ):
                     profiled = conn.execute(
                         "PROFILE " + query, num_threads=max(args.workers)
                     )
                     report["queries"][name]["profile"] = profiled.get_profile_metrics()
                     metrics = report["queries"][name]["profile"]
-                    joins = [
-                        op
-                        for op in metrics["operators"]
-                        if op["operator_name"] == "JoinOpr"
-                    ]
-                    assert len(joins) == 1, (name, metrics)
-                    assert joins[0]["output_rows"] == len(rows), (name, metrics)
-                    by_id = {op["operator_id"]: op for op in metrics["operators"]}
-                    build_rows = by_id[joins[0]["child_ids"][1]]["output_rows"]
-                    assert build_rows == (17 if name == "hash_join" else args.rows)
-                    report["queries"][name]["profile_build_rows"] = build_rows
+                    if name.startswith("hash_join"):
+                        joins = [
+                            op
+                            for op in metrics["operators"]
+                            if op["operator_name"] == "JoinOpr"
+                        ]
+                        assert len(joins) == 1, (name, metrics)
+                        assert joins[0]["output_rows"] == len(rows), (name, metrics)
+                        by_id = {op["operator_id"]: op for op in metrics["operators"]}
+                        build_rows = by_id[joins[0]["child_ids"][1]]["output_rows"]
+                        assert build_rows == (17 if name == "hash_join" else args.rows)
+                        report["queries"][name]["profile_build_rows"] = build_rows
                 print(
                     name,
                     {w: round(statistics.median(v), 3) for w, v in timings.items()},
