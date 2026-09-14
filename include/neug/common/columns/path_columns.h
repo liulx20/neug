@@ -37,6 +37,8 @@ class PathColumn : public IContextColumn {
 
   std::shared_ptr<IContextColumn> optional_shuffle(
       const sel_vec_t& offsets) const override;
+  std::shared_ptr<IContextColumn> union_col(
+      std::shared_ptr<IContextColumn> other) const override;
   inline const DataType& elem_type() const override { return type_; }
   inline Value get_elem(size_t idx) const override {
     if (is_optional_ && data_[idx].is_null()) {

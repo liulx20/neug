@@ -189,3 +189,78 @@ def test_parallel_graph_expansion(parallel_conn, tmp_path, workers):
     assert len(list(profiled)) == len(edges)
     names = [op["operator_name"] for op in profiled.get_profile_metrics()["operators"]]
     assert any("EdgeExpand" in name for name in names), names
+
+
+@pytest.mark.parametrize("workers", [1, 2, 4])
+def test_parallel_path_expansion(parallel_conn, tmp_path, workers):
+    conn = parallel_conn
+    edges = [(src, (src // 3) * 3 + (src + 1) % 3, 1) for src in range(4100)]
+    edges += [(src, src, 2) for src in range(0, 4100, 7)]
+    edges += [(src, (src // 3) * 3 + (src + 1) % 3, 3) for src in range(0, 4100, 11)]
+    path = tmp_path / "walk.csv"
+    path.write_text("src|dst|weight\n" + "".join(f"{a}|{b}|{w}\n" for a, b, w in edges))
+    conn.execute(
+        "CREATE REL TABLE walk(FROM parallel_item TO parallel_item, weight INT64)"
+    )
+    conn.execute(f'COPY walk FROM "{path}"')
+    adjacency = {}
+    for src, dst, weight in edges:
+        adjacency.setdefault(src, []).append((dst, weight))
+
+    def walks(start, predicate=lambda weight: True):
+        result = [((start,), ())]
+        frontier = list(result)
+        for _ in range(2):
+            frontier = [
+                (nodes + (dst,), weights + (weight,))
+                for nodes, weights in frontier
+                for dst, weight in adjacency.get(nodes[-1], [])
+                if predicate(weight)
+            ]
+            result.extend(frontier)
+        return result
+
+    expected = [(src, nodes[-1]) for src in range(5003) for nodes, _ in walks(src)]
+    query = "MATCH (a:parallel_item)-[:walk*0..2]->(b:parallel_item) RETURN a.id, b.id"
+    result = conn.execute("PROFILE " + query, num_threads=workers)
+    assert sorted(map(tuple, result)) == sorted(expected)
+    assert "PathExpandVOpr" in {
+        op["operator_name"] for op in result.get_profile_metrics()["operators"]
+    }
+
+    # Repeated input roots must not be deduplicated across work ranges.
+    query = (
+        "MATCH (seed:parallel_item)-[:walk]->(a:parallel_item) "
+        "MATCH (a)-[:walk*0..2]->(b:parallel_item) RETURN seed.id, a.id, b.id"
+    )
+    expected = [
+        (seed, src, nodes[-1]) for seed, src, _ in edges for nodes, _ in walks(src)
+    ]
+    assert sorted(map(tuple, conn.execute(query, num_threads=workers))) == sorted(
+        expected
+    )
+
+    for filtered in [False, True]:
+        pattern = (
+            "e:walk*0..2 (r, _ | WHERE r.weight > 1)" if filtered else "e:walk*0..2"
+        )
+        query = f"MATCH (a:parallel_item)-[{pattern}]->(b:parallel_item) RETURN a.id, e"
+        result = conn.execute("PROFILE " + query, num_threads=workers)
+        actual = [
+            (
+                src,
+                tuple(n["id"] for n in path["nodes"]),
+                tuple(e["weight"] for e in path["rels"]),
+            )
+            for src, path in result
+        ]
+        expected = [
+            (src, nodes, weights)
+            for src in range(5003)
+            for nodes, weights in walks(src, lambda w: not filtered or w > 1)
+        ]
+        assert sorted(actual) == sorted(expected)
+        names = {
+            op["operator_name"] for op in result.get_profile_metrics()["operators"]
+        }
+        assert ("PathExpandOprWithPred" if filtered else "PathExpandOpr") in names

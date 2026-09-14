@@ -254,9 +254,33 @@ preserves each range's row mapping and duplicate edges. No operator creates its
 own threads. A high-degree vertex is still processed within one input range;
 this is not parallel traversal of a single adjacency list.
 
-Path/shortest-path operators, Intersect and the global ExpandCount fusion are
-not changed by this step. Ordinary GetV and the seven EdgeExpand variants in
-`edge.cc` are the enabled implementations; write parallelism is not broadened.
+Dedicated shortest-path operators, Intersect and the global ExpandCount fusion
+remain outside this chunk-local graph expansion coverage. Ordinary GetV and the seven EdgeExpand variants in
+`edge.cc` are enabled; write parallelism is not broadened.
+
+`PathExpandVOpr`, `PathExpandOpr`, and `PathExpandOprWithPred` also use the
+chunk-local executor. Frontiers, path builders and input-row offsets belong to
+each invocation. SIMPLE/TRAIL checks operate on the current path; the generic
+ANY_SHORTEST branch creates visited state per root. Predicates are bound per
+invocation. There is no cross-chunk visited set or deduplication. A single root's
+search is not split among workers. Chunking may change traversal output order
+without ORDER BY.
+
+PathColumn now supports concatenation, required when multiple result chunks
+contain complete paths or a downstream operator collects path columns. It appends
+path references in chunk order and preserves NULL metadata, including typed empty
+columns and zero-hop paths. It does not reconstruct paths or change their contents.
+
+Path expansion validation uses 5,003 vertices with cycles, self-loops, parallel
+edges and isolated vertices. At 1/2/4 workers it checks zero-to-two-hop endpoints,
+repeated roots produced by an earlier expansion, complete vertex/edge sequences,
+and predicate-filtered paths against independently enumerated walks. PROFILE
+asserts each of the three enabled implementations executes. The path-column unit
+test also checks NULL and zero-hop paths, empty columns, and concatenation in both
+orders. The final build passes 190 C++ tests and 382 selected Python tests,
+including the existing path suite (34 skipped, 20 deselected). The 47 result-reader,
+scheduler and morsel tests pass 20 repetitions. Dedicated shortest-path operators
+are not enabled by this change, and no path-workload speedup is claimed.
 
 The graph integration test uses 5,003 vertices, parallel edges and isolated
 vertices, and checks 1/2/4 workers against independently generated expected rows.

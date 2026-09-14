@@ -645,6 +645,10 @@ neug::result<OpBuildResultT> SPOprBuilder::Build(
 
 class PathExpandVOpr : public IOperator {
  public:
+  PipelineBehavior pipeline_behavior() const override {
+    return PipelineBehavior::kChunkLocal;
+  }
+
   explicit PathExpandVOpr(const PathExpandParams& pep) : pep_(pep) {}
 
   Kernel CreateState(IStorageInterface& graph_interface,
@@ -743,6 +747,10 @@ neug::result<OpBuildResultT> PathExpandVOprBuilder::Build(
 
 class PathExpandOpr : public IOperator {
  public:
+  PipelineBehavior pipeline_behavior() const override {
+    return PipelineBehavior::kChunkLocal;
+  }
+
   explicit PathExpandOpr(PathExpandParams pep) : pep_(pep) {}
 
   std::string get_operator_name() const override { return "PathExpandOpr"; }
@@ -764,6 +772,10 @@ class PathExpandOpr : public IOperator {
 
 class PathExpandOprWithPred : public IOperator {
  public:
+  PipelineBehavior pipeline_behavior() const override {
+    return PipelineBehavior::kChunkLocal;
+  }
+
   PathExpandOprWithPred(PathExpandParams pep, std::unique_ptr<ExprBase>&& pred)
       : pep_(pep), pred_(std::move(pred)) {}
 

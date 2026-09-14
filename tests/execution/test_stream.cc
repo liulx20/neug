@@ -17,6 +17,7 @@
 
 #include "neug/common/columns/array_columns.h"
 #include "neug/common/columns/list_columns.h"
+#include "neug/common/columns/path_columns.h"
 #include "neug/common/columns/value_columns.h"
 #include "neug/execution/common/operators/retrieve/sink.h"
 #include "neug/execution/execute/ops/batch/batch_update_utils.h"
@@ -35,6 +36,31 @@ DataChunk chunk(int64_t value, int alias = 0) {
   DataChunk out;
   out.set(alias, builder.finish());
   return out;
+}
+
+TEST(QueryResultTest, PathColumnConcatenationPreservesNullAndZeroHopPaths) {
+  Path zero(0, 12);
+  auto one = zero.expand(0, 0, 13, Direction::kOut, nullptr);
+  PathColumnBuilder left_builder, right_builder, empty_builder;
+  left_builder.push_back_opt(zero);
+  left_builder.push_back_null();
+  right_builder.push_back_opt(one);
+  right_builder.push_back_opt(zero);
+  auto left = left_builder.finish();
+  auto right = right_builder.finish();
+  auto empty = empty_builder.finish();
+  auto output = left->union_col(empty)->union_col(right);
+  ASSERT_EQ(output->size(), 4);
+  EXPECT_TRUE(output->is_optional());
+  EXPECT_EQ(PathValue::Get(output->get_elem(0)), zero);
+  EXPECT_TRUE(output->get_elem(1).IsNull());
+  EXPECT_EQ(PathValue::Get(output->get_elem(2)), one);
+  EXPECT_EQ(PathValue::Get(output->get_elem(3)).length(), 0);
+  auto reversed = right->union_col(left);
+  EXPECT_TRUE(reversed->get_elem(3).IsNull());
+  EXPECT_EQ(left->size(), 2);
+  EXPECT_EQ(right->size(), 2);
+  EXPECT_EQ(empty->union_col(empty)->size(), 0);
 }
 
 TEST(QueryResultTest, BatchAccumulatorPreservesOrderAndBoundsCopies) {

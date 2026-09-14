@@ -19,6 +19,17 @@
 
 namespace neug {
 
+std::shared_ptr<IContextColumn> PathColumn::union_col(
+    std::shared_ptr<IContextColumn> other) const {
+  const auto& rhs = dynamic_cast<const PathColumn&>(*other);
+  auto output = std::make_shared<PathColumn>();
+  output->is_optional_ = is_optional_ || rhs.is_optional_;
+  output->data_.reserve(data_.size() + rhs.data_.size());
+  output->data_.insert(output->data_.end(), data_.begin(), data_.end());
+  output->data_.insert(output->data_.end(), rhs.data_.begin(), rhs.data_.end());
+  return output;
+}
+
 std::shared_ptr<IContextColumn> PathColumn::shuffle(
     const sel_vec_t& offsets) const {
   if (is_optional_) {
