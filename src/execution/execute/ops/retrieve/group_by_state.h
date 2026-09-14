@@ -15,6 +15,7 @@
 
 #pragma once
 
+#include <atomic>
 #include <bit>
 #include <queue>
 #include <tuple>
@@ -37,8 +38,8 @@ class AggregateColumn {
  public:
   virtual ~AggregateColumn() = default;
   virtual void Resize(size_t size) = 0;
-  virtual void Consume(const IContextColumn* input,
-                       const sel_vec_t& groups) = 0;
+  virtual void Consume(const IContextColumn* input, const sel_vec_t& groups,
+                       const sel_vec_t* selection = nullptr) = 0;
   virtual void Merge(const AggregateColumn& input, size_t source,
                      size_t dest) = 0;
   virtual std::shared_ptr<IContextColumn> Finish() const = 0;
@@ -58,12 +59,14 @@ class TypedAggregateColumn final : public AggregateColumn {
       counts_.resize(size);
     }
   }
-  void Consume(const IContextColumn* input, const sel_vec_t& groups) override {
-    for (size_t row = 0; row < groups.size(); ++row) {
+  void Consume(const IContextColumn* input, const sel_vec_t& groups,
+               const sel_vec_t* selection = nullptr) override {
+    for (size_t index = 0; index < groups.size(); ++index) {
+      auto row = selection ? (*selection)[index] : index;
       if (input && !input->has_value(row)) {
         continue;
       }
-      auto dest = groups[row];
+      auto dest = groups[index];
       if (kind_ == AggrKind::kCount) {
         ++counts_[dest];
         continue;
@@ -184,13 +187,16 @@ inline std::unique_ptr<AggregateColumn> MakeAggregate(
 
 class GroupByState final : public PartitionState {
  public:
+  enum class InputMode { kPartial, kRaw, kAdaptive };
   GroupByState(std::vector<std::pair<int, int>> mappings,
                std::vector<DataType> key_types,
-               std::vector<AggregateSpec> specs, size_t workers)
+               std::vector<AggregateSpec> specs, size_t workers,
+               InputMode mode = InputMode::kAdaptive)
       : mappings_(std::move(mappings)),
         key_types_(std::move(key_types)),
         specs_(std::move(specs)),
-        partitions_(workers) {
+        partitions_(workers),
+        mode_(mode) {
     if (!workers) {
       throw std::invalid_argument("GroupBy requires a partition");
     }
@@ -205,9 +211,11 @@ class GroupByState final : public PartitionState {
   }
   struct Input final : Batch {
     ContextChunk keys;
+    ContextChunk source;
+    bool raw = false;
     sel_vec_t offsets;
     std::vector<std::string> signatures;
-    std::vector<std::vector<size_t>> buckets;
+    std::vector<sel_vec_t> buckets;
     std::vector<std::unique_ptr<AggregateColumn>> aggregates;
   };
   std::shared_ptr<Batch> PartitionBuild(ContextChunk chunk) const override {
@@ -230,6 +238,44 @@ class GroupByState final : public PartitionState {
     };
     auto scalar =
         mappings_.size() == 1 ? chunk.get(mappings_[0].first) : nullptr;
+    bool integer_key =
+        scalar && (scalar->elem_type().id() == DataTypeId::kInt64 ||
+                   scalar->elem_type().id() == DataTypeId::kInt32);
+    auto partition_at = [&](size_t row, const std::string& signature) {
+      if (integer_key) {
+        auto value = scalar->get_elem(row);
+        auto number = value.IsNull() ? int64_t{0}
+                                     : (value.type().id() == DataTypeId::kInt64
+                                            ? value.GetValue<int64_t>()
+                                            : value.GetValue<int32_t>());
+        return std::hash<int64_t>{}(number) % partitions_.size();
+      }
+      return std::hash<std::string>{}(signature) % partitions_.size();
+    };
+    bool raw = mode_ == InputMode::kRaw;
+    if (mode_ == InputMode::kAdaptive && !mappings_.empty()) {
+      // Observe complete batches, not a key prefix. Once local reduction is
+      // unprofitable, periodically probe again so changed distributions
+      // recover.
+      auto batch = batches_.fetch_add(1, std::memory_order_relaxed);
+      raw = prefer_raw_.load(std::memory_order_relaxed) && batch % 32 != 0;
+    }
+    if (raw && !mappings_.empty()) {
+      input->raw = true;
+      for (auto [source, dest] : mappings_) {
+        input->keys.set(dest, chunk.get(source));
+      }
+      for (size_t row = 0; row < chunk.row_num(); ++row) {
+        std::string signature;
+        if (!integer_key) {
+          signature = signature_at(row);
+          input->signatures.push_back(signature);
+        }
+        input->buckets[partition_at(row, signature)].push_back(row);
+      }
+      input->source = std::move(chunk);
+      return input;
+    }
     if (scalar && (scalar->elem_type().id() == DataTypeId::kInt64 ||
                    scalar->elem_type().id() == DataTypeId::kInt32)) {
       // Keep the existing integer-key specialization: encode only one key per
@@ -271,6 +317,14 @@ class GroupByState final : public PartitionState {
         }
       }
     }
+    if (mode_ == InputMode::kAdaptive && !mappings_.empty() &&
+        chunk.row_num()) {
+      // The mode comparison crosses over between 1/8 and 1/4 distinct groups
+      // per 1024-row batch for COUNT/SUM. Keep this as a heuristic, not a cost
+      // guarantee for every aggregate/type/distribution.
+      prefer_raw_.store(input->signatures.size() >= (chunk.row_num() + 3) / 4,
+                        std::memory_order_relaxed);
+    }
     // Ungrouped empty input still owns one aggregate state (COUNT/SUM = 0).
     if (mappings_.empty() && input->signatures.empty()) {
       input->signatures.emplace_back();
@@ -280,8 +334,7 @@ class GroupByState final : public PartitionState {
       input->keys.set(dest, chunk.get(source)->shuffle(input->offsets));
     }
     for (size_t group = 0; group < input->signatures.size(); ++group) {
-      auto part = std::hash<std::string>{}(input->signatures[group]) %
-                  partitions_.size();
+      auto part = partition_at(input->offsets[group], input->signatures[group]);
       input->buckets[part].push_back(group);
     }
     for (const auto& spec : specs_) {
@@ -298,6 +351,10 @@ class GroupByState final : public PartitionState {
     const auto& input = static_cast<const Input&>(batch);
     auto& partition = partitions_.at(part);
     auto sequence = partition.sequence++;
+    sel_vec_t destinations;
+    if (input.raw) {
+      destinations.reserve(input.buckets[part].size());
+    }
     for (auto group : input.buckets[part]) {
       size_t dest;
       bool added;
@@ -327,17 +384,34 @@ class GroupByState final : public PartitionState {
         added = entry.second;
       }
       if (added) {
-        partition.order.emplace_back(sequence, input.offsets[group]);
+        partition.order.emplace_back(sequence,
+                                     input.raw ? group : input.offsets[group]);
         for (size_t key = 0; key < mappings_.size(); ++key) {
           partition.keys[key]->push_back_elem(
               input.keys.get(mappings_[key].second)->get_elem(group));
         }
-        for (auto& aggregate : partition.aggregates) {
-          aggregate->Resize(partition.order.size());
+        if (!input.raw) {
+          for (auto& aggregate : partition.aggregates) {
+            aggregate->Resize(partition.order.size());
+          }
         }
       }
+      if (input.raw) {
+        destinations.push_back(dest);
+      } else {
+        for (size_t i = 0; i < specs_.size(); ++i) {
+          partition.aggregates[i]->Merge(*input.aggregates[i], group, dest);
+        }
+      }
+    }
+    if (input.raw) {
       for (size_t i = 0; i < specs_.size(); ++i) {
-        partition.aggregates[i]->Merge(*input.aggregates[i], group, dest);
+        auto& aggregate = partition.aggregates[i];
+        aggregate->Resize(partition.order.size());
+        aggregate->Consume(specs_[i].input < 0
+                               ? nullptr
+                               : input.source.get(specs_[i].input).get(),
+                           destinations, &input.buckets[part]);
       }
     }
     return Status::OK();
@@ -390,6 +464,7 @@ class GroupByState final : public PartitionState {
     if (partitions_.size() > 1) {
       chunk->reshuffle(rows);
     }
+    chunk->head().reset();
     output_ = one_chunk(std::move(*chunk));
     partitions_.clear();
     return Status::OK();
@@ -410,6 +485,9 @@ class GroupByState final : public PartitionState {
   std::vector<DataType> key_types_;
   std::vector<AggregateSpec> specs_;
   std::vector<Partition> partitions_;
+  InputMode mode_;
+  mutable std::atomic<size_t> batches_{0};
+  mutable std::atomic<bool> prefer_raw_{false};
   ChunkBatch output_;
 };
 }  // namespace neug::execution::ops

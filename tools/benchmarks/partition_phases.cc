@@ -27,13 +27,15 @@ using namespace neug::execution;
 int main(int argc, char** argv) {
   if (argc != 4) {
     std::cerr
-        << "usage: partition_phases dedup|composite|group rows cardinality\n";
+        << "usage: partition_phases "
+           "dedup|composite|group|group-raw|group-partial rows cardinality\n";
     return 1;
   }
   std::string mode = argv[1];
   size_t rows = std::stoull(argv[2]), cardinality = std::stoull(argv[3]);
   if (!rows || !cardinality ||
-      (mode != "dedup" && mode != "composite" && mode != "group")) {
+      (mode != "dedup" && mode != "composite" && mode != "group" &&
+       mode != "group-raw" && mode != "group-partial")) {
     return 1;
   }
   ChunkBatch chunks;
@@ -49,14 +51,18 @@ int main(int argc, char** argv) {
     chunks.push_back(std::move(chunk));
   }
   std::shared_ptr<PartitionState> state;
-  if (mode == "group") {
+  if (mode == "group" || mode == "group-raw" || mode == "group-partial") {
     state = std::make_shared<ops::GroupByState>(
         std::vector<std::pair<int, int>>{{0, 0}},
         std::vector<DataType>{DataType(DataTypeId::kInt64)},
         std::vector<ops::AggregateSpec>{
             {AggrKind::kCount, -1, 1, DataType(DataTypeId::kInt64)},
             {AggrKind::kSum, 1, 2, DataType(DataTypeId::kInt64)}},
-        1);
+        1,
+        mode == "group-partial"
+            ? ops::GroupByState::InputMode::kPartial
+            : mode == "group-raw" ? ops::GroupByState::InputMode::kRaw
+                                  : ops::GroupByState::InputMode::kAdaptive);
   } else {
     ContextMeta meta;
     meta.set(0, DataType(DataTypeId::kInt64));

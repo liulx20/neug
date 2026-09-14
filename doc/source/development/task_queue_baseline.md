@@ -502,3 +502,89 @@ including integer extrema/NULL identity, exact row order and cleared output head
 Raw reports: [end-to-end](benchmarks/task_queue_reduction_cost_1m.json),
 [no-sampling experiment](benchmarks/task_queue_native_no_sampling_1m.json),
 [state phases and process memory](benchmarks/partition_phases_1m.json).
+
+
+## GroupBy direct row routing and adaptive local reduction
+
+High-cardinality batches can now route original rows directly into partition
+aggregate state, avoiding a local group table and partial aggregate arrays.
+Low-cardinality batches retain local reduction. Both forms feed the same
+partition state and bounded task executor. INT32/INT64 partition routing uses
+native integer hashing consistently in both modes.
+
+### Choosing between input modes
+
+The direct-state diagnostic now accepts `group-raw`, `group-partial`, and `group`
+(the production adaptive policy). Five fresh-process runs of each forced mode,
+on the same implementation, gave these median sums of local + merge + finalize
+time for one million rows, 1,024-row batches, one thread and one partition:
+
+| Key cardinality | Direct rows | Local partials |
+| --- | ---: | ---: |
+| 1 | 35.946 ms | 24.038 ms |
+| 17 | 34.536 ms | 24.663 ms |
+| 128 | 34.755 ms | 33.722 ms |
+| 256 | 34.669 ms | 43.199 ms |
+| 512 | 34.441 ms | 61.805 ms |
+| 768 | 35.696 ms | 80.168 ms |
+| 1024 | 34.613 ms | 101.469 ms |
+| 1000000 | 162.177 ms | 251.716 ms |
+
+These are isolated kernel timings, not parallel query execution times. They
+explain why always routing raw rows is unsuitable: local reduction is valuable
+for repeated keys. The adaptive policy initially reduces a complete batch,
+then selects direct routing when that batch contains at least one distinct group
+per four rows. Every 32nd batch probes with local reduction again. This threshold
+is a heuristic based on the integer COUNT/SUM experiment; it is not established
+as optimal for strings, composite keys, other aggregates or different machines.
+Strategy updates can arrive in worker completion order; correctness does not
+depend on which input mode wins, but floating-point association can vary.
+
+### Whole-query comparison
+
+Execute medians below use one million rows, five repetitions, warm plans, and
+1/2/4 workers. Timing includes scan, projection, scheduling, aggregation,
+materialization and native serialization; it excludes Python row iteration,
+import and the separate PROFILE verification. No builds, tests or other benchmark
+cases ran concurrently.
+
+| Query | Workers | Previous partial | Forced direct | Adaptive |
+| --- | ---: | ---: | ---: | ---: |
+| Group SUM, 17 groups | 1 | 61.514 ms | 77.566 ms | 64.070 ms |
+| Group SUM, 17 groups | 2 | 31.116 ms | 42.118 ms | 32.173 ms |
+| Group SUM, 17 groups | 4 | 17.918 ms | 36.085 ms | 17.940 ms |
+| COUNT/SUM/MIN/MAX/AVG, 17 groups | 1 | 86.761 ms | 101.062 ms | 89.950 ms |
+| COUNT/SUM/MIN/MAX/AVG, 17 groups | 2 | 43.545 ms | 59.023 ms | 45.972 ms |
+| COUNT/SUM/MIN/MAX/AVG, 17 groups | 4 | 24.074 ms | 40.592 ms | 25.090 ms |
+| COUNT/SUM, 1m groups | 1 | 267.880 ms | 221.422 ms | 233.573 ms |
+| COUNT/SUM, 1m groups | 2 | 291.442 ms | 239.678 ms | 247.501 ms |
+| COUNT/SUM, 1m groups | 4 | 253.039 ms | 222.742 ms | 230.872 ms |
+| COUNT/SUM/AVG, one hot group | 1 | 88.764 ms | 103.211 ms | 90.563 ms |
+| COUNT/SUM/AVG, one hot group | 2 | 43.582 ms | 51.897 ms | 44.538 ms |
+| COUNT/SUM/AVG, one hot group | 4 | 23.301 ms | 39.919 ms | 23.457 ms |
+
+Adaptive routing reduces the recorded unique-group query time by about 13% at
+one worker and 9% at four workers versus the previous partial implementation.
+It avoids the large low-cardinality regression of unconditional direct routing.
+Some repeated-key cases still measure 2–6% slower than the previous report;
+these sequential before/after measurements do not isolate overhead from run
+variation. The forced-direct experiment predates removal of a per-bucket row
+selection copy and the output-head consistency fix, so its comparison with the
+final adaptive run also does not isolate policy overhead precisely.
+
+High-cardinality aggregation remains slower than the original collected helper
+(153.155/212.308 ms at one/four workers). This change reduces repeated grouping
+work but does not eliminate the remaining scheduling, partition-state and output
+costs. There is still no spill or byte budget, and direct batches retain source
+columns until all their buckets finish.
+
+All result row counts and SHA256 checksums match the previous and forced-direct
+reports. PROFILE separately confirms GroupBy execution. Validation passed 183
+C++ tests, 368 Python tests (28 skipped, 20 deselected), and 50 concurrency-related
+tests repeated 20 times. The GroupBy oracle checks forced partial/direct/adaptive
+modes, NULLs, AVG counts, output head and group order, including distributions
+that switch strategies in both directions. Floating comparisons use tolerance.
+
+Raw reports: [mode comparison](benchmarks/group_input_modes_1m.json),
+[forced direct experiment](benchmarks/task_queue_group_raw_1m.json),
+[adaptive execution](benchmarks/task_queue_group_adaptive_1m.json).

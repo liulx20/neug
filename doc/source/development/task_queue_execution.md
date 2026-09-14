@@ -353,17 +353,38 @@ candidates grow with distinct-key count; retained batches may contain duplicates
 There is no spill, byte budget or incremental downstream DISTINCT output. Scalar
 high-cardinality inputs still pay some sampling and scheduling overhead.
 
-## Partial GroupBy aggregation
+## Partitioned GroupBy aggregation
 
 Eligible GroupBy plans use the same `PartitionPipelineTask` and its W bounded
 batch slots. `GroupByOpr` owns immutable key mappings and aggregate descriptors;
-each execution creates a separate `GroupByState`. Within each incoming batch,
-a worker groups rows and computes partial aggregate columns. Scalar integer keys
-use typed local and partition hash lookup and encode one signature per group. General keys use
-the existing encoded-key equivalence with a fixed null bitmap across batches.
-Partial groups are hashed into W partitions. Each partition merges batches in
-input order into its own group table and aggregate columns, independently of
-other partitions. Input payloads are released after the partial batch is consumed.
+each execution creates a separate `GroupByState`. Batches can enter that state
+in two forms: locally reduced keys and partial aggregate columns, or original
+rows routed directly to partition buckets. Both forms update the same partition
+group tables and aggregate columns in input order. There is no input replay,
+second scheduler or additional query setting.
+
+Local reduction starts enabled. A complete locally reduced batch measures its
+actual group count; at least one group per four input rows selects direct routing
+for subsequent batches. While direct routing is selected, every 32nd batch does
+local reduction again to detect changed distributions. While local reduction is
+selected, every batch updates this observation. This is a heuristic calibrated
+on the integer COUNT/SUM diagnostic, not a general cost model for all key types
+and aggregates. It avoids using a small prefix as a cardinality estimate.
+Ungrouped aggregates always use partial states, including empty input.
+
+Direct batches retain their source columns until all partition buckets have been
+consumed. Buckets carry row selections, and each partition consumes original
+values directly into its own aggregate arrays. This avoids local group tables,
+partial aggregate arrays and local key reshuffling. Scalar INT32/INT64 keys use
+native hashing for both routing modes; direct batches need no encoded signatures.
+NULL and integer zero may share a bucket but remain separate groups. General
+keys retain the existing encoded-key equivalence and fixed null bitmap.
+
+Strategy hints are execution-owned relaxed atomics. Concurrent local batches
+can update the hint in completion order, so task timing can affect which mode a
+later batch uses. The partition lanes still process batches in input order and
+preserve group first appearance. Floating SUM/AVG association can also vary
+with mode selection; bitwise reproducibility is not promised.
 
 COUNT stores a non-null count (COUNT(*) counts every row). SUM retains the input
 numeric width. AVG stores a double sum and a non-null count, merging both before
@@ -374,7 +395,8 @@ when upstream produces EOF without a chunk; grouped empty input returns no rows.
 
 Each partition records a group's first batch and row position. Finalization
 merges these already ordered sequences with a heap instead of sorting all groups
-again. It materializes result columns and restores first-occurrence group order.
+again. It materializes result columns, restores first-occurrence group order,
+and clears the output head to match the collected GroupBy helper.
 This final phase is still serial, and all groups must be merged before any
 output is published. The scheduler, demand, cancellation and profiling mechanisms
 are shared with Join and Dedup; no worker recursively reads another operator.
@@ -406,9 +428,10 @@ than 48; this excludes group tables, keys, vector capacity and result buffers.
 
 The slot limit is not a total memory budget. Group tables and result state grow
 with distinct groups, and batches with nearly unique keys gain little from local
-aggregation. There is no spill, skew repartitioning, byte limit or adaptive
-selection based on estimated cardinality. A single hot group benefits from local
-reduction, but its partials are merged by one partition lane.
+aggregation. There is no spill, skew repartitioning or byte limit. Direct batches
+retain all source columns until their buckets are consumed, so the bounded batch
+count is not a bound on bytes. A single hot group benefits from local reduction,
+but its partials are merged by one partition lane.
 
 ## Scope and profiling
 
@@ -418,8 +441,8 @@ reduction, but its partials are merged by one partition lane.
   buckets through bounded batch slots. It retains build chunks until query
   completion; there is no spill. Probe can now resume range execution after
   global boundaries or from shared replay buffers.
-- Ordinary GroupBy aggregates batches locally and merges partial states in
-  independent hash partitions. Unsupported aggregate combinations and sorting
+- Ordinary GroupBy routes raw rows or locally reduced aggregate states into
+  independent hash partitions, using observed batch compression to choose. Unsupported aggregate combinations and sorting
   retain global kernels. Dedup performs parallel pre-reduction and a final
   serial normalization.
 - Conditional Union branches use the same ready queue and worker pool, preserving
@@ -515,4 +538,8 @@ the collected helper, covering nullable and composite keys, string extrema,
 INT32 result width, empty/all-null groups, partial AVG counts and preserved
 group order. Additional tests cover no-batch EOF, fixed-width overflow across
 concurrently built partials and unchanged global handling of DISTINCT/list and
-floating MIN/MAX. Floating comparisons use tolerance, not bitwise identity.
+floating MIN/MAX. Eligible cases also compare forced raw, forced partial and
+adaptive modes at 1/2/4 partitions with concurrent bucket consumption. A changing
+70-batch distribution exercises both mode transitions, NULL identity, AVG counts,
+output head and first-occurrence order. Floating comparisons use tolerance, not
+bitwise identity.

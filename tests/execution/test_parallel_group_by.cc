@@ -15,6 +15,7 @@
 #include <gtest/gtest.h>
 #include <future>
 #include <limits>
+#include "../../src/execution/execute/ops/retrieve/group_by_state.h"
 #include "neug/common/columns/value_columns.h"
 #include "neug/execution/execute/ops/retrieve/group_by.h"
 #include "neug/execution/execute/ops/retrieve/group_by_utils.h"
@@ -107,6 +108,7 @@ std::unique_ptr<IOperator> MakeGroup(const physical::GroupBy& definition,
 void Equal(const ContextChunk& actual, const ContextChunk& expected) {
   ASSERT_EQ(actual.row_num(), expected.row_num());
   ASSERT_EQ(actual.col_num(), expected.col_num());
+  EXPECT_EQ(bool(actual.head()), bool(expected.head()));
   for (size_t col = 0; col < expected.col_num(); ++col) {
     ASSERT_EQ(bool(actual.get(col)), bool(expected.get(col)));
     if (!expected.get(col)) {
@@ -167,6 +169,43 @@ void Check(ChunkBatch input, const physical::GroupBy& definition,
         storage, context_from_batches(input), {}, nullptr, workers));
     ASSERT_TRUE(result) << result.error().ToString();
     Equal(*result, *expected);
+  }
+  if (parallel) {
+    std::vector<DataType> key_types;
+    for (auto [source, dest] : mappings) {
+      key_types.push_back(merged->get(source)->elem_type());
+    }
+    std::vector<ops::AggregateSpec> aggregates;
+    for (const auto& spec : specs) {
+      auto alias = spec.vars_size() ? spec.vars(0).tag().id() : -1;
+      aggregates.push_back({parse_aggregate(spec.aggregate()), alias,
+                            spec.alias().value(),
+                            alias < 0 ? DataType(DataTypeId::kInt64)
+                                      : merged->get(alias)->elem_type()});
+    }
+    for (auto mode : {ops::GroupByState::InputMode::kRaw,
+                      ops::GroupByState::InputMode::kPartial,
+                      ops::GroupByState::InputMode::kAdaptive}) {
+      for (size_t workers : {1, 2, 4}) {
+        ops::GroupByState state(mappings, key_types, aggregates, workers, mode);
+        for (const auto& chunk : input) {
+          auto batch = state.PartitionBuild(chunk);
+          std::vector<std::future<Status>> jobs;
+          for (size_t part = 0; part < workers; ++part) {
+            jobs.push_back(std::async(std::launch::async, [&, part] {
+              return state.BuildPartition(part, *batch);
+            }));
+          }
+          for (auto& job : jobs) {
+            ASSERT_TRUE(job.get());
+          }
+        }
+        ASSERT_TRUE(state.FinalizeBuild());
+        auto output = state.TakeOutput();
+        ASSERT_EQ(output.size(), 1);
+        Equal(output[0], *expected);
+      }
+    }
   }
 }
 
@@ -254,6 +293,71 @@ TEST(ParallelGroupByTest, CompositeKeysAndNullableStrings) {
   mapping->mutable_key()->mutable_tag()->set_id(2);
   mapping->mutable_alias()->set_value(2);
   Check(input, definition);
+}
+
+TEST(ParallelGroupByTest, AdaptiveBatchesSwitchBothWaysWithoutChangingGroups) {
+  auto definition = Definition(true, {Kind::COUNT, Kind::SUM, Kind::AVG});
+  auto sample = Integers(0, 128, true);
+  auto state = MakeGroup(definition, sample)->CreatePartitionState(4);
+  ChunkAccumulator all;
+  size_t raw_count = 0, partial_count = 0;
+  for (size_t batch_id = 0; batch_id < 70; ++batch_id) {
+    auto chunk = Integers(batch_id, 128, true);
+    bool unique = (batch_id > 0 && batch_id < 32) || batch_id >= 64;
+    if (unique) {
+      ValueColumnBuilder<int64_t> keys;
+      for (size_t row = 0; row < 128; ++row) {
+        if (row == 0) {
+          keys.push_back_null();
+        } else {
+          keys.push_back_opt(batch_id * 128 + row);
+        }
+      }
+      chunk.remove(0);
+      chunk.set(0, keys.finish());
+    }
+    all.Add(chunk);
+    auto batch = state->PartitionBuild(std::move(chunk));
+    bool raw = static_cast<const ops::GroupByState::Input&>(*batch).raw;
+    raw_count += raw;
+    partial_count += !raw;
+    if (batch_id == 2 || batch_id == 65) {
+      EXPECT_TRUE(raw);
+    }
+    if (batch_id == 32 || batch_id == 33) {
+      EXPECT_FALSE(raw);
+    }
+    std::vector<std::future<Status>> jobs;
+    for (size_t part = 0; part < 4; ++part) {
+      jobs.push_back(std::async(std::launch::async, [&, part] {
+        return state->BuildPartition(part, *batch);
+      }));
+    }
+    for (auto& job : jobs) {
+      ASSERT_TRUE(job.get());
+    }
+  }
+  EXPECT_GT(raw_count, 0);
+  EXPECT_GT(partial_count, 0);
+  ASSERT_TRUE(state->FinalizeBuild());
+  auto output = state->TakeOutput();
+  ASSERT_EQ(output.size(), 1);
+  auto input = all.Finish();
+  PropertyGraph graph;
+  GraphView view(graph);
+  StorageReadInterface storage(view, 0);
+  std::vector<std::pair<int, int>> mappings;
+  std::vector<physical::GroupBy_AggFunc> specs;
+  ASSERT_TRUE(ops::BuildGroupByUtils(definition, mappings, specs));
+  auto key = ops::create_key_func(mappings, storage, input->chunk());
+  std::vector<ReduceOp> reducers;
+  for (const auto& spec : specs) {
+    reducers.push_back(ops::create_reduce_op(spec, storage, input->chunk()));
+  }
+  auto expected =
+      GroupBy::group_by(std::move(*input), std::move(key), std::move(reducers));
+  ASSERT_TRUE(expected);
+  Equal(output[0], *expected);
 }
 
 TEST(ParallelGroupByTest, Int32SumKeepsInputWidth) {

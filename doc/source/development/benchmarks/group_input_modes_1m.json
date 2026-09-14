@@ -1,0 +1,921 @@
+{
+  "rows": 1000000,
+  "batch_rows": 1024,
+  "workers": 1,
+  "repeats": 5,
+  "scope": "direct state kernels; no scheduler or source; same integer partition routing in both modes",
+  "cases": [
+    {
+      "mode": "group-raw",
+      "cardinality": 1,
+      "samples": [
+        {
+          "mode": "group-raw",
+          "rows": 1000000,
+          "cardinality": 1,
+          "local_ms": 13.5161,
+          "merge_ms": 26.7414,
+          "finalize_ms": 0.006375,
+          "result_rows": 1,
+          "process_peak_bytes": 29982720
+        },
+        {
+          "mode": "group-raw",
+          "rows": 1000000,
+          "cardinality": 1,
+          "local_ms": 12,
+          "merge_ms": 23.9419,
+          "finalize_ms": 0.004042,
+          "result_rows": 1,
+          "process_peak_bytes": 29835264
+        },
+        {
+          "mode": "group-raw",
+          "rows": 1000000,
+          "cardinality": 1,
+          "local_ms": 13.3698,
+          "merge_ms": 24.0086,
+          "finalize_ms": 0.00425,
+          "result_rows": 1,
+          "process_peak_bytes": 29933568
+        },
+        {
+          "mode": "group-raw",
+          "rows": 1000000,
+          "cardinality": 1,
+          "local_ms": 12.221,
+          "merge_ms": 23.5107,
+          "finalize_ms": 0.003792,
+          "result_rows": 1,
+          "process_peak_bytes": 29982720
+        },
+        {
+          "mode": "group-raw",
+          "rows": 1000000,
+          "cardinality": 1,
+          "local_ms": 12.4325,
+          "merge_ms": 23.464,
+          "finalize_ms": 0.003833,
+          "result_rows": 1,
+          "process_peak_bytes": 29835264
+        }
+      ],
+      "median_kernel_ms": 35.945942
+    },
+    {
+      "mode": "group-partial",
+      "cardinality": 1,
+      "samples": [
+        {
+          "mode": "group-partial",
+          "rows": 1000000,
+          "cardinality": 1,
+          "local_ms": 24.44,
+          "merge_ms": 0.055443,
+          "finalize_ms": 0.003459,
+          "result_rows": 1,
+          "process_peak_bytes": 29982720
+        },
+        {
+          "mode": "group-partial",
+          "rows": 1000000,
+          "cardinality": 1,
+          "local_ms": 23.4924,
+          "merge_ms": 0.055436,
+          "finalize_ms": 0.0035,
+          "result_rows": 1,
+          "process_peak_bytes": 29900800
+        },
+        {
+          "mode": "group-partial",
+          "rows": 1000000,
+          "cardinality": 1,
+          "local_ms": 24.2368,
+          "merge_ms": 0.061595,
+          "finalize_ms": 0.003333,
+          "result_rows": 1,
+          "process_peak_bytes": 29982720
+        },
+        {
+          "mode": "group-partial",
+          "rows": 1000000,
+          "cardinality": 1,
+          "local_ms": 23.9784,
+          "merge_ms": 0.054947,
+          "finalize_ms": 0.003417,
+          "result_rows": 1,
+          "process_peak_bytes": 30031872
+        },
+        {
+          "mode": "group-partial",
+          "rows": 1000000,
+          "cardinality": 1,
+          "local_ms": 23.9776,
+          "merge_ms": 0.056513,
+          "finalize_ms": 0.003583,
+          "result_rows": 1,
+          "process_peak_bytes": 29982720
+        }
+      ],
+      "median_kernel_ms": 24.037696
+    },
+    {
+      "mode": "group-raw",
+      "cardinality": 17,
+      "samples": [
+        {
+          "mode": "group-raw",
+          "rows": 1000000,
+          "cardinality": 17,
+          "local_ms": 12.129,
+          "merge_ms": 22.6937,
+          "finalize_ms": 0.00425,
+          "result_rows": 17,
+          "process_peak_bytes": 29851648
+        },
+        {
+          "mode": "group-raw",
+          "rows": 1000000,
+          "cardinality": 17,
+          "local_ms": 11.94,
+          "merge_ms": 22.6491,
+          "finalize_ms": 0.00475,
+          "result_rows": 17,
+          "process_peak_bytes": 29982720
+        },
+        {
+          "mode": "group-raw",
+          "rows": 1000000,
+          "cardinality": 17,
+          "local_ms": 12.1476,
+          "merge_ms": 22.3842,
+          "finalize_ms": 0.00425,
+          "result_rows": 17,
+          "process_peak_bytes": 29949952
+        },
+        {
+          "mode": "group-raw",
+          "rows": 1000000,
+          "cardinality": 17,
+          "local_ms": 11.9683,
+          "merge_ms": 22.5273,
+          "finalize_ms": 0.005125,
+          "result_rows": 17,
+          "process_peak_bytes": 29900800
+        },
+        {
+          "mode": "group-raw",
+          "rows": 1000000,
+          "cardinality": 17,
+          "local_ms": 11.9447,
+          "merge_ms": 22.2991,
+          "finalize_ms": 0.006708,
+          "result_rows": 17,
+          "process_peak_bytes": 29900800
+        }
+      ],
+      "median_kernel_ms": 34.53605
+    },
+    {
+      "mode": "group-partial",
+      "cardinality": 17,
+      "samples": [
+        {
+          "mode": "group-partial",
+          "rows": 1000000,
+          "cardinality": 17,
+          "local_ms": 24.1927,
+          "merge_ms": 0.305492,
+          "finalize_ms": 0.0065,
+          "result_rows": 17,
+          "process_peak_bytes": 30015488
+        },
+        {
+          "mode": "group-partial",
+          "rows": 1000000,
+          "cardinality": 17,
+          "local_ms": 24.6328,
+          "merge_ms": 0.303046,
+          "finalize_ms": 0.004292,
+          "result_rows": 17,
+          "process_peak_bytes": 29999104
+        },
+        {
+          "mode": "group-partial",
+          "rows": 1000000,
+          "cardinality": 17,
+          "local_ms": 24.3562,
+          "merge_ms": 0.30299,
+          "finalize_ms": 0.004209,
+          "result_rows": 17,
+          "process_peak_bytes": 30048256
+        },
+        {
+          "mode": "group-partial",
+          "rows": 1000000,
+          "cardinality": 17,
+          "local_ms": 24.2068,
+          "merge_ms": 0.341892,
+          "finalize_ms": 0.004041,
+          "result_rows": 17,
+          "process_peak_bytes": 30064640
+        },
+        {
+          "mode": "group-partial",
+          "rows": 1000000,
+          "cardinality": 17,
+          "local_ms": 24.6237,
+          "merge_ms": 0.299374,
+          "finalize_ms": 0.004125,
+          "result_rows": 17,
+          "process_peak_bytes": 30031872
+        }
+      ],
+      "median_kernel_ms": 24.663399000000002
+    },
+    {
+      "mode": "group-raw",
+      "cardinality": 128,
+      "samples": [
+        {
+          "mode": "group-raw",
+          "rows": 1000000,
+          "cardinality": 128,
+          "local_ms": 12.0584,
+          "merge_ms": 22.4492,
+          "finalize_ms": 0.005542,
+          "result_rows": 128,
+          "process_peak_bytes": 30081024
+        },
+        {
+          "mode": "group-raw",
+          "rows": 1000000,
+          "cardinality": 128,
+          "local_ms": 12.0472,
+          "merge_ms": 22.8134,
+          "finalize_ms": 0.00475,
+          "result_rows": 128,
+          "process_peak_bytes": 29982720
+        },
+        {
+          "mode": "group-raw",
+          "rows": 1000000,
+          "cardinality": 128,
+          "local_ms": 11.9667,
+          "merge_ms": 22.7837,
+          "finalize_ms": 0.004375,
+          "result_rows": 128,
+          "process_peak_bytes": 29982720
+        },
+        {
+          "mode": "group-raw",
+          "rows": 1000000,
+          "cardinality": 128,
+          "local_ms": 12.2127,
+          "merge_ms": 22.9928,
+          "finalize_ms": 0.005375,
+          "result_rows": 128,
+          "process_peak_bytes": 30015488
+        },
+        {
+          "mode": "group-raw",
+          "rows": 1000000,
+          "cardinality": 128,
+          "local_ms": 11.8046,
+          "merge_ms": 22.454,
+          "finalize_ms": 0.004792,
+          "result_rows": 128,
+          "process_peak_bytes": 30031872
+        }
+      ],
+      "median_kernel_ms": 34.754775
+    },
+    {
+      "mode": "group-partial",
+      "cardinality": 128,
+      "samples": [
+        {
+          "mode": "group-partial",
+          "rows": 1000000,
+          "cardinality": 128,
+          "local_ms": 31.1735,
+          "merge_ms": 2.07145,
+          "finalize_ms": 0.005375,
+          "result_rows": 128,
+          "process_peak_bytes": 30212096
+        },
+        {
+          "mode": "group-partial",
+          "rows": 1000000,
+          "cardinality": 128,
+          "local_ms": 31.355,
+          "merge_ms": 2.08074,
+          "finalize_ms": 0.008375,
+          "result_rows": 128,
+          "process_peak_bytes": 30179328
+        },
+        {
+          "mode": "group-partial",
+          "rows": 1000000,
+          "cardinality": 128,
+          "local_ms": 31.6501,
+          "merge_ms": 2.06513,
+          "finalize_ms": 0.007041,
+          "result_rows": 128,
+          "process_peak_bytes": 30064640
+        },
+        {
+          "mode": "group-partial",
+          "rows": 1000000,
+          "cardinality": 128,
+          "local_ms": 31.7999,
+          "merge_ms": 2.09831,
+          "finalize_ms": 0.004625,
+          "result_rows": 128,
+          "process_peak_bytes": 30261248
+        },
+        {
+          "mode": "group-partial",
+          "rows": 1000000,
+          "cardinality": 128,
+          "local_ms": 31.9508,
+          "merge_ms": 2.14725,
+          "finalize_ms": 0.004292,
+          "result_rows": 128,
+          "process_peak_bytes": 30277632
+        }
+      ],
+      "median_kernel_ms": 33.722271
+    },
+    {
+      "mode": "group-raw",
+      "cardinality": 256,
+      "samples": [
+        {
+          "mode": "group-raw",
+          "rows": 1000000,
+          "cardinality": 256,
+          "local_ms": 12.0747,
+          "merge_ms": 22.9467,
+          "finalize_ms": 0.007667,
+          "result_rows": 256,
+          "process_peak_bytes": 29982720
+        },
+        {
+          "mode": "group-raw",
+          "rows": 1000000,
+          "cardinality": 256,
+          "local_ms": 11.8103,
+          "merge_ms": 22.4029,
+          "finalize_ms": 0.006167,
+          "result_rows": 256,
+          "process_peak_bytes": 29999104
+        },
+        {
+          "mode": "group-raw",
+          "rows": 1000000,
+          "cardinality": 256,
+          "local_ms": 11.9114,
+          "merge_ms": 22.7982,
+          "finalize_ms": 0.006875,
+          "result_rows": 256,
+          "process_peak_bytes": 29999104
+        },
+        {
+          "mode": "group-raw",
+          "rows": 1000000,
+          "cardinality": 256,
+          "local_ms": 12.0651,
+          "merge_ms": 22.4523,
+          "finalize_ms": 0.008708,
+          "result_rows": 256,
+          "process_peak_bytes": 29949952
+        },
+        {
+          "mode": "group-raw",
+          "rows": 1000000,
+          "cardinality": 256,
+          "local_ms": 12.0286,
+          "merge_ms": 22.6327,
+          "finalize_ms": 0.0075,
+          "result_rows": 256,
+          "process_peak_bytes": 30064640
+        }
+      ],
+      "median_kernel_ms": 34.6688
+    },
+    {
+      "mode": "group-partial",
+      "cardinality": 256,
+      "samples": [
+        {
+          "mode": "group-partial",
+          "rows": 1000000,
+          "cardinality": 256,
+          "local_ms": 38.3292,
+          "merge_ms": 4.00545,
+          "finalize_ms": 0.007792,
+          "result_rows": 256,
+          "process_peak_bytes": 30113792
+        },
+        {
+          "mode": "group-partial",
+          "rows": 1000000,
+          "cardinality": 256,
+          "local_ms": 39.0919,
+          "merge_ms": 4.11974,
+          "finalize_ms": 0.005625,
+          "result_rows": 256,
+          "process_peak_bytes": 30179328
+        },
+        {
+          "mode": "group-partial",
+          "rows": 1000000,
+          "cardinality": 256,
+          "local_ms": 38.6042,
+          "merge_ms": 4.13983,
+          "finalize_ms": 0.004667,
+          "result_rows": 256,
+          "process_peak_bytes": 30195712
+        },
+        {
+          "mode": "group-partial",
+          "rows": 1000000,
+          "cardinality": 256,
+          "local_ms": 39.157,
+          "merge_ms": 4.11154,
+          "finalize_ms": 0.010042,
+          "result_rows": 256,
+          "process_peak_bytes": 30162944
+        },
+        {
+          "mode": "group-partial",
+          "rows": 1000000,
+          "cardinality": 256,
+          "local_ms": 39.0925,
+          "merge_ms": 4.09956,
+          "finalize_ms": 0.007334,
+          "result_rows": 256,
+          "process_peak_bytes": 30195712
+        }
+      ],
+      "median_kernel_ms": 43.199394
+    },
+    {
+      "mode": "group-raw",
+      "cardinality": 512,
+      "samples": [
+        {
+          "mode": "group-raw",
+          "rows": 1000000,
+          "cardinality": 512,
+          "local_ms": 12.0022,
+          "merge_ms": 22.7198,
+          "finalize_ms": 0.008834,
+          "result_rows": 512,
+          "process_peak_bytes": 30015488
+        },
+        {
+          "mode": "group-raw",
+          "rows": 1000000,
+          "cardinality": 512,
+          "local_ms": 12.3048,
+          "merge_ms": 22.6644,
+          "finalize_ms": 0.008667,
+          "result_rows": 512,
+          "process_peak_bytes": 30048256
+        },
+        {
+          "mode": "group-raw",
+          "rows": 1000000,
+          "cardinality": 512,
+          "local_ms": 11.9503,
+          "merge_ms": 22.4588,
+          "finalize_ms": 0.008625,
+          "result_rows": 512,
+          "process_peak_bytes": 29999104
+        },
+        {
+          "mode": "group-raw",
+          "rows": 1000000,
+          "cardinality": 512,
+          "local_ms": 11.8133,
+          "merge_ms": 22.6192,
+          "finalize_ms": 0.008542,
+          "result_rows": 512,
+          "process_peak_bytes": 30081024
+        },
+        {
+          "mode": "group-raw",
+          "rows": 1000000,
+          "cardinality": 512,
+          "local_ms": 11.7952,
+          "merge_ms": 22.6316,
+          "finalize_ms": 0.008792,
+          "result_rows": 512,
+          "process_peak_bytes": 30081024
+        }
+      ],
+      "median_kernel_ms": 34.441041999999996
+    },
+    {
+      "mode": "group-partial",
+      "cardinality": 512,
+      "samples": [
+        {
+          "mode": "group-partial",
+          "rows": 1000000,
+          "cardinality": 512,
+          "local_ms": 53.7675,
+          "merge_ms": 8.02883,
+          "finalize_ms": 0.00825,
+          "result_rows": 512,
+          "process_peak_bytes": 30359552
+        },
+        {
+          "mode": "group-partial",
+          "rows": 1000000,
+          "cardinality": 512,
+          "local_ms": 54.171,
+          "merge_ms": 8.05645,
+          "finalize_ms": 0.0075,
+          "result_rows": 512,
+          "process_peak_bytes": 30359552
+        },
+        {
+          "mode": "group-partial",
+          "rows": 1000000,
+          "cardinality": 512,
+          "local_ms": 54.0912,
+          "merge_ms": 8.14973,
+          "finalize_ms": 0.00775,
+          "result_rows": 512,
+          "process_peak_bytes": 30310400
+        },
+        {
+          "mode": "group-partial",
+          "rows": 1000000,
+          "cardinality": 512,
+          "local_ms": 53.425,
+          "merge_ms": 8.00476,
+          "finalize_ms": 0.0075,
+          "result_rows": 512,
+          "process_peak_bytes": 30392320
+        },
+        {
+          "mode": "group-partial",
+          "rows": 1000000,
+          "cardinality": 512,
+          "local_ms": 53.5607,
+          "merge_ms": 7.9616,
+          "finalize_ms": 0.006709,
+          "result_rows": 512,
+          "process_peak_bytes": 30228480
+        }
+      ],
+      "median_kernel_ms": 61.804579999999994
+    },
+    {
+      "mode": "group-raw",
+      "cardinality": 768,
+      "samples": [
+        {
+          "mode": "group-raw",
+          "rows": 1000000,
+          "cardinality": 768,
+          "local_ms": 12.0528,
+          "merge_ms": 23.6302,
+          "finalize_ms": 0.013375,
+          "result_rows": 768,
+          "process_peak_bytes": 30113792
+        },
+        {
+          "mode": "group-raw",
+          "rows": 1000000,
+          "cardinality": 768,
+          "local_ms": 11.9552,
+          "merge_ms": 23.6197,
+          "finalize_ms": 0.011958,
+          "result_rows": 768,
+          "process_peak_bytes": 30162944
+        },
+        {
+          "mode": "group-raw",
+          "rows": 1000000,
+          "cardinality": 768,
+          "local_ms": 12.1253,
+          "merge_ms": 23.3894,
+          "finalize_ms": 0.013834,
+          "result_rows": 768,
+          "process_peak_bytes": 30031872
+        },
+        {
+          "mode": "group-raw",
+          "rows": 1000000,
+          "cardinality": 768,
+          "local_ms": 12.1313,
+          "merge_ms": 23.6659,
+          "finalize_ms": 0.011834,
+          "result_rows": 768,
+          "process_peak_bytes": 30113792
+        },
+        {
+          "mode": "group-raw",
+          "rows": 1000000,
+          "cardinality": 768,
+          "local_ms": 12.1458,
+          "merge_ms": 23.6202,
+          "finalize_ms": 0.015542,
+          "result_rows": 768,
+          "process_peak_bytes": 30097408
+        }
+      ],
+      "median_kernel_ms": 35.696374999999996
+    },
+    {
+      "mode": "group-partial",
+      "cardinality": 768,
+      "samples": [
+        {
+          "mode": "group-partial",
+          "rows": 1000000,
+          "cardinality": 768,
+          "local_ms": 67.1456,
+          "merge_ms": 13.0108,
+          "finalize_ms": 0.011125,
+          "result_rows": 768,
+          "process_peak_bytes": 30834688
+        },
+        {
+          "mode": "group-partial",
+          "rows": 1000000,
+          "cardinality": 768,
+          "local_ms": 67.1609,
+          "merge_ms": 13.0297,
+          "finalize_ms": 0.011167,
+          "result_rows": 768,
+          "process_peak_bytes": 30507008
+        },
+        {
+          "mode": "group-partial",
+          "rows": 1000000,
+          "cardinality": 768,
+          "local_ms": 67.5342,
+          "merge_ms": 13.0533,
+          "finalize_ms": 0.012792,
+          "result_rows": 768,
+          "process_peak_bytes": 30720000
+        },
+        {
+          "mode": "group-partial",
+          "rows": 1000000,
+          "cardinality": 768,
+          "local_ms": 66.9285,
+          "merge_ms": 13.0335,
+          "finalize_ms": 0.012833,
+          "result_rows": 768,
+          "process_peak_bytes": 30605312
+        },
+        {
+          "mode": "group-partial",
+          "rows": 1000000,
+          "cardinality": 768,
+          "local_ms": 66.7436,
+          "merge_ms": 12.8853,
+          "finalize_ms": 0.010708,
+          "result_rows": 768,
+          "process_peak_bytes": 30720000
+        }
+      ],
+      "median_kernel_ms": 80.167525
+    },
+    {
+      "mode": "group-raw",
+      "cardinality": 1024,
+      "samples": [
+        {
+          "mode": "group-raw",
+          "rows": 1000000,
+          "cardinality": 1024,
+          "local_ms": 12.0741,
+          "merge_ms": 22.9666,
+          "finalize_ms": 0.013291,
+          "result_rows": 1024,
+          "process_peak_bytes": 30113792
+        },
+        {
+          "mode": "group-raw",
+          "rows": 1000000,
+          "cardinality": 1024,
+          "local_ms": 11.8276,
+          "merge_ms": 22.4614,
+          "finalize_ms": 0.014333,
+          "result_rows": 1024,
+          "process_peak_bytes": 30146560
+        },
+        {
+          "mode": "group-raw",
+          "rows": 1000000,
+          "cardinality": 1024,
+          "local_ms": 11.9643,
+          "merge_ms": 22.9279,
+          "finalize_ms": 0.011459,
+          "result_rows": 1024,
+          "process_peak_bytes": 30179328
+        },
+        {
+          "mode": "group-raw",
+          "rows": 1000000,
+          "cardinality": 1024,
+          "local_ms": 11.8292,
+          "merge_ms": 22.7446,
+          "finalize_ms": 0.013917,
+          "result_rows": 1024,
+          "process_peak_bytes": 30244864
+        },
+        {
+          "mode": "group-raw",
+          "rows": 1000000,
+          "cardinality": 1024,
+          "local_ms": 11.9342,
+          "merge_ms": 22.6667,
+          "finalize_ms": 0.011958,
+          "result_rows": 1024,
+          "process_peak_bytes": 30130176
+        }
+      ],
+      "median_kernel_ms": 34.612858
+    },
+    {
+      "mode": "group-partial",
+      "cardinality": 1024,
+      "samples": [
+        {
+          "mode": "group-partial",
+          "rows": 1000000,
+          "cardinality": 1024,
+          "local_ms": 84.9367,
+          "merge_ms": 16.2439,
+          "finalize_ms": 0.011375,
+          "result_rows": 1024,
+          "process_peak_bytes": 30687232
+        },
+        {
+          "mode": "group-partial",
+          "rows": 1000000,
+          "cardinality": 1024,
+          "local_ms": 85.0731,
+          "merge_ms": 16.4042,
+          "finalize_ms": 0.011416,
+          "result_rows": 1024,
+          "process_peak_bytes": 30670848
+        },
+        {
+          "mode": "group-partial",
+          "rows": 1000000,
+          "cardinality": 1024,
+          "local_ms": 84.9622,
+          "merge_ms": 16.2014,
+          "finalize_ms": 0.0105,
+          "result_rows": 1024,
+          "process_peak_bytes": 30572544
+        },
+        {
+          "mode": "group-partial",
+          "rows": 1000000,
+          "cardinality": 1024,
+          "local_ms": 85.6263,
+          "merge_ms": 16.5109,
+          "finalize_ms": 0.011167,
+          "result_rows": 1024,
+          "process_peak_bytes": 30932992
+        },
+        {
+          "mode": "group-partial",
+          "rows": 1000000,
+          "cardinality": 1024,
+          "local_ms": 85.1146,
+          "merge_ms": 16.3431,
+          "finalize_ms": 0.011125,
+          "result_rows": 1024,
+          "process_peak_bytes": 30818304
+        }
+      ],
+      "median_kernel_ms": 101.468825
+    },
+    {
+      "mode": "group-raw",
+      "cardinality": 1000000,
+      "samples": [
+        {
+          "mode": "group-raw",
+          "rows": 1000000,
+          "cardinality": 1000000,
+          "local_ms": 13.5187,
+          "merge_ms": 153.602,
+          "finalize_ms": 10.2256,
+          "result_rows": 1000000,
+          "process_peak_bytes": 174768128
+        },
+        {
+          "mode": "group-raw",
+          "rows": 1000000,
+          "cardinality": 1000000,
+          "local_ms": 12.1164,
+          "merge_ms": 141.678,
+          "finalize_ms": 9.45937,
+          "result_rows": 1000000,
+          "process_peak_bytes": 173359104
+        },
+        {
+          "mode": "group-raw",
+          "rows": 1000000,
+          "cardinality": 1000000,
+          "local_ms": 11.988,
+          "merge_ms": 140.599,
+          "finalize_ms": 9.58979,
+          "result_rows": 1000000,
+          "process_peak_bytes": 168329216
+        },
+        {
+          "mode": "group-raw",
+          "rows": 1000000,
+          "cardinality": 1000000,
+          "local_ms": 11.9868,
+          "merge_ms": 136.874,
+          "finalize_ms": 11.1909,
+          "result_rows": 1000000,
+          "process_peak_bytes": 168378368
+        },
+        {
+          "mode": "group-raw",
+          "rows": 1000000,
+          "cardinality": 1000000,
+          "local_ms": 12.0417,
+          "merge_ms": 137.08,
+          "finalize_ms": 9.1925,
+          "result_rows": 1000000,
+          "process_peak_bytes": 165019648
+        }
+      ],
+      "median_kernel_ms": 162.17678999999998
+    },
+    {
+      "mode": "group-partial",
+      "cardinality": 1000000,
+      "samples": [
+        {
+          "mode": "group-partial",
+          "rows": 1000000,
+          "cardinality": 1000000,
+          "local_ms": 85.1892,
+          "merge_ms": 155.225,
+          "finalize_ms": 11.3018,
+          "result_rows": 1000000,
+          "process_peak_bytes": 174653440
+        },
+        {
+          "mode": "group-partial",
+          "rows": 1000000,
+          "cardinality": 1000000,
+          "local_ms": 85.9074,
+          "merge_ms": 159.515,
+          "finalize_ms": 12.1657,
+          "result_rows": 1000000,
+          "process_peak_bytes": 176259072
+        },
+        {
+          "mode": "group-partial",
+          "rows": 1000000,
+          "cardinality": 1000000,
+          "local_ms": 85.4924,
+          "merge_ms": 158.36,
+          "finalize_ms": 9.07696,
+          "result_rows": 1000000,
+          "process_peak_bytes": 174522368
+        },
+        {
+          "mode": "group-partial",
+          "rows": 1000000,
+          "cardinality": 1000000,
+          "local_ms": 84.7238,
+          "merge_ms": 151.731,
+          "finalize_ms": 10.1153,
+          "result_rows": 1000000,
+          "process_peak_bytes": 170901504
+        },
+        {
+          "mode": "group-partial",
+          "rows": 1000000,
+          "cardinality": 1000000,
+          "local_ms": 84.78,
+          "merge_ms": 151.068,
+          "finalize_ms": 9.11833,
+          "result_rows": 1000000,
+          "process_peak_bytes": 170950656
+        }
+      ],
+      "median_kernel_ms": 251.716
+    }
+  ]
+}
