@@ -445,11 +445,18 @@ class MorselPipelineTask final : public PipelineTask {
       }
       auto chunk = std::move(input_->output);
       input_->output.reset();
+      // Intermediate partitions are often only one default range large.
+      // Split useful work across lanes without creating sub-1024-row tasks.
+      auto range_size = std::min(
+          size_t{4096},
+          std::max(size_t{1024},
+                   (chunk->row_num() + worker_count_ - 1) / worker_count_));
       source_ = std::make_unique<ChunkMorselSource>(
           [chunk =
                std::move(chunk)]() mutable -> QueryResultReader::NextResult {
             return std::exchange(chunk, std::nullopt);
-          });
+          },
+          range_size);
     }
     if (!source_) {
       execution.Submit(*this, [this] {

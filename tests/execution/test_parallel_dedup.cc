@@ -256,5 +256,32 @@ TEST(ParallelDedupTest,
   }
   EXPECT_TRUE(state->TakeOutput().empty());
 }
+TEST(ParallelDedupTest, CompositeOutputUsesBoundedBatchesWithoutGlobalMerge) {
+  auto sample = Rows({0, 1, 2});
+  auto op = MakeDedup({0, 1}, sample);
+  auto state = op->CreatePartitionState(4);
+  for (int i = 0; i < 12; ++i) {
+    std::vector<std::optional<int64_t>> values;
+    for (int row = 0; row < 4096; ++row) {
+      values.push_back(i * 4096 + row);
+    }
+    auto batch = state->PartitionBuild(Rows(values, i * 4096));
+    for (size_t part = 0; part < state->BuildPartitions(); ++part) {
+      ASSERT_TRUE(state->BuildPartition(part, *batch));
+    }
+  }
+  ASSERT_TRUE(state->FinalizeBuild());
+  auto output = state->TakeOutput();
+  ASSERT_EQ(output.size(), 3);
+  for (size_t batch = 0; batch < output.size(); ++batch) {
+    ASSERT_EQ(output[batch].row_num(), 16384);
+    EXPECT_FALSE(output[batch].head());
+    for (size_t row = 0; row < 16384; ++row) {
+      EXPECT_EQ(output[batch].get(0)->get_elem(row).GetValue<int64_t>(),
+                batch * 16384 + row);
+    }
+  }
+}
+
 }  // namespace
 }  // namespace neug::execution

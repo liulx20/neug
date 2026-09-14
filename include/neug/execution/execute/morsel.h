@@ -51,7 +51,9 @@ class MorselSource {
 class ChunkMorselSource final : public MorselSource {
  public:
   using ReadBatch = std::function<result<std::optional<ContextChunk>>()>;
-  explicit ChunkMorselSource(ReadBatch input) : input_(std::move(input)) {}
+  explicit ChunkMorselSource(ReadBatch input, size_t range_size = 4096)
+      : input_(std::move(input)),
+        range_size_(std::max(size_t{1}, range_size)) {}
 
   result<std::optional<Morsel>> Pick() override {
     if (!chunk_) {
@@ -62,7 +64,7 @@ class ChunkMorselSource final : public MorselSource {
       chunk_ = std::make_shared<ContextChunk>(std::move(*next));
       offset_ = 0;
     }
-    auto end = std::min(offset_ + size_t{4096}, chunk_->row_num());
+    auto end = std::min(offset_ + range_size_, chunk_->row_num());
     Morsel work{0, offset_, end, chunk_};
     offset_ = end;
     if (end == chunk_->row_num()) {
@@ -103,6 +105,7 @@ class ChunkMorselSource final : public MorselSource {
 
  private:
   ReadBatch input_;
+  size_t range_size_;
   std::shared_ptr<const ContextChunk> chunk_;
   size_t offset_ = 0;
 };

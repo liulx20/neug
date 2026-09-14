@@ -212,6 +212,33 @@ class DedupState final : public PartitionState {
   }
   Status FinalizeBuild() override {
     ChunkAccumulator candidates;
+    ChunkAccumulator output_chunks;
+    size_t output_rows = 0;
+    auto flush = [&] {
+      auto chunk = output_chunks.Finish();
+      if (chunk) {
+        chunk->head().reset();
+        output_.push_back(std::move(*chunk));
+      }
+      output_chunks = ChunkAccumulator{};
+      output_rows = 0;
+    };
+    auto append = [&](ContextChunk chunk) {
+      if (keys_.size() > 1) {
+        // Coalesce small survivors into useful downstream ranges, without
+        // concatenating the complete deduplicated result.
+        if (chunk.row_num() == 0 && (output_rows != 0 || !output_.empty())) {
+          return;
+        }
+        output_rows += chunk.row_num();
+        output_chunks.Add(std::move(chunk));
+        if (output_rows >= 4096 * partitions_.size()) {
+          flush();
+        }
+      } else {
+        candidates.Add(std::move(chunk));
+      }
+    };
     auto batches = partitions_.front().output.size();
     for (const auto& partition : partitions_) {
       if (partition.output.size() != batches) {
@@ -220,7 +247,7 @@ class DedupState final : public PartitionState {
     }
     for (size_t batch = 0; batch < batches; ++batch) {
       if (partitions_.size() == 1 || partitions_[0].output[batch].passthrough) {
-        candidates.Add(std::move(partitions_[0].output[batch].chunk));
+        append(std::move(partitions_[0].output[batch].chunk));
         continue;
       }
       ChunkAccumulator merged;
@@ -242,22 +269,20 @@ class DedupState final : public PartitionState {
       }
       auto chunk = merged.Finish();
       chunk->reshuffle(order);
-      candidates.Add(std::move(*chunk));
+      append(std::move(*chunk));
     }
     for (auto& partition : partitions_) {
       partition.output.clear();
       partition.seen.clear();
       partition.integer_seen.clear();
     }
-    auto chunk = candidates.Finish();
-    if (keys_.size() > 1 && chunk) {
-      // Composite keys always use encoded equality and never bypass reduction.
-      // The partition sets already guarantee uniqueness; input order is
-      // restored.
-      chunk->head().reset();
-      output_ = one_chunk(std::move(*chunk));
-      return Status::OK();
+    if (keys_.size() > 1) {
+      flush();
+      if (!output_.empty()) {
+        return Status::OK();
+      }
     }
+    auto chunk = candidates.Finish();
     // The single-column helpers may sort by value. Running the established
     // normalization on reduced candidates retains that order and null behavior.
     auto result =

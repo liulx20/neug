@@ -414,10 +414,40 @@ input order across partitions and batches. For single-column keys it then invoke
 helper on the surviving candidates. Composite keys are already unique after
 partition processing and do not run a second global Dedup pass. This preserves the existing sorted order for
 ordinary non-null scalar columns and first-occurrence order for composite or
-nullable keys. The final result is still materialized as one chunk, and final
-normalization runs on one worker. With one partition, selected rows are already
-in input order, so finalization skips the redundant merge and reshuffle. A downstream range segment can consume that
-result in parallel.
+nullable keys. Composite keys coalesce survivors until they reach 4096 rows per
+configured partition, then emit a chunk instead of concatenating the entire
+result. A single larger input batch can exceed that threshold. Empty survivors
+are skipped once output exists; within-batch merging still preserves input order. Single-column normalization still runs on one worker and emits one chunk.
+With one partition, selected rows are already in input order, so finalization
+skips the redundant merge and reshuffle.
+
+Downstream chunk-local operators consume these outputs through the common
+intermediate range task. Each intermediate chunk uses a range size of
+`min(4096, max(1024, ceil(rows / workers)))`. This lets a 4096-row output occupy
+multiple workers while avoiding tiny tasks for small results. GroupBy already
+emits partition chunks and uses the same range adaptation. The executor still
+drains one intermediate chunk before requesting the next, so separate chunks
+of 1024 rows or fewer do not overlap. This change does not introduce cross-chunk
+prefetch or change cancellation/read-ahead guarantees.
+
+`DedupAndGroupByOutputsRunConcurrentDownstreamRanges` constructs both actual
+operators, then blocks the first downstream range until a second enters on
+another worker. It checks unique keys and aggregate counts across repeated
+input batches at 2/4 workers. `CompositeOutputUsesBoundedBatchesWithoutGlobalMerge`
+checks bounded Dedup output batches, and Python integration compares
+Dedup/GroupBy followed by filtering, projection and aggregation at 1/2/4 workers.
+The final build passes 193 C++ and 388 selected Python tests (34 skipped,
+20 deselected); 68 reader/scheduler/morsel/Dedup/GroupBy tests pass 20 repetitions.
+
+A million-row, 200,000-key query benchmark records median execute-plus-consume
+time after one warmup and five measured runs. Data loading is excluded. At four
+workers, composite Dedup followed by projection/aggregation changed from 80.5 ms
+to 73.6 ms; GroupBy followed by projection/aggregation changed from 30.1 ms to
+31.9 ms. The latter shows no improvement in this workload, whose partition chunks
+already exceed the default range size. These sequential runs are not statistical
+proof of a general speedup. Queries, data definition and all worker counts are
+recorded in `benchmarks/partition_downstream_1m.json`.
+
 
 Pre-reduction is selective. For sortable scalar types, each batch samples up to
 64 keys; if more than half are distinct, it keeps the batch without hashing all

@@ -1,0 +1,135 @@
+{
+  "baseline_commit": "8356be3b",
+  "rows": 1000000,
+  "groups": 200000,
+  "method": "Warm once, then median of five execute + full result consumption timings; excludes data generation and COPY. Runs sequentially on the same macOS host. Not an interleaved or statistical benchmark.",
+  "queries": {
+    "dedup_project": "MATCH (n:item) WITH DISTINCT n.k AS k, n.k % 7 AS j RETURN sum(k+j)",
+    "group_project": "MATCH (n:item) WITH n.k AS k, sum(n.id) AS s RETURN sum(k+s)"
+  },
+  "data": "item(id INT64 primary key, k INT64), id = 0..999999, k = id % 200000",
+  "before": [
+    {
+      "query": "dedup_project",
+      "workers": 1,
+      "ms": 253.8677500006088,
+      "result": [
+        [
+          20000499994
+        ]
+      ]
+    },
+    {
+      "query": "dedup_project",
+      "workers": 2,
+      "ms": 132.58245900033216,
+      "result": [
+        [
+          20000499994
+        ]
+      ]
+    },
+    {
+      "query": "dedup_project",
+      "workers": 4,
+      "ms": 80.45225000023493,
+      "result": [
+        [
+          20000499994
+        ]
+      ]
+    },
+    {
+      "query": "group_project",
+      "workers": 1,
+      "ms": 91.34704100051749,
+      "result": [
+        [
+          519999400000
+        ]
+      ]
+    },
+    {
+      "query": "group_project",
+      "workers": 2,
+      "ms": 45.83300000012969,
+      "result": [
+        [
+          519999400000
+        ]
+      ]
+    },
+    {
+      "query": "group_project",
+      "workers": 4,
+      "ms": 30.09012500024255,
+      "result": [
+        [
+          519999400000
+        ]
+      ]
+    }
+  ],
+  "after": [
+    {
+      "query": "dedup_project",
+      "workers": 1,
+      "ms": 218.90549999989162,
+      "result": [
+        [
+          20000499994
+        ]
+      ]
+    },
+    {
+      "query": "dedup_project",
+      "workers": 2,
+      "ms": 121.56533300003503,
+      "result": [
+        [
+          20000499994
+        ]
+      ]
+    },
+    {
+      "query": "dedup_project",
+      "workers": 4,
+      "ms": 73.61816600041493,
+      "result": [
+        [
+          20000499994
+        ]
+      ]
+    },
+    {
+      "query": "group_project",
+      "workers": 1,
+      "ms": 90.90075000040088,
+      "result": [
+        [
+          519999400000
+        ]
+      ]
+    },
+    {
+      "query": "group_project",
+      "workers": 2,
+      "ms": 47.24274999989575,
+      "result": [
+        [
+          519999400000
+        ]
+      ]
+    },
+    {
+      "query": "group_project",
+      "workers": 4,
+      "ms": 31.92312499959371,
+      "result": [
+        [
+          519999400000
+        ]
+      ]
+    }
+  ]
+}

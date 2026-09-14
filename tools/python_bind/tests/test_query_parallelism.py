@@ -334,3 +334,27 @@ def test_parallel_intersect_and_triangle(parallel_conn, tmp_path, workers):
             if (row[4] > 1 if compare == ">" else row[4] < 1)
         ]
         assert sorted(map(tuple, result)) == sorted(expected)
+
+
+@pytest.mark.parametrize("workers", [1, 2, 4])
+def test_partition_outputs_feed_downstream_aggregates(parallel_conn, workers):
+    queries = [
+        (
+            "MATCH (n:parallel_item) WITH DISTINCT n.id AS id, n.grp AS grp "
+            "WHERE id % 3 = 0 RETURN sum(id + grp), count(*)",
+            [[sum(i + i % 17 for i in range(5003) if i % 3 == 0), 1668]],
+            "DedupOpr",
+        ),
+        (
+            "MATCH (n:parallel_item) WITH n.id AS id, sum(n.grp) AS total "
+            "WHERE id % 3 = 0 RETURN sum(id + total), count(*)",
+            [[sum(i + i % 17 for i in range(5003) if i % 3 == 0), 1668]],
+            "GroupByOpr",
+        ),
+    ]
+    for query, expected, operator in queries:
+        result = parallel_conn.execute("PROFILE " + query, num_threads=workers)
+        assert list(result) == expected
+        assert operator in {
+            op["operator_name"] for op in result.get_profile_metrics()["operators"]
+        }

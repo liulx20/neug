@@ -24,6 +24,8 @@
 
 #include <future>
 #include "neug/common/columns/value_columns.h"
+#include "neug/execution/execute/ops/retrieve/dedup.h"
+#include "neug/execution/execute/ops/retrieve/group_by.h"
 #include "neug/execution/execute/ops/retrieve/join.h"
 #include "neug/execution/execute/ops/retrieve/limit.h"
 #include "neug/execution/execute/ops/retrieve/sink.h"
@@ -922,6 +924,79 @@ TEST(TaskSchedulerTest, MaterializedGlobalOutputRunsOrderedParallelRanges) {
     EXPECT_GE(observation.threads.size(), 2);
     for (size_t row = 0; row < result->row_num(); ++row) {
       EXPECT_EQ(result->get(0)->get_elem(row).GetValue<int64_t>(), row + 7);
+    }
+  }
+}
+
+TEST(TaskSchedulerTest, DedupAndGroupByOutputsRunConcurrentDownstreamRanges) {
+  for (bool group : {false, true}) {
+    for (size_t workers : {2, 4}) {
+      PropertyGraph graph;
+      GraphView view(graph);
+      StorageReadInterface storage(view, 0);
+      ContextMeta meta;
+      meta.set(0, DataType::INT64);
+      meta.set(1, DataType::INT64);
+      physical::PhysicalPlan plan;
+      auto* node = plan.add_plan();
+      std::unique_ptr<IOperator> op;
+      if (group) {
+        auto* definition = node->mutable_opr()->mutable_group_by();
+        auto* mapping = definition->add_mappings();
+        mapping->mutable_key()->mutable_tag()->set_id(0);
+        mapping->mutable_alias()->set_value(0);
+        auto* count = definition->add_functions();
+        count->set_aggregate(physical::GroupBy_AggFunc_Aggregate_COUNT);
+        count->mutable_alias()->set_value(1);
+        for (int alias : {0, 1}) {
+          auto* metadata = node->add_meta_data();
+          metadata->set_alias(alias);
+          metadata->mutable_type()->mutable_data_type()->set_primitive_type(
+              common::DT_SIGNED_INT64);
+        }
+        auto built =
+            ops::GroupByOprBuilder().Build(graph.schema(), meta, plan, 0);
+        ASSERT_TRUE(built);
+        op = std::move(built->first);
+      } else {
+        auto* definition = node->mutable_opr()->mutable_dedup();
+        for (int alias : {0, 1}) {
+          definition->add_keys()->mutable_tag()->set_id(alias);
+        }
+        auto built =
+            ops::DedupOprBuilder().Build(graph.schema(), meta, plan, 0);
+        ASSERT_TRUE(built);
+        op = std::move(built->first);
+      }
+      ASSERT_EQ(op->pipeline_behavior(), PipelineBehavior::kPartitioned);
+      RangeObservation observation;
+      std::vector<std::unique_ptr<IOperator>> operators;
+      operators.push_back(std::move(op));
+      operators.push_back(std::make_unique<ObservedRangeMap>(observation, 7));
+      Pipeline pipeline(std::move(operators));
+      ChunkBatch input;
+      for (int repeat = 0; repeat < 2; ++repeat) {
+        for (int begin = 0; begin < 16384; begin += 4096) {
+          auto chunk = RangeChunk(begin, begin + 4096);
+          chunk.set(1, chunk.get(0));
+          input.push_back(std::move(chunk));
+        }
+      }
+      auto result = collect_chunk(pipeline.ExecuteReader(
+          storage, context_from_batches(std::move(input)), {}, nullptr,
+          workers));
+      ASSERT_TRUE(result);
+      ASSERT_EQ(result->row_num(), 16384);
+      EXPECT_GE(observation.threads.size(), 2);
+      std::set<int64_t> keys;
+      for (size_t row = 0; row < result->row_num(); ++row) {
+        auto key = result->get(0)->get_elem(row).GetValue<int64_t>() - 7;
+        EXPECT_TRUE(keys.insert(key).second);
+        EXPECT_EQ(result->get(1)->get_elem(row).GetValue<int64_t>(),
+                  group ? 2 : key);
+      }
+      EXPECT_EQ(*keys.begin(), 0);
+      EXPECT_EQ(*keys.rbegin(), 16383);
     }
   }
 }
