@@ -307,9 +307,45 @@ executor cancellation path.
 This currently parallelizes ranges within one mailbox chunk; it does not overlap
 range execution across several small mailbox chunks. Shared replay buffers can
 supply ranges across chunk boundaries. Small inputs may offer too little work
-for several workers. Global operators themselves remain serial, and the existing
-single-worker/write behavior is preserved. Range slicing copies selected columns;
+for several workers. Aggregation and sorting themselves remain serial. Partitioned Dedup is described
+below; writes still use one worker in the same execution graph. Range slicing copies selected columns;
 there are no zero-copy slices or new byte-based memory limits here.
+
+## Partitioned Dedup
+
+Dedup and Join build share `PartitionPipelineTask` in the executor. Each query
+owns a separate `PartitionState`; the operator plan holds only key aliases.
+The task keeps at most W incoming batches in its partition/append slots for W
+workers. Workers remove repeated keys within each batch and hash the remaining
+keys into W partitions. Each partition has its own seen set, consumes batches in
+input order and can advance independently of the other partitions. There is no
+shared seen-set lock and no scheduling code inside the Dedup operator.
+
+After all batches have been appended, finalization reconstructs first-occurrence
+input order across partitions and batches. It then invokes the existing Dedup
+helper on the surviving candidates. This preserves the existing sorted order for
+ordinary non-null scalar columns and first-occurrence order for composite or
+nullable keys. The final result is still materialized as one chunk, and final
+normalization runs on one worker. A downstream range segment can consume that
+result in parallel.
+
+Pre-reduction is selective. For sortable scalar types, each batch samples up to
+64 keys; if more than half are distinct, it keeps the batch without hashing all
+rows. This avoids replacing an efficient scalar sort with an expensive hash
+build for nearly unique inputs. Mixed reduced and retained batches still pass
+through the same task and final helper, which enforces global uniqueness.
+The threshold is a local heuristic, not a compiler cardinality estimate.
+
+Single-column floating-point, edge and other types whose native equality has not
+been matched to key encoding retain all candidates. For example, nullable and
+non-null floating columns can treat signed zero differently, and edge column
+helpers can account for property identity. Composite keys keep the existing
+encoded-key equality. Sampling changes work performed, never query semantics.
+
+The queue bound covers pending batches, not total memory. Seen sets and surviving
+candidates grow with distinct-key count; retained batches may contain duplicates.
+There is no spill, byte budget or incremental downstream DISTINCT output. Scalar
+high-cardinality inputs still pay some sampling and scheduling overhead.
 
 ## Scope and profiling
 
@@ -319,7 +355,8 @@ there are no zero-copy slices or new byte-based memory limits here.
   buckets through bounded batch slots. It retains build chunks until query
   completion; there is no spill. Probe can now resume range execution after
   global boundaries or from shared replay buffers.
-- Aggregation, dedup and sorting retain their global execution kernels.
+- Aggregation and sorting retain their global execution kernels. Dedup performs
+  parallel pre-reduction and a final serial normalization.
 - Conditional Union branches use the same ready queue and worker pool, preserving
   unused-branch laziness.
 - The graph has no byte-based memory budget or cross-query admission control.
@@ -400,3 +437,10 @@ shared chunks without lost rows or cross-branch mutation.
 input followed by concurrent transforms. These tests hold the first worker until
 a second range executes. `ParallelIntermediateLimitLeavesNextBranchUnused` checks
 early termination without initializing the next sequential branch.
+
+`ParallelDedupTest.*` compares exact output against the established collected
+Dedup helper at 1/2/4 workers, including nullable/composite keys, mixed reduced
+and retained batches, typed empties, vertex labels, scalar signed zero and edge
+property identity. Direct state tests run partitioning concurrently and apply
+each batch's independent buckets concurrently in input order. The common bounded
+partition scheduler remains covered by the existing build ordering/error tests.

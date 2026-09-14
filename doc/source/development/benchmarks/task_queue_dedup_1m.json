@@ -1,0 +1,382 @@
+{
+  "platform": "macOS-13.2.1-arm64-arm-64bit",
+  "logical_cpus": 10,
+  "rows": 1000000,
+  "repeats": 5,
+  "timing": "execute only, includes task pool, materialization and native serialization; excludes Python row iteration, warm plan cache, no PROFILE",
+  "queries": {
+    "filter_project": {
+      "query": "MATCH (n:parallel_item) WHERE n.id % 3 = 0 RETURN n.id, n.id * 7 + n.grp",
+      "result_rows": 333334,
+      "sha256": "8faa7f825a27a6a97814258b571add2127851c2de1e849a8cbf2e217e64b2793",
+      "workers": {
+        "1": {
+          "median_ms": 84.617708,
+          "samples_ms": [
+            84.838542,
+            84.337375,
+            87.528375,
+            84.09325,
+            84.617708
+          ]
+        },
+        "2": {
+          "median_ms": 53.202291,
+          "samples_ms": [
+            54.51575,
+            53.202291,
+            52.748084,
+            54.227875,
+            52.931333
+          ]
+        },
+        "4": {
+          "median_ms": 38.054167,
+          "samples_ms": [
+            37.893958,
+            38.054167,
+            37.961625,
+            38.997459,
+            38.09875
+          ]
+        }
+      }
+    },
+    "hash_join": {
+      "query": "MATCH (a:parallel_item), (b:parallel_item) WHERE a.grp = b.grp AND b.id < 17 RETURN a.id, b.id",
+      "result_rows": 1000000,
+      "sha256": "b43a5d06d7c986ca6e51d2b6a92078523134d0936ce7e3eee1dcb0f183f7b18c",
+      "workers": {
+        "1": {
+          "median_ms": 211.35425,
+          "samples_ms": [
+            207.304125,
+            236.664375,
+            212.378584,
+            209.049792,
+            211.35425
+          ]
+        },
+        "2": {
+          "median_ms": 136.34375,
+          "samples_ms": [
+            132.32975,
+            136.34375,
+            137.06525,
+            135.639792,
+            139.391042
+          ]
+        },
+        "4": {
+          "median_ms": 99.531292,
+          "samples_ms": [
+            98.664042,
+            98.46275,
+            99.704334,
+            99.757541,
+            99.531292
+          ]
+        }
+      }
+    },
+    "group_sum": {
+      "query": "MATCH (n:parallel_item) RETURN n.grp, sum(n.id)",
+      "result_rows": 17,
+      "sha256": "69d0093b0e840c3fc79cab3608afe96c03fa87d5ffe556074fe1e0a7c0c3d344",
+      "workers": {
+        "1": {
+          "median_ms": 94.445459,
+          "samples_ms": [
+            94.19175,
+            100.5275,
+            93.880208,
+            94.69325,
+            94.445459
+          ]
+        },
+        "2": {
+          "median_ms": 74.616292,
+          "samples_ms": [
+            75.36075,
+            74.616292,
+            74.871917,
+            74.3195,
+            72.717583
+          ]
+        },
+        "4": {
+          "median_ms": 68.013583,
+          "samples_ms": [
+            70.873958,
+            68.013583,
+            68.957542,
+            67.106959,
+            67.793708
+          ]
+        }
+      }
+    },
+    "limit_10": {
+      "query": "MATCH (n:parallel_item) RETURN n.id LIMIT 10",
+      "result_rows": 10,
+      "sha256": "e16be58a09795fdfcef17455a2f04981300b8ff55f3789f3b28dcb77203359d1",
+      "workers": {
+        "1": {
+          "median_ms": 0.193041,
+          "samples_ms": [
+            0.190167,
+            0.222042,
+            0.193041,
+            0.200709,
+            0.186875
+          ]
+        },
+        "2": {
+          "median_ms": 0.2765,
+          "samples_ms": [
+            0.217542,
+            0.216667,
+            0.282083,
+            0.278167,
+            0.2765
+          ]
+        },
+        "4": {
+          "median_ms": 0.291833,
+          "samples_ms": [
+            0.297375,
+            0.290708,
+            0.261958,
+            0.291833,
+            0.302334
+          ]
+        }
+      }
+    },
+    "dedup_repeated": {
+      "query": "MATCH (n:parallel_item) RETURN DISTINCT n.grp",
+      "result_rows": 17,
+      "sha256": "fed28dee9580d87387adef0dffb5a3816c73cb2fbfb1f9d159c0023f4ef6b522",
+      "workers": {
+        "1": {
+          "median_ms": 93.709209,
+          "samples_ms": [
+            93.136584,
+            93.465916,
+            94.657875,
+            93.709209,
+            94.640833
+          ]
+        },
+        "2": {
+          "median_ms": 48.381875,
+          "samples_ms": [
+            48.891625,
+            47.875834,
+            48.381875,
+            47.964125,
+            62.923583
+          ]
+        },
+        "4": {
+          "median_ms": 29.84725,
+          "samples_ms": [
+            31.440583,
+            29.820666,
+            30.799916,
+            28.632791,
+            29.84725
+          ]
+        }
+      },
+      "profile": {
+        "total_elapsed_ms": 355.4147299999991,
+        "total_output_rows": 17,
+        "operators": [
+          {
+            "operator_id": 1469558416,
+            "parent_id": -1,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 128.0682609999997,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 1469562912,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 123.66133699999968,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 1469537056,
+            "parent_id": -1,
+            "operator_name": "DedupOpr",
+            "elapsed_ms": 103.68317399999968,
+            "output_rows": 17,
+            "child_ids": []
+          },
+          {
+            "operator_id": 1469567696,
+            "parent_id": -1,
+            "operator_name": "SinkOpr",
+            "elapsed_ms": 0.001958,
+            "output_rows": 17,
+            "child_ids": []
+          }
+        ]
+      }
+    },
+    "dedup_unique": {
+      "query": "MATCH (n:parallel_item) RETURN DISTINCT n.id",
+      "result_rows": 1000000,
+      "sha256": "03532ef338b9deb91e007050ce3a5ad4c0dab9d8e8a1234e7cbc163dc1fcec67",
+      "workers": {
+        "1": {
+          "median_ms": 67.701875,
+          "samples_ms": [
+            70.731792,
+            68.254,
+            66.144542,
+            65.96325,
+            67.701875
+          ]
+        },
+        "2": {
+          "median_ms": 51.191291,
+          "samples_ms": [
+            50.024209,
+            51.895583,
+            51.645584,
+            50.157917,
+            51.191291
+          ]
+        },
+        "4": {
+          "median_ms": 50.109334,
+          "samples_ms": [
+            49.829167,
+            47.575458,
+            50.109334,
+            50.74825,
+            50.824708
+          ]
+        }
+      },
+      "profile": {
+        "total_elapsed_ms": 203.3854949999999,
+        "total_output_rows": 1000000,
+        "operators": [
+          {
+            "operator_id": 922482240,
+            "parent_id": -1,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 75.21773499999996,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 922659248,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 72.08509799999997,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 922604064,
+            "parent_id": -1,
+            "operator_name": "DedupOpr",
+            "elapsed_ms": 56.078620999999984,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 922565664,
+            "parent_id": -1,
+            "operator_name": "SinkOpr",
+            "elapsed_ms": 0.004041,
+            "output_rows": 1000000,
+            "child_ids": []
+          }
+        ]
+      }
+    },
+    "dedup_composite": {
+      "query": "MATCH (n:parallel_item) RETURN DISTINCT n.grp, n.id % 101",
+      "result_rows": 1717,
+      "sha256": "d7b089ac454f17993915b621ba108fd62bffacebb0262c807a928e3c3c78db82",
+      "workers": {
+        "1": {
+          "median_ms": 213.157917,
+          "samples_ms": [
+            205.0495,
+            213.916958,
+            213.157917,
+            211.605917,
+            225.145333
+          ]
+        },
+        "2": {
+          "median_ms": 115.078208,
+          "samples_ms": [
+            113.856875,
+            110.561083,
+            116.354583,
+            120.875083,
+            115.078208
+          ]
+        },
+        "4": {
+          "median_ms": 64.199917,
+          "samples_ms": [
+            64.199917,
+            63.707959,
+            63.203583,
+            68.388083,
+            64.642375
+          ]
+        }
+      },
+      "profile": {
+        "total_elapsed_ms": 625.2537070000026,
+        "total_output_rows": 1717,
+        "operators": [
+          {
+            "operator_id": 63370464,
+            "parent_id": -1,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 226.75083400000088,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 63358048,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 223.48018800000088,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 63280544,
+            "parent_id": -1,
+            "operator_name": "DedupOpr",
+            "elapsed_ms": 175.0215180000009,
+            "output_rows": 1717,
+            "child_ids": []
+          },
+          {
+            "operator_id": 63072544,
+            "parent_id": -1,
+            "operator_name": "SinkOpr",
+            "elapsed_ms": 0.001167,
+            "output_rows": 1717,
+            "child_ids": []
+          }
+        ]
+      }
+    }
+  }
+}

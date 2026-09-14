@@ -61,11 +61,11 @@ struct SubPipelines {
   }
 };
 
-// Execution-owned blocking build phase followed by a streaming probe phase.
-// The pipeline builder controls when Build runs and connects the probe input.
-class BuildProbeState {
+// Execution-owned partition accumulation. The executor orders each partition
+// and bounds pending batches; operators only implement data processing.
+class PartitionState {
  public:
-  virtual ~BuildProbeState() = default;
+  virtual ~PartitionState() = default;
   // Immutable partition output. The executor orders appends within each
   // bucket and bounds the number of batches waiting to be appended.
   struct Batch {
@@ -76,10 +76,20 @@ class BuildProbeState {
   virtual size_t BuildPartitions() const = 0;
   virtual Status BuildPartition(size_t partition, const Batch& batch) = 0;
   virtual Status FinalizeBuild() = 0;
+  virtual ChunkBatch TakeOutput() { return {}; }
+};
+
+class BuildProbeState : public PartitionState {
+ public:
   virtual result<ContextChunk> ProbeChunk(ContextChunk chunk) const = 0;
 };
 
-enum class PipelineBehavior { kGlobal, kChunkLocal, kMorselSource };
+enum class PipelineBehavior {
+  kGlobal,
+  kChunkLocal,
+  kMorselSource,
+  kPartitioned
+};
 
 class IOperator {
  public:
@@ -99,6 +109,10 @@ class IOperator {
 
   virtual std::shared_ptr<BuildProbeState> CreateBuildState(size_t workers) {
     throw std::logic_error("Operator has no build phase");
+  }
+
+  virtual std::shared_ptr<PartitionState> CreatePartitionState(size_t workers) {
+    throw std::logic_error("Operator has no partitioned state");
   }
 
   // Source-like operators can replace the incoming data flow. The builder
@@ -133,6 +147,17 @@ class BuildProbeOperator : public IOperator {
  public:
   Kernel CreateState(IStorageInterface&, const ParamsMap&, OprTimer*) final {
     throw std::logic_error("Join phases are created by the pipeline builder");
+  }
+};
+
+class PartitionedOperator : public IOperator {
+ public:
+  PipelineBehavior pipeline_behavior() const final {
+    return PipelineBehavior::kPartitioned;
+  }
+  Kernel CreateState(IStorageInterface&, const ParamsMap&, OprTimer*) final {
+    throw std::logic_error(
+        "Partition phases are created by the pipeline builder");
   }
 };
 

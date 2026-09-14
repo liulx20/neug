@@ -702,14 +702,16 @@ class ReplayTask final : public PipelineTask {
   BufferTask* buffer_;
   size_t index_ = 0;
 };
-// The build barrier advances through explicit phases. State construction is
-// deferred as well, so an unused conditional Join allocates no hash tables.
-class BuildPipelineTask final : public PipelineTask {
+// Partition accumulation uses the same bounded slots for Join and reductions.
+// State construction is deferred so unused branches allocate no operator state.
+class PartitionPipelineTask final : public PipelineTask {
  public:
-  using Factory = std::function<std::shared_ptr<BuildProbeState>()>;
-  BuildPipelineTask(PipelineTask* input, Factory factory, OprTimer* timer)
+  using Factory = std::function<std::shared_ptr<PartitionState>()>;
+  PartitionPipelineTask(PipelineTask* input, Factory factory, OprTimer* timer)
       : input_(input), factory_(std::move(factory)), timer_(timer) {}
-  BuildProbeState& state() const { return *state_; }
+  BuildProbeState& probe_state() const {
+    return static_cast<BuildProbeState&>(*state_);
+  }
 
   bool Advance(QueueExecution& execution) override {
     if (!state_) {
@@ -793,7 +795,19 @@ class BuildPipelineTask final : public PipelineTask {
     }
     if (input_->done && pending_.empty()) {
       execution.Submit(*this, [this] {
-        auto status = Timed([&] { return state_->FinalizeBuild(); });
+        auto status = Timed([&] {
+          auto status = state_->FinalizeBuild();
+          if (status) {
+            auto output = state_->TakeOutput();
+            if (timer_) {
+              for (const auto& chunk : output) {
+                timer_->add_num_tuples(chunk.row_num());
+              }
+            }
+            Publish(*this, std::move(output));
+          }
+          return status;
+        });
         finished = true;
         return status;
       });
@@ -841,7 +855,7 @@ class BuildPipelineTask final : public PipelineTask {
       partitioned = true;
     }
     bool partitioned = false;
-    std::shared_ptr<BuildProbeState::Batch> batch;
+    std::shared_ptr<PartitionState::Batch> batch;
     size_t sequence = 0;
     size_t remaining = 0;
     bool occupied = false;
@@ -869,7 +883,7 @@ class BuildPipelineTask final : public PipelineTask {
   PipelineTask* input_;
   Factory factory_;
   OprTimer* timer_;
-  std::shared_ptr<BuildProbeState> state_;
+  std::shared_ptr<PartitionState> state_;
   std::vector<Slot*> slots_;
   std::vector<Lane*> lanes_;
   std::deque<Slot*> pending_;
@@ -936,6 +950,22 @@ class PipelineBuilder {
       auto* storage = &storage_;
       auto params = params_;
       auto* operator_plan = &op;
+      if (op.pipeline_behavior() == PipelineBehavior::kPartitioned) {
+        fragment.output = execution_.Add<PartitionPipelineTask>(
+            fragment.output,
+            [operator_plan, workers = execution_.workers()] {
+              return operator_plan->CreatePartitionState(workers);
+            },
+            current_timer);
+        fragment.morsel_step = nullptr;
+        fragment.linear_step = nullptr;
+        fragment.replay_buffer = nullptr;
+        if (auto columns = op.output_columns()) {
+          fragment.columns = std::move(*columns);
+        }
+        AdvanceTimer(current_timer, i, plan.operators_.size());
+        continue;
+      }
       if (op.pipeline_behavior() == PipelineBehavior::kMorselSource) {
         auto* before = execution_.Add<BufferTask>(fragment.output, false);
         auto* task = execution_.Add<MorselPipelineTask>(
@@ -971,7 +1001,7 @@ class PipelineBuilder {
       }
       fragment.morsel_step = nullptr;
       auto children = op.sub_pipelines();
-      BuildPipelineTask* build_state = nullptr;
+      PartitionPipelineTask* build_state = nullptr;
       if (children.mode == SubPipelineMode::kBuildProbe) {
         if (children.plans.size() != 2) {
           throw std::logic_error("Build/probe requires two inputs");
@@ -981,7 +1011,7 @@ class PipelineBuilder {
         auto* right_timer = ChildTimer(current_timer);
         auto right = Build(children.build_plan(),
                            Replay(seed, fragment.columns, {seed}), right_timer);
-        build_state = execution_.Add<BuildPipelineTask>(
+        build_state = execution_.Add<PartitionPipelineTask>(
             right.output,
             [operator_plan, workers = execution_.workers()] {
               return operator_plan->CreateBuildState(workers);
@@ -999,7 +1029,7 @@ class PipelineBuilder {
               name, current_timer,
               [state = build_state](OprTimer*) {
                 return make_chunk_kernel([state](ContextChunk chunk) {
-                  return state->state().ProbeChunk(std::move(chunk));
+                  return state->probe_state().ProbeChunk(std::move(chunk));
                 });
               },
               left.columns);
@@ -1058,7 +1088,7 @@ class PipelineBuilder {
            build_state](OprTimer* timer) -> Kernel {
             if (build_state) {
               return make_chunk_kernel([build_state](ContextChunk chunk) {
-                return build_state->state().ProbeChunk(std::move(chunk));
+                return build_state->probe_state().ProbeChunk(std::move(chunk));
               });
             }
             return operator_plan->CreateState(*storage, params, timer);

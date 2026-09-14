@@ -305,3 +305,55 @@ were not run concurrently with benchmarks.
 
 Raw timings and PROFILE evidence: [100k](benchmarks/task_queue_intermediate_100k.json),
 [1m](benchmarks/task_queue_intermediate_1m.json).
+
+## Partitioned Dedup
+
+Use `--dedup` for DISTINCT over 17 repeated scalar keys, one million unique
+scalar keys, and composite `(grp, id % 101)` keys (1,717 distinct combinations).
+All three workloads include a separate PROFILE run that verifies `DedupOpr` is
+present; PROFILE is excluded from timings.
+
+```sh
+PYTHONPATH=tools/python_bind python tools/benchmarks/task_queue.py --rows 1000000 --repeats 5 --dedup --output /tmp/task_queue_dedup.json
+```
+
+The following medians use the same machine and five repetitions. The collected
+comparison temporarily restores the pre-change `DedupOpr` implementation on the
+same source/build tree; all other executor code and benchmark data are identical.
+Builds and regression tests were not running during these measurements.
+
+| DISTINCT keys | Implementation | 1 worker | 2 workers | 4 workers |
+| --- | --- | ---: | ---: | ---: |
+| 17 scalar keys | Collected | 121.697 ms | 109.003 ms | 111.968 ms |
+| 17 scalar keys | Partitioned | 93.709 ms | 48.382 ms | 29.847 ms |
+| 1m unique scalar keys | Collected | 63.703 ms | 48.706 ms | 48.590 ms |
+| 1m unique scalar keys | Partitioned | 67.702 ms | 51.191 ms | 50.109 ms |
+| 1,717 composite keys | Collected | 189.240 ms | 154.934 ms | 138.372 ms |
+| 1,717 composite keys | Partitioned | 213.158 ms | 115.078 ms | 64.200 ms |
+
+At four workers, repeated scalar keys improve by about 3.8x and composite keys
+by about 2.2x against collected Dedup. The unique-scalar case is about 3% slower
+(50.109 vs 48.590 ms), so this does not establish a speedup for low-duplication
+inputs. Single-worker composite keys also regress (213.158 vs 189.240 ms).
+Extra local hashing, task scheduling and restoring order can exceed the saved
+work when little reduction is possible.
+
+An initial implementation that hashed every scalar row measured 128.627 ms with
+four workers on unique keys. The final implementation samples each scalar batch
+and skips pre-reduction when more than half of up to 64 sampled keys are unique.
+This keeps the same task graph and final correctness helper, and avoids most of
+that regression. The threshold is heuristic; skewed batches or unrepresentative
+prefixes can still choose poorly. Composite keys always use encoded pre-reduction.
+
+The final normalization and candidate merge remain serial. Floating-point and
+other single-column types without proven encoding/native equality equivalence
+retain all candidates; those cases have no parallel hash reduction benefit.
+Memory peaks, spill and concurrent-query throughput were not measured.
+
+All query row counts and checksums match the collected comparison, and each run
+checks equality across worker counts. C++ tests separately compare exact row
+order, nulls, signed zero, edge property identity and mixed reduced/retained
+batches against the existing Dedup helper.
+
+Raw timings and PROFILE evidence: [partitioned](benchmarks/task_queue_dedup_1m.json),
+[collected comparison](benchmarks/task_queue_dedup_collected_1m.json).

@@ -30,6 +30,9 @@ def main():
         action="store_true",
         help="include transforms after global operators",
     )
+    parser.add_argument(
+        "--dedup", action="store_true", help="include low and high cardinality DISTINCT"
+    )
     args = parser.parse_args()
     if args.rows < 17 or args.repeats < 1 or min(args.workers) < 1:
         parser.error("rows >= 17, repeats >= 1 and positive workers are required")
@@ -62,6 +65,13 @@ def main():
     }
     if args.intermediate:
         queries.update(intermediate_queries)
+    dedup_queries = {
+        "dedup_repeated": "MATCH (n:parallel_item) RETURN DISTINCT n.grp",
+        "dedup_unique": "MATCH (n:parallel_item) RETURN DISTINCT n.id",
+        "dedup_composite": "MATCH (n:parallel_item) RETURN DISTINCT n.grp, n.id % 101",
+    }
+    if args.dedup:
+        queries.update(dedup_queries)
     report = {
         "platform": platform.platform(),
         "logical_cpus": os.cpu_count(),
@@ -119,14 +129,21 @@ def main():
                         for workers, values in timings.items()
                     },
                 }
-                if (args.join_shapes and name.startswith("hash_join")) or (
-                    args.intermediate and name in intermediate_queries
+                if (
+                    (args.join_shapes and name.startswith("hash_join"))
+                    or (args.intermediate and name in intermediate_queries)
+                    or (args.dedup and name in dedup_queries)
                 ):
                     profiled = conn.execute(
                         "PROFILE " + query, num_threads=max(args.workers)
                     )
                     report["queries"][name]["profile"] = profiled.get_profile_metrics()
                     metrics = report["queries"][name]["profile"]
+                    if name in dedup_queries:
+                        assert any(
+                            op["operator_name"] == "DedupOpr"
+                            for op in metrics["operators"]
+                        ), (name, metrics)
                     if name.startswith("hash_join"):
                         joins = [
                             op
