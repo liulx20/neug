@@ -588,3 +588,135 @@ that switch strategies in both directions. Floating comparisons use tolerance.
 Raw reports: [mode comparison](benchmarks/group_input_modes_1m.json),
 [forced direct experiment](benchmarks/task_queue_group_raw_1m.json),
 [adaptive execution](benchmarks/task_queue_group_adaptive_1m.json).
+
+
+## GroupBy output gathering and native integer key access
+
+This comparison starts from `10ac52fe`. All variants use the same deterministic
+million-row input, machine, compiler/build settings and query text. The collected
+control temporarily changes only GroupBy's pipeline behavior to `kGlobal`, using
+its existing collected helper; that temporary change is not retained. Worker
+counts are 1 and 4, with five warm-plan repetitions shuffled within each process.
+The reported execute interval includes scheduling, scan/projection, aggregation,
+materialization and native serialization, and excludes Python result iteration,
+import and the separate PROFILE run. Builds and tests do not overlap timings.
+
+### What the diagnostic found
+
+`partition_phases` now accepts an optional partition count:
+
+```sh
+build/tests/execution/partition_phases group 1000000 1000000 4
+```
+
+It still runs all kernels on one thread, with no scheduler. `merge_ms` is the sum
+of all partition calls, not four-worker elapsed time. It isolates kernel work
+and final output construction; it cannot measure queue waiting or worker overlap.
+Five fresh-process runs per configuration gave these medians for unique keys:
+
+| Partitions | Version | Partition input | Group lookup/update | Finalize |
+| --- | --- | ---: | ---: | ---: |
+| 1 | Before | 14.447 ms | 130.956 ms | 9.132 ms |
+| 1 | Direct output only | 14.984 ms | 148.655 ms | 6.249 ms |
+| 1 | Typed access | 14.115 ms | 68.460 ms | 5.722 ms |
+| 4 | Before | 14.619 ms | 126.416 ms | 39.646 ms |
+| 4 | Direct output only | 14.988 ms | 137.840 ms | 23.058 ms |
+| 4 | Typed access | 14.577 ms | 65.360 ms | 22.721 ms |
+
+The first change removes concatenation/reshuffling of intermediate aggregate
+result columns. A single partition skips order merging entirely; multiple
+partitions compute final partition/row references once and write aggregate
+result columns directly from their states. Key columns are gathered once in
+that order. First-appearance ordering and cleared output head remain unchanged.
+
+A separate macOS sampling run over four million unique rows found generic Value
+construction among the costs inside partition accumulation, alongside hash-table
+insertion and resizing. The second change reads native INT32/INT64 ValueColumns
+and writes retained integer keys through typed accessors. Other column storage
+continues using its virtual accessors. This avoids per-row generic Value
+construction at those two points without changing hash/equality or NULL handling.
+The sampling run is diagnostic, not part of the timing table.
+
+The intermediate build also shows why independent whole-run timing differences
+cannot all be attributed to the edited function: its grouping time moved despite
+only finalization code changing. The typed-access implementation substantially reduces
+both measured grouping work and output work, but precise contribution percentages
+are not inferred by subtracting these separate runs.
+
+### Whole-query results from the initial controlled build sequence
+
+| Query | Workers | Before | Collected control | Direct output only | Typed access |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| SUM, 17 groups | 1 | 65.560 ms | 99.918 ms | 64.114 ms | 66.190 ms |
+| SUM, 17 groups | 4 | 18.835 ms | 68.793 ms | 18.669 ms | 18.688 ms |
+| COUNT/SUM/MIN/MAX/AVG, 17 groups | 1 | 92.342 ms | 98.526 ms | 90.066 ms | 93.621 ms |
+| COUNT/SUM/MIN/MAX/AVG, 17 groups | 4 | 25.235 ms | 72.020 ms | 25.605 ms | 26.836 ms |
+| COUNT/SUM, 1m groups | 1 | 244.557 ms | 156.753 ms | 223.942 ms | 142.588 ms |
+| COUNT/SUM, 1m groups | 4 | 227.594 ms | 218.498 ms | 211.071 ms | 154.172 ms |
+| COUNT/SUM/AVG, one hot group | 1 | 91.734 ms | 112.336 ms | 96.999 ms | 96.240 ms |
+| COUNT/SUM/AVG, one hot group | 4 | 23.390 ms | 68.168 ms | 23.879 ms | 23.372 ms |
+
+The unique-group case improves at both worker counts and now beats this run's
+collected control. Four workers still do not outperform one worker for this
+particular all-unique query. The output remains serial, and this experiment
+does not separately attribute scheduler waiting, memory bandwidth and worker
+imbalance. It does not establish that changing task granularity would help.
+Low-cardinality runs showed a few percent variation, so an additional interleaved
+comparison follows rather than treating every difference as a regression or gain.
+
+All query row counts/checksums match across the four builds. Validation passed
+184 C++ tests, 368 Python tests (28 skipped, 20 deselected), and 51 concurrency
+related tests repeated 20 times. The added key oracle covers native INT32/INT64
+NULL, zero, negative values and extrema across batches, for forced partial/raw
+and adaptive execution. Existing tests cover output ordering, sparse aliases,
+empty/all-null aggregates and nullable composite/string keys. Floating aggregate
+comparisons retain their existing tolerance and association limitations.
+
+Raw reports: [before execute](benchmarks/task_queue_group_control_before_1m.json),
+[collected execute](benchmarks/task_queue_group_control_collected_1m.json),
+[direct output execute](benchmarks/task_queue_group_control_direct_output_1m.json),
+[typed-access execute](benchmarks/task_queue_group_control_after_1m.json),
+[before phases](benchmarks/group_control_phases_before_1m.json),
+[direct output phases](benchmarks/group_control_phases_direct_output_1m.json),
+[typed-access phases](benchmarks/group_control_phases_after_1m.json).
+
+
+### Final interleaved verification
+
+The first interleaved experiment retained native type dispatch for reduced
+batches too. Its repeated-key results showed small slowdowns. The final code
+restricts that dispatch to raw batches; local-partial inputs retain the existing
+accessors, and INT64 raw batches also skip an unnecessary failed INT32 cast.
+
+Two copies of the shared library were then used in four sequential processes:
+before, after, before, after. The dynamic loader's selected library path was
+verified separately for both directories; the report records library SHA256s.
+Each process imported identical generated data and ran seven warm repetitions
+per worker count, shuffled within each query. No builds/tests overlapped these
+measurements. Pooled medians of the 14 samples per version/worker are:
+
+| Query | Workers | Before | Final |
+| --- | ---: | ---: | ---: |
+| group_sum | 1 | 70.443 ms | 65.293 ms |
+| group_sum | 4 | 20.378 ms | 18.576 ms |
+| aggregate_repeated | 1 | 94.196 ms | 91.002 ms |
+| aggregate_repeated | 4 | 26.326 ms | 25.212 ms |
+| aggregate_unique | 1 | 244.822 ms | 145.529 ms |
+| aggregate_unique | 4 | 229.485 ms | 159.720 ms |
+| aggregate_hot | 1 | 90.733 ms | 93.221 ms |
+| aggregate_hot | 4 | 23.669 ms | 24.269 ms |
+
+The all-unique improvement persists across both process pairs. Repeated-key
+SUM and the five-aggregate case do not show the earlier slowdown in this final
+comparison. The hot-group case varies across processes, especially with one
+worker; the small remaining difference should not be claimed as a speedup or
+as proof of identical performance. Per-process medians and every sample are
+retained, rather than hiding this variation behind a single number.
+
+The final code passed the same 184 C++ / 368 Python checks and 51 concurrency
+tests repeated 20 times after the dispatch restriction. All checksums and row
+counts also match the collected control. Grouping state, adaptive thresholds,
+task scheduling and supported aggregate eligibility are unchanged.
+
+Raw reports: [initial interleaved experiment](benchmarks/task_queue_group_interleaved_1m.json),
+[final interleaved verification](benchmarks/task_queue_group_final_interleaved_1m.json).

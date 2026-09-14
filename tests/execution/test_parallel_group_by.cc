@@ -360,6 +360,30 @@ TEST(ParallelGroupByTest, AdaptiveBatchesSwitchBothWaysWithoutChangingGroups) {
   Equal(output[0], *expected);
 }
 
+TEST(ParallelGroupByTest, NativeIntegerKeysPreserveNullAndExtremeIdentity) {
+  auto check = []<typename T>() {
+    ChunkBatch input;
+    for (size_t batch = 0; batch < 8; ++batch) {
+      auto chunk = Integers(batch, 8, true);
+      ValueColumnBuilder<T> keys;
+      keys.push_back_null();
+      keys.push_back_opt(T{0});
+      keys.push_back_opt(std::numeric_limits<T>::min());
+      keys.push_back_opt(std::numeric_limits<T>::max());
+      keys.push_back_opt(T{-1});
+      keys.push_back_opt(T{1});
+      keys.push_back_null();
+      keys.push_back_opt(std::numeric_limits<T>::min());
+      chunk.remove(0);
+      chunk.set(0, keys.finish());
+      input.push_back(std::move(chunk));
+    }
+    Check(input, Definition(true, {Kind::COUNT, Kind::SUM, Kind::AVG}));
+  };
+  check.template operator()<int32_t>();
+  check.template operator()<int64_t>();
+}
+
 TEST(ParallelGroupByTest, Int32SumKeepsInputWidth) {
   auto chunk = Integers(0, 6, false);
   ValueColumnBuilder<int32_t> values;

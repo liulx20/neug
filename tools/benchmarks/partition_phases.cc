@@ -25,15 +25,16 @@ using namespace neug;
 using namespace neug::execution;
 
 int main(int argc, char** argv) {
-  if (argc != 4) {
-    std::cerr
-        << "usage: partition_phases "
-           "dedup|composite|group|group-raw|group-partial rows cardinality\n";
+  if (argc != 4 && argc != 5) {
+    std::cerr << "usage: partition_phases "
+                 "dedup|composite|group|group-raw|group-partial rows "
+                 "cardinality [partitions]\n";
     return 1;
   }
   std::string mode = argv[1];
   size_t rows = std::stoull(argv[2]), cardinality = std::stoull(argv[3]);
-  if (!rows || !cardinality ||
+  size_t partitions = argc == 5 ? std::stoull(argv[4]) : 1;
+  if (!rows || !cardinality || !partitions ||
       (mode != "dedup" && mode != "composite" && mode != "group" &&
        mode != "group-raw" && mode != "group-partial")) {
     return 1;
@@ -58,7 +59,7 @@ int main(int argc, char** argv) {
         std::vector<ops::AggregateSpec>{
             {AggrKind::kCount, -1, 1, DataType(DataTypeId::kInt64)},
             {AggrKind::kSum, 1, 2, DataType(DataTypeId::kInt64)}},
-        1,
+        partitions,
         mode == "group-partial"
             ? ops::GroupByState::InputMode::kPartial
             : mode == "group-raw" ? ops::GroupByState::InputMode::kRaw
@@ -77,7 +78,7 @@ int main(int argc, char** argv) {
     if (!op) {
       return 2;
     }
-    state = op->first->CreatePartitionState(1);
+    state = op->first->CreatePartitionState(partitions);
   }
   auto timed = [](auto work) {
     auto start = std::chrono::steady_clock::now();
@@ -92,9 +93,11 @@ int main(int argc, char** argv) {
     local += timed([&] { batch = state->PartitionBuild(std::move(chunk)); });
     if (batch) {
       merge += timed([&] {
-        auto status = state->BuildPartition(0, *batch);
-        if (!status) {
-          throw std::runtime_error(status.ToString());
+        for (size_t part = 0; part < partitions; ++part) {
+          auto status = state->BuildPartition(part, *batch);
+          if (!status) {
+            throw std::runtime_error(status.ToString());
+          }
         }
       });
     }
@@ -117,6 +120,7 @@ int main(int argc, char** argv) {
   peak *= 1024;
 #endif
   std::cout << "{\"mode\":\"" << mode << "\",\"rows\":" << rows
+            << ",\"partitions\":" << partitions
             << ",\"cardinality\":" << cardinality << ",\"local_ms\":" << local
             << ",\"merge_ms\":" << merge << ",\"finalize_ms\":" << finalize
             << ",\"result_rows\":" << result_rows

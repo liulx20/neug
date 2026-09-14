@@ -377,7 +377,11 @@ consumed. Buckets carry row selections, and each partition consumes original
 values directly into its own aggregate arrays. This avoids local group tables,
 partial aggregate arrays and local key reshuffling. Scalar INT32/INT64 keys use
 native hashing for both routing modes; direct batches need no encoded signatures.
-NULL and integer zero may share a bucket but remain separate groups. General
+For raw batches backed by native INT32/INT64 ValueColumns, partition lookup and
+retained-key writes use typed access instead of constructing a generic Value per row. Other column
+representations and locally reduced batches continue through their existing
+virtual accessors; reduced batches skip the added runtime type dispatch. NULL and
+integer zero may share a bucket but remain separate groups. General
 keys retain the existing encoded-key equivalence and fixed null bitmap.
 
 Strategy hints are execution-owned relaxed atomics. Concurrent local batches
@@ -395,8 +399,12 @@ when upstream produces EOF without a chunk; grouped empty input returns no rows.
 
 Each partition records a group's first batch and row position. Finalization
 merges these already ordered sequences with a heap instead of sorting all groups
-again. It materializes result columns, restores first-occurrence group order,
-and clears the output head to match the collected GroupBy helper.
+again. The merge produces partition/row references, and aggregate columns read
+state directly in that order. Key columns are gathered from the partition key
+columns. This avoids generating partial aggregate result columns, concatenating
+them and reshuffling the concatenation. A single partition already has final
+order and bypasses the heap and row-reference array entirely. The output head
+is cleared to match the collected GroupBy helper.
 This final phase is still serial, and all groups must be merged before any
 output is published. The scheduler, demand, cancellation and profiling mechanisms
 are shared with Join and Dedup; no worker recursively reads another operator.
@@ -541,5 +549,6 @@ concurrently built partials and unchanged global handling of DISTINCT/list and
 floating MIN/MAX. Eligible cases also compare forced raw, forced partial and
 adaptive modes at 1/2/4 partitions with concurrent bucket consumption. A changing
 70-batch distribution exercises both mode transitions, NULL identity, AVG counts,
-output head and first-occurrence order. Floating comparisons use tolerance, not
+output head and first-occurrence order. Native key tests distinguish NULL, zero,
+negative values and both INT32/INT64 extrema across batches. Floating comparisons use tolerance, not
 bitwise identity.

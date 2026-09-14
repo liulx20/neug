@@ -43,6 +43,9 @@ class AggregateColumn {
   virtual void Merge(const AggregateColumn& input, size_t source,
                      size_t dest) = 0;
   virtual std::shared_ptr<IContextColumn> Finish() const = 0;
+  virtual std::shared_ptr<IContextColumn> FinishMerged(
+      const std::vector<const AggregateColumn*>& partitions,
+      const std::vector<std::pair<size_t, size_t>>& rows) const = 0;
 };
 
 template <typename T>
@@ -109,28 +112,52 @@ class TypedAggregateColumn final : public AggregateColumn {
     counts_[dest] += other.counts_[source];
   }
   std::shared_ptr<IContextColumn> Finish() const override {
+    auto size = kind_ == AggrKind::kSum ? values_.size() : counts_.size();
+    return FinishRows(size, [this](size_t row) {
+      return std::pair{this, row};
+    });
+  }
+  std::shared_ptr<IContextColumn> FinishMerged(
+      const std::vector<const AggregateColumn*>& partitions,
+      const std::vector<std::pair<size_t, size_t>>& rows) const override {
+    std::vector<const TypedAggregateColumn*> inputs;
+    for (auto* partition : partitions) {
+      inputs.push_back(static_cast<const TypedAggregateColumn*>(partition));
+    }
+    return FinishRows(rows.size(), [&](size_t row) {
+      auto [part, index] = rows[row];
+      return std::pair{inputs[part], index};
+    });
+  }
+
+ private:
+  template <typename Select>
+  std::shared_ptr<IContextColumn> FinishRows(size_t size, Select select) const {
     if (kind_ == AggrKind::kSum) {
       ValueColumnBuilder<T> output;
-      output.reserve(values_.size());
-      for (const auto& value : values_) {
-        output.push_back_opt(value);
+      output.reserve(size);
+      for (size_t row = 0; row < size; ++row) {
+        auto [input, index] = select(row);
+        output.push_back_opt(input->values_[index]);
       }
       return output.finish();
     }
     if (kind_ == AggrKind::kCount) {
       ValueColumnBuilder<int64_t> output;
-      output.reserve(counts_.size());
-      for (auto count : counts_) {
-        output.push_back_opt(count);
+      output.reserve(size);
+      for (size_t row = 0; row < size; ++row) {
+        auto [input, index] = select(row);
+        output.push_back_opt(input->counts_[index]);
       }
       return output.finish();
     }
     if (kind_ == AggrKind::kAvg) {
       ValueColumnBuilder<double> output;
-      output.reserve(counts_.size());
-      for (size_t i = 0; i < counts_.size(); ++i) {
-        if (counts_[i]) {
-          output.push_back_opt(sums_[i] / counts_[i]);
+      output.reserve(size);
+      for (size_t row = 0; row < size; ++row) {
+        auto [input, index] = select(row);
+        if (input->counts_[index]) {
+          output.push_back_opt(input->sums_[index] / input->counts_[index]);
         } else {
           output.push_back_null();
         }
@@ -138,10 +165,11 @@ class TypedAggregateColumn final : public AggregateColumn {
       return output.finish();
     }
     ValueColumnBuilder<T> output;
-    output.reserve(counts_.size());
-    for (size_t i = 0; i < counts_.size(); ++i) {
-      if (counts_[i]) {
-        output.push_back_opt(values_[i]);
+    output.reserve(size);
+    for (size_t row = 0; row < size; ++row) {
+      auto [input, index] = select(row);
+      if (input->counts_[index]) {
+        output.push_back_opt(input->values_[index]);
       } else {
         output.push_back_null();
       }
@@ -149,7 +177,6 @@ class TypedAggregateColumn final : public AggregateColumn {
     return output.finish();
   }
 
- private:
   static T Add(T left, T right) {
     if constexpr (std::is_integral_v<T> && !std::is_same_v<T, bool>) {
       // Preserve fixed-width sums without introducing signed-overflow UB when
@@ -351,6 +378,21 @@ class GroupByState final : public PartitionState {
     const auto& input = static_cast<const Input&>(batch);
     auto& partition = partitions_.at(part);
     auto sequence = partition.sequence++;
+    const auto* scalar = mappings_.size() == 1
+                             ? input.keys.get(mappings_[0].second).get()
+                             : nullptr;
+    // Reduced batches contain few rows; avoid RTTI dispatch for those batches.
+    const auto* keys64 =
+        input.raw ? dynamic_cast<const ValueColumn<int64_t>*>(scalar) : nullptr;
+    const auto* keys32 = input.raw && !keys64
+                             ? dynamic_cast<const ValueColumn<int32_t>*>(scalar)
+                             : nullptr;
+    auto* output64 = keys64 ? dynamic_cast<ValueColumnBuilder<int64_t>*>(
+                                  partition.keys[0].get())
+                            : nullptr;
+    auto* output32 = keys32 ? dynamic_cast<ValueColumnBuilder<int32_t>*>(
+                                  partition.keys[0].get())
+                            : nullptr;
     sel_vec_t destinations;
     if (input.raw) {
       destinations.reserve(input.buckets[part].size());
@@ -361,19 +403,34 @@ class GroupByState final : public PartitionState {
       if (key_types_.size() == 1 &&
           (key_types_[0].id() == DataTypeId::kInt64 ||
            key_types_[0].id() == DataTypeId::kInt32)) {
-        auto value = input.keys.get(mappings_[0].second)->get_elem(group);
-        if (value.IsNull()) {
+        // Native value columns expose typed storage. Avoid constructing a
+        // generic Value for each hash lookup and each newly retained key.
+        std::optional<int64_t> number;
+        if (keys64) {
+          if (keys64->has_value(group)) {
+            number = keys64->get_value(group);
+          }
+        } else if (keys32) {
+          if (keys32->has_value(group)) {
+            number = keys32->get_value(group);
+          }
+        } else {
+          auto value = scalar->get_elem(group);
+          if (!value.IsNull()) {
+            number = value.type().id() == DataTypeId::kInt64
+                         ? value.GetValue<int64_t>()
+                         : value.GetValue<int32_t>();
+          }
+        }
+        if (!number) {
           added = !partition.null_group;
           if (added) {
             partition.null_group = partition.order.size();
           }
           dest = *partition.null_group;
         } else {
-          auto number = value.type().id() == DataTypeId::kInt64
-                            ? value.GetValue<int64_t>()
-                            : value.GetValue<int32_t>();
           auto entry =
-              partition.typed_groups.emplace(number, partition.order.size());
+              partition.typed_groups.emplace(*number, partition.order.size());
           dest = entry.first->second;
           added = entry.second;
         }
@@ -386,9 +443,23 @@ class GroupByState final : public PartitionState {
       if (added) {
         partition.order.emplace_back(sequence,
                                      input.raw ? group : input.offsets[group]);
-        for (size_t key = 0; key < mappings_.size(); ++key) {
-          partition.keys[key]->push_back_elem(
-              input.keys.get(mappings_[key].second)->get_elem(group));
+        if (output64) {
+          if (keys64->has_value(group)) {
+            output64->push_back_opt(keys64->get_value(group));
+          } else {
+            output64->push_back_null();
+          }
+        } else if (output32) {
+          if (keys32->has_value(group)) {
+            output32->push_back_opt(keys32->get_value(group));
+          } else {
+            output32->push_back_null();
+          }
+        } else {
+          for (size_t key = 0; key < mappings_.size(); ++key) {
+            partition.keys[key]->push_back_elem(
+                input.keys.get(mappings_[key].second)->get_elem(group));
+          }
         }
         if (!input.raw) {
           for (auto& aggregate : partition.aggregates) {
@@ -425,47 +496,65 @@ class GroupByState final : public PartitionState {
         aggregate->Resize(1);
       }
     }
-    ChunkAccumulator output;
-    // Each partition already records first appearances in input order. Merge
-    // these ordered runs instead of sorting all groups again.
-    using Position = std::tuple<size_t, size_t, size_t, size_t>;
-    std::priority_queue<Position, std::vector<Position>, std::greater<Position>>
-        ready;
-    std::vector<size_t> offsets;
-    size_t offset = 0;
-    for (auto& partition : partitions_) {
-      ContextChunk chunk;
+    ContextChunk output;
+    if (partitions_.size() == 1) {
+      // A single partition already has the final row order.
+      auto& partition = partitions_[0];
       for (size_t key = 0; key < mappings_.size(); ++key) {
-        chunk.set(mappings_[key].second, partition.keys[key]->finish());
+        output.set(mappings_[key].second, partition.keys[key]->finish());
       }
       for (size_t i = 0; i < specs_.size(); ++i) {
-        chunk.set(specs_[i].output, partition.aggregates[i]->Finish());
+        output.set(specs_[i].output, partition.aggregates[i]->Finish());
       }
-      offsets.push_back(offset);
-      offset += partition.order.size();
-      if (!partition.order.empty()) {
-        auto [sequence, row] = partition.order[0];
-        ready.emplace(sequence, row, offsets.size() - 1, 0);
+    } else {
+      // Determine final first-appearance order once, then write each result
+      // column directly. Do not concatenate and reshuffle intermediate columns.
+      using Position = std::tuple<size_t, size_t, size_t, size_t>;
+      std::priority_queue<Position, std::vector<Position>,
+                          std::greater<Position>>
+          ready;
+      size_t size = 0;
+      for (size_t part = 0; part < partitions_.size(); ++part) {
+        const auto& order = partitions_[part].order;
+        size += order.size();
+        if (!order.empty()) {
+          auto [sequence, row] = order[0];
+          ready.emplace(sequence, row, part, 0);
+        }
       }
-      output.Add(std::move(chunk));
-    }
-    sel_vec_t rows;
-    rows.reserve(offset);
-    while (!ready.empty()) {
-      auto [sequence, row, part, index] = ready.top();
-      ready.pop();
-      rows.push_back(offsets[part] + index);
-      if (++index < partitions_[part].order.size()) {
-        auto [next_sequence, next_row] = partitions_[part].order[index];
-        ready.emplace(next_sequence, next_row, part, index);
+      std::vector<std::pair<size_t, size_t>> rows;
+      rows.reserve(size);
+      while (!ready.empty()) {
+        auto [sequence, row, part, index] = ready.top();
+        ready.pop();
+        rows.emplace_back(part, index);
+        if (++index < partitions_[part].order.size()) {
+          auto [next_sequence, next_row] = partitions_[part].order[index];
+          ready.emplace(next_sequence, next_row, part, index);
+        }
+      }
+      for (size_t key = 0; key < mappings_.size(); ++key) {
+        std::vector<std::shared_ptr<IContextColumn>> inputs;
+        for (auto& partition : partitions_) {
+          inputs.push_back(partition.keys[key]->finish());
+        }
+        auto column = ColumnsUtils::create_builder(key_types_[key]);
+        column->reserve(rows.size());
+        for (auto [part, index] : rows) {
+          column->push_back_elem(inputs[part]->get_elem(index));
+        }
+        output.set(mappings_[key].second, column->finish());
+      }
+      for (size_t i = 0; i < specs_.size(); ++i) {
+        std::vector<const AggregateColumn*> inputs;
+        for (auto& partition : partitions_) {
+          inputs.push_back(partition.aggregates[i].get());
+        }
+        output.set(specs_[i].output, inputs[0]->FinishMerged(inputs, rows));
       }
     }
-    auto chunk = output.Finish();
-    if (partitions_.size() > 1) {
-      chunk->reshuffle(rows);
-    }
-    chunk->head().reset();
-    output_ = one_chunk(std::move(*chunk));
+    output.head().reset();
+    output_ = one_chunk(std::move(output));
     partitions_.clear();
     return Status::OK();
   }

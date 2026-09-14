@@ -1,0 +1,249 @@
+{
+  "timing": "serial kernel calls, no task queue; merge sums all partition calls, not parallel elapsed time",
+  "runs": [
+    {
+      "cardinality": 17,
+      "partitions": 1,
+      "samples": [
+        {
+          "mode": "group",
+          "rows": 1000000,
+          "partitions": 1,
+          "cardinality": 17,
+          "local_ms": 28.6751,
+          "merge_ms": 0.355798,
+          "finalize_ms": 0.003042,
+          "result_rows": 17,
+          "process_peak_bytes": 29933568
+        },
+        {
+          "mode": "group",
+          "rows": 1000000,
+          "partitions": 1,
+          "cardinality": 17,
+          "local_ms": 26.3153,
+          "merge_ms": 0.323922,
+          "finalize_ms": 0.002542,
+          "result_rows": 17,
+          "process_peak_bytes": 29884416
+        },
+        {
+          "mode": "group",
+          "rows": 1000000,
+          "partitions": 1,
+          "cardinality": 17,
+          "local_ms": 25.2963,
+          "merge_ms": 0.318207,
+          "finalize_ms": 0.002583,
+          "result_rows": 17,
+          "process_peak_bytes": 29851648
+        },
+        {
+          "mode": "group",
+          "rows": 1000000,
+          "partitions": 1,
+          "cardinality": 17,
+          "local_ms": 25.8916,
+          "merge_ms": 0.319454,
+          "finalize_ms": 0.002875,
+          "result_rows": 17,
+          "process_peak_bytes": 29933568
+        },
+        {
+          "mode": "group",
+          "rows": 1000000,
+          "partitions": 1,
+          "cardinality": 17,
+          "local_ms": 27.3866,
+          "merge_ms": 0.327874,
+          "finalize_ms": 0.003,
+          "result_rows": 17,
+          "process_peak_bytes": 29966336
+        }
+      ]
+    },
+    {
+      "cardinality": 17,
+      "partitions": 4,
+      "samples": [
+        {
+          "mode": "group",
+          "rows": 1000000,
+          "partitions": 4,
+          "cardinality": 17,
+          "local_ms": 28.7024,
+          "merge_ms": 0.465915,
+          "finalize_ms": 0.026875,
+          "result_rows": 17,
+          "process_peak_bytes": 29999104
+        },
+        {
+          "mode": "group",
+          "rows": 1000000,
+          "partitions": 4,
+          "cardinality": 17,
+          "local_ms": 25.8096,
+          "merge_ms": 0.369461,
+          "finalize_ms": 0.015125,
+          "result_rows": 17,
+          "process_peak_bytes": 29966336
+        },
+        {
+          "mode": "group",
+          "rows": 1000000,
+          "partitions": 4,
+          "cardinality": 17,
+          "local_ms": 26.4443,
+          "merge_ms": 0.373669,
+          "finalize_ms": 0.013167,
+          "result_rows": 17,
+          "process_peak_bytes": 29949952
+        },
+        {
+          "mode": "group",
+          "rows": 1000000,
+          "partitions": 4,
+          "cardinality": 17,
+          "local_ms": 26.2273,
+          "merge_ms": 0.366778,
+          "finalize_ms": 0.012708,
+          "result_rows": 17,
+          "process_peak_bytes": 29851648
+        },
+        {
+          "mode": "group",
+          "rows": 1000000,
+          "partitions": 4,
+          "cardinality": 17,
+          "local_ms": 26.5502,
+          "merge_ms": 0.365176,
+          "finalize_ms": 0.012958,
+          "result_rows": 17,
+          "process_peak_bytes": 29982720
+        }
+      ]
+    },
+    {
+      "cardinality": 1000000,
+      "partitions": 1,
+      "samples": [
+        {
+          "mode": "group",
+          "rows": 1000000,
+          "partitions": 1,
+          "cardinality": 1000000,
+          "local_ms": 15.7152,
+          "merge_ms": 158.493,
+          "finalize_ms": 6.24925,
+          "result_rows": 1000000,
+          "process_peak_bytes": 170393600
+        },
+        {
+          "mode": "group",
+          "rows": 1000000,
+          "partitions": 1,
+          "cardinality": 1000000,
+          "local_ms": 14.8748,
+          "merge_ms": 148.655,
+          "finalize_ms": 7.09337,
+          "result_rows": 1000000,
+          "process_peak_bytes": 166854656
+        },
+        {
+          "mode": "group",
+          "rows": 1000000,
+          "partitions": 1,
+          "cardinality": 1000000,
+          "local_ms": 14.9836,
+          "merge_ms": 146.814,
+          "finalize_ms": 5.76871,
+          "result_rows": 1000000,
+          "process_peak_bytes": 176357376
+        },
+        {
+          "mode": "group",
+          "rows": 1000000,
+          "partitions": 1,
+          "cardinality": 1000000,
+          "local_ms": 15.4803,
+          "merge_ms": 149.221,
+          "finalize_ms": 6.4755,
+          "result_rows": 1000000,
+          "process_peak_bytes": 176734208
+        },
+        {
+          "mode": "group",
+          "rows": 1000000,
+          "partitions": 1,
+          "cardinality": 1000000,
+          "local_ms": 14.7356,
+          "merge_ms": 144.24,
+          "finalize_ms": 5.88754,
+          "result_rows": 1000000,
+          "process_peak_bytes": 172867584
+        }
+      ]
+    },
+    {
+      "cardinality": 1000000,
+      "partitions": 4,
+      "samples": [
+        {
+          "mode": "group",
+          "rows": 1000000,
+          "partitions": 4,
+          "cardinality": 1000000,
+          "local_ms": 15.1061,
+          "merge_ms": 141.005,
+          "finalize_ms": 23.1438,
+          "result_rows": 1000000,
+          "process_peak_bytes": 170934272
+        },
+        {
+          "mode": "group",
+          "rows": 1000000,
+          "partitions": 4,
+          "cardinality": 1000000,
+          "local_ms": 14.9876,
+          "merge_ms": 138.545,
+          "finalize_ms": 22.7197,
+          "result_rows": 1000000,
+          "process_peak_bytes": 165707776
+        },
+        {
+          "mode": "group",
+          "rows": 1000000,
+          "partitions": 4,
+          "cardinality": 1000000,
+          "local_ms": 15.1216,
+          "merge_ms": 137.84,
+          "finalize_ms": 23.0575,
+          "result_rows": 1000000,
+          "process_peak_bytes": 153124864
+        },
+        {
+          "mode": "group",
+          "rows": 1000000,
+          "partitions": 4,
+          "cardinality": 1000000,
+          "local_ms": 14.8299,
+          "merge_ms": 136.825,
+          "finalize_ms": 22.7725,
+          "result_rows": 1000000,
+          "process_peak_bytes": 169394176
+        },
+        {
+          "mode": "group",
+          "rows": 1000000,
+          "partitions": 4,
+          "cardinality": 1000000,
+          "local_ms": 14.7674,
+          "merge_ms": 136.713,
+          "finalize_ms": 23.2081,
+          "result_rows": 1000000,
+          "process_peak_bytes": 173490176
+        }
+      ]
+    }
+  ]
+}
