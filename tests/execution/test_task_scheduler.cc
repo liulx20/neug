@@ -616,6 +616,11 @@ struct IncrementalBuildObservation {
   bool release = false;
   bool blocked = false;
   bool second_partitioned = false;
+  bool parallel_finalize = false;
+  bool release_finalizers = false;
+  int finalize_failure = 0;
+  size_t finalizers_entered = 0;
+  size_t finalizers_exited = 0;
   bool fail = false;
   bool finalized = false;
   bool probed = false;
@@ -667,7 +672,34 @@ class ObservedBuildState final : public BuildProbeState {
     }
     return Status::OK();
   }
+  size_t FinalizePartitions() const override {
+    return observation_.parallel_finalize ? 2 : 0;
+  }
+  Status FinalizePartition(size_t part) override {
+    std::unique_lock<std::mutex> lock(observation_.mutex);
+    EXPECT_EQ(observation_.built[0].size(), 19);
+    EXPECT_EQ(observation_.built[1].size(), 19);
+    ++observation_.finalizers_entered;
+    observation_.ready.notify_all();
+    if (part == 0) {
+      EXPECT_TRUE(observation_.ready.wait_for(
+          lock, std::chrono::seconds(5),
+          [&] { return observation_.release_finalizers; }));
+    }
+    ++observation_.finalizers_exited;
+    observation_.ready.notify_all();
+    if (part == 1 && observation_.finalize_failure == 1) {
+      return Status::InternalError("finalizer failed");
+    }
+    if (part == 1 && observation_.finalize_failure == 2) {
+      throw std::runtime_error("finalizer threw");
+    }
+    return Status::OK();
+  }
   Status FinalizeBuild() override {
+    if (observation_.parallel_finalize) {
+      EXPECT_EQ(observation_.finalizers_exited, 2);
+    }
     observation_.finalized = true;
     EXPECT_EQ(observation_.built[0].size(), 19);
     EXPECT_EQ(observation_.built[1].size(), 19);
@@ -756,6 +788,47 @@ TEST(TaskSchedulerTest, IncrementalBuildBoundsPendingInputAndDrainsFailure) {
     }
   }
 }
+TEST(TaskSchedulerTest, ParallelFinalizersWaitForBuildAndDrainErrors) {
+  for (int failure : {0, 1, 2}) {
+    PropertyGraph graph;
+    GraphView view(graph);
+    StorageReadInterface storage(view, 0);
+    IncrementalBuildObservation observation;
+    observation.release = true;
+    observation.parallel_finalize = true;
+    observation.finalize_failure = failure;
+    auto pipeline =
+        OneOperator(std::make_unique<ObservedBuildJoin>(observation));
+    auto reader = pipeline.ExecuteReader(storage, {}, {}, nullptr, 2);
+    auto output = std::async(std::launch::async, [&] { return reader.Next(); });
+    {
+      std::unique_lock<std::mutex> lock(observation.mutex);
+      EXPECT_TRUE(
+          observation.ready.wait_for(lock, std::chrono::seconds(5), [&] {
+            return observation.finalizers_entered == 2 &&
+                   observation.finalizers_exited == 1;
+          }));
+      EXPECT_FALSE(observation.finalized);
+      EXPECT_FALSE(observation.probed);
+    }
+    EXPECT_EQ(output.wait_for(std::chrono::milliseconds(20)),
+              std::future_status::timeout);
+    {
+      std::lock_guard<std::mutex> lock(observation.mutex);
+      observation.release_finalizers = true;
+      observation.ready.notify_all();
+    }
+    auto result = output.get();
+    EXPECT_EQ(observation.finalizers_exited, 2);
+    EXPECT_EQ(bool(result), failure == 0);
+    EXPECT_EQ(observation.finalized, failure == 0);
+    EXPECT_EQ(observation.probed, failure == 0);
+    if (failure) {
+      EXPECT_FALSE(reader.Next());
+    }
+  }
+}
+
 ContextChunk RangeChunk(int64_t begin, int64_t end) {
   ValueColumnBuilder<int64_t> values;
   for (auto i = begin; i < end; ++i) {

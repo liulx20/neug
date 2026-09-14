@@ -498,6 +498,30 @@ class GroupByState final : public PartitionState {
     }
     return Status::OK();
   }
+  size_t FinalizePartitions() const override {
+    size_t groups = 0;
+    for (const auto& partition : partitions_) {
+      groups += partition.group_count;
+    }
+    // Amortize queue overhead for small results; this is a work-granularity
+    // heuristic, not a memory limit or a different aggregation algorithm.
+    return partitions_.size() > 1 && groups >= 4096 * partitions_.size()
+               ? partitions_.size()
+               : 0;
+  }
+  Status FinalizePartition(size_t part) override {
+    auto& partition = partitions_[part];
+    ContextChunk output;
+    for (size_t key = 0; key < mappings_.size(); ++key) {
+      output.set(mappings_[key].second, partition.keys[key]->finish());
+    }
+    for (size_t i = 0; i < specs_.size(); ++i) {
+      output.set(specs_[i].output, partition.aggregates[i]->Finish());
+    }
+    output.head().reset();
+    partition.output = std::move(output);
+    return Status::OK();
+  }
   Status FinalizeBuild() override {
     bool has_groups = false;
     for (const auto& partition : partitions_) {
@@ -511,20 +535,19 @@ class GroupByState final : public PartitionState {
         aggregate->Resize(1);
       }
     }
-    for (auto& partition : partitions_) {
+    for (size_t part = 0; part < partitions_.size(); ++part) {
+      auto& partition = partitions_[part];
       // Preserve one typed empty chunk when the grouped input is empty.
       if (!partition.group_count && (has_groups || !output_.empty())) {
         continue;
       }
-      ContextChunk output;
-      for (size_t key = 0; key < mappings_.size(); ++key) {
-        output.set(mappings_[key].second, partition.keys[key]->finish());
+      if (!partition.output) {
+        auto status = FinalizePartition(part);
+        if (!status) {
+          return status;
+        }
       }
-      for (size_t i = 0; i < specs_.size(); ++i) {
-        output.set(specs_[i].output, partition.aggregates[i]->Finish());
-      }
-      output.head().reset();
-      output_.push_back(std::move(output));
+      output_.push_back(std::move(*partition.output));
     }
     partitions_.clear();
     return Status::OK();
@@ -534,6 +557,7 @@ class GroupByState final : public PartitionState {
  private:
   struct Partition {
     size_t group_count = 0;
+    std::optional<ContextChunk> output;
     flat_hash_map<std::string, size_t> groups;
     flat_hash_map<int64_t, size_t> typed_groups;
     std::optional<size_t> null_group;

@@ -75,6 +75,11 @@ class PartitionState {
   virtual std::shared_ptr<Batch> PartitionBuild(ContextChunk input) const = 0;
   virtual size_t BuildPartitions() const = 0;
   virtual Status BuildPartition(size_t partition, const Batch& batch) = 0;
+  // Called after all build jobs finish. Independent finalizers run in the
+  // executor before FinalizeBuild publishes results. Zero keeps small work
+  // inline.
+  virtual size_t FinalizePartitions() const { return 0; }
+  virtual Status FinalizePartition(size_t) { return Status::OK(); }
   virtual Status FinalizeBuild() = 0;
   virtual ChunkBatch TakeOutput() { return {}; }
 };

@@ -426,9 +426,14 @@ those positions. Empty partitions are omitted; grouped empty input retains one
 typed empty chunk, and ungrouped empty input emits one aggregate row. Output
 heads are cleared to match the collected GroupBy helper.
 
-Finalization still runs on one task after partition updates complete. It avoids
-the heap, global row-reference array, and copying keys into a merged column, but
-does not yet finalize partitions concurrently. The result consumer and downstream
+After partition updates complete, the executor asks the execution state for
+independent finalization work. For GroupBy with at least 4,096 groups per configured
+partition on average, it queues one finalizer per partition; smaller results stay
+inline to amortize scheduling overhead. This threshold is a granularity heuristic.
+Each finalizer writes only its partition's result. The publication task waits for
+all finalizers, transfers the completed chunks, and releases build state. Status
+errors and exceptions use the same failure/drain mechanism as build tasks.
+There is no heap, global row-reference array, or copying into a merged key column. The result consumer and downstream
 operators receive multiple chunks. Explicit ORDER BY remains responsible for
 sorting; LIMIT without ORDER BY can select different groups with different worker
 counts. List/FIRST and other ineligible aggregates still use their existing global

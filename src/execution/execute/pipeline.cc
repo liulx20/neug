@@ -794,6 +794,28 @@ class PartitionPipelineTask final : public PipelineTask {
       progress = true;
     }
     if (input_->done && pending_.empty()) {
+      if (!finalizers_started_) {
+        finalizers_started_ = true;
+        for (size_t part = 0; part < state_->FinalizePartitions(); ++part) {
+          auto* finalizer = execution.Add<Finalizer>(timer_);
+          finalizers_.push_back(finalizer);
+          execution.Submit(
+              *finalizer,
+              [this, finalizer, part] {
+                return finalizer->Measure(
+                    [&] { return state_->FinalizePartition(part); });
+              },
+              this);
+        }
+        if (!finalizers_.empty()) {
+          return true;
+        }
+      }
+      for (auto* finalizer : finalizers_) {
+        if (!finalizer->complete) {
+          return false;
+        }
+      }
       execution.Submit(*this, [this] {
         auto status = Timed([&] {
           auto status = state_->FinalizeBuild();
@@ -848,6 +870,14 @@ class PartitionPipelineTask final : public PipelineTask {
     OprTimer* timer;
     double elapsed = 0;
   };
+  struct Finalizer final : Work {
+    using Work::Work;
+    void Completed() override {
+      Work::Completed();
+      complete = true;
+    }
+    bool complete = false;
+  };
   struct Slot final : Work {
     using Work::Work;
     void Completed() override {
@@ -886,6 +916,8 @@ class PartitionPipelineTask final : public PipelineTask {
   std::shared_ptr<PartitionState> state_;
   std::vector<Slot*> slots_;
   std::vector<Lane*> lanes_;
+  std::vector<Finalizer*> finalizers_;
+  bool finalizers_started_ = false;
   std::deque<Slot*> pending_;
   size_t sequence_ = 0;
 };

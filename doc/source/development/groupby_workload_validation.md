@@ -281,3 +281,65 @@ primary performance evidence.
 
 Raw data: [query comparison](benchmarks/group_partition_output_1m.json),
 [phase diagnostic](benchmarks/group_partition_output_phases_1m.json).
+
+## Parallel partition finalization
+
+The executor now schedules independent partition finalizers after all build
+batches have been consumed. The execution state advertises finalization work;
+workers run it through the same queue, timing, exception capture, and failure
+handling as other partition tasks. Publication waits for every submitted
+finalizer. No threads or task submissions are added inside GroupBy.
+
+GroupBy writes each partition's result into a separate slot owned by that
+partition. FinalizeBuild transfers those slots to output chunks and releases
+build state. Smaller results call the same FinalizePartition routine inline.
+The initial granularity heuristic uses separate jobs only with multiple
+partitions and at least 4,096 groups per configured partition on average. It is
+not a tuned universal crossover or a byte-memory budget. Join and Dedup request
+no new finalization tasks and retain their current finalization behavior.
+
+A scheduler test blocks one finalizer until the other has entered, checks all
+build updates are visible, and verifies publication/probe cannot start early.
+It tests success, returned errors and thrown exceptions. Failure waits for the
+blocked submitted finalizer to exit, prevents probe/publication, and remains
+visible on subsequent Next calls. This exercises the queue's existing failure
+cancellation/drain path; already-running work is drained, not forcibly interrupted.
+The GroupBy state test covers inline and parallel finalization and verifies
+complete, unique groups in separate output chunks.
+
+Validation: 189 C++ tests, 368 embedded Python tests (28 skipped, 20 deselected),
+and all 54 concurrency-related tests in each of 20 repetitions passed. Both the
+engine and Python binding were rebuilt. No temporary timing code is included.
+
+Interleaved comparison against 9b1231c0, million rows, two fresh processes per
+point and three warm execute samples per process (median of six samples, ms):
+
+| Case | Before 1 / 4 workers | After 1 / 4 workers |
+| --- | --- | --- |
+| Unique integer + string key | 643.5 / 398.5 | 626.7 / 391.5 |
+| Two integer keys, 1,717 groups | 117.8 / 32.2 | 114.5 / 33.5 |
+| Unique short string key | 302.6 / 170.8 | 353.8 / 156.8 |
+
+All 24 result checks passed. Whole-query benefit is modest in this sample:
+about 2% for four-worker composite keys and 8% for strings. Low-cardinality
+four-worker execution is about 4% slower despite staying inline. The one-worker
+string result measured about 17% slower, prompting the focused repeat below;
+these data do not establish a universal improvement. Queue finalizers remove
+one serial phase, not partition-table update or response serialization costs.
+
+Four-worker unique-composite RSS peaks were 416.9–419.9 MiB before and
+387.6–407.6 MiB after. String peaks were 389.0–394.6 and 382.0–407.0 MiB;
+there is no general memory-reduction claim.
+
+Raw matrix: [parallel finalization](benchmarks/group_parallel_finalize_1m.json).
+
+The focused one-worker string repeat used three fresh processes per variant and
+five warm samples each. Pooled medians were 351.8 ms before and 344.3 ms after;
+process medians were 354.5/346.7/339.6 and 358.7/315.4/333.9 ms respectively.
+It did not reproduce the earlier large slowdown; it also shows substantial
+process variability. Both datasets are retained rather than selecting only the
+favorable comparison. All six independent result checks passed.
+[Focused repeat](benchmarks/group_parallel_finalize_single_worker_1m.json).
+
+This completes the bounded parallel-finalization change. Remaining grouping,
+allocation and response costs are not addressed by this commit.

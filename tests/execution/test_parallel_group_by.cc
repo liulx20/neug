@@ -300,32 +300,44 @@ TEST(ParallelGroupByTest, FloatingSumAndAverageUsePartialCounts) {
 }
 
 TEST(ParallelGroupByTest, FinalizationPublishesSeparatePartitionChunks) {
-  ops::GroupByState state({{0, 0}}, {DataType::INT64},
-                          {{AggrKind::kCount, -1, 1, DataType::INT64}}, 4);
-  ContextChunk chunk;
-  ValueColumnBuilder<int64_t> keys;
-  for (int64_t key = 31; key >= 0; --key) {
-    keys.push_back_opt(key);
-  }
-  chunk.set(0, keys.finish());
-  auto batch = state.PartitionBuild(chunk);
-  for (size_t part = 0; part < 4; ++part) {
-    ASSERT_TRUE(state.BuildPartition(part, *batch));
-  }
-  ASSERT_TRUE(state.FinalizeBuild());
-  auto output = state.TakeOutput();
-  ASSERT_EQ(output.size(), 4);
-  std::set<int64_t> seen;
-  for (const auto& part : output) {
-    EXPECT_FALSE(part.head());
-    for (size_t row = 0; row < part.row_num(); ++row) {
-      EXPECT_TRUE(
-          seen.insert(part.get(0)->get_elem(row).GetValue<int64_t>()).second);
-      EXPECT_EQ(part.get(1)->get_elem(row).GetValue<int64_t>(), 1);
+  for (size_t rows : {32, 20000}) {
+    ops::GroupByState state({{0, 0}}, {DataType::INT64},
+                            {{AggrKind::kCount, -1, 1, DataType::INT64}}, 4);
+    ContextChunk chunk;
+    ValueColumnBuilder<int64_t> keys;
+    for (int64_t key = rows - 1; key >= 0; --key) {
+      keys.push_back_opt(key);
     }
+    chunk.set(0, keys.finish());
+    auto batch = state.PartitionBuild(chunk);
+    for (size_t part = 0; part < 4; ++part) {
+      ASSERT_TRUE(state.BuildPartition(part, *batch));
+    }
+    EXPECT_EQ(state.FinalizePartitions(), rows < 16384 ? 0 : 4);
+    std::vector<std::future<Status>> finalizers;
+    for (size_t part = 0; part < state.FinalizePartitions(); ++part) {
+      finalizers.push_back(std::async(std::launch::async, [&, part] {
+        return state.FinalizePartition(part);
+      }));
+    }
+    for (auto& finalizer : finalizers) {
+      ASSERT_TRUE(finalizer.get());
+    }
+    ASSERT_TRUE(state.FinalizeBuild());
+    auto output = state.TakeOutput();
+    ASSERT_EQ(output.size(), 4);
+    std::set<int64_t> seen;
+    for (const auto& part : output) {
+      EXPECT_FALSE(part.head());
+      for (size_t row = 0; row < part.row_num(); ++row) {
+        EXPECT_TRUE(
+            seen.insert(part.get(0)->get_elem(row).GetValue<int64_t>()).second);
+        EXPECT_EQ(part.get(1)->get_elem(row).GetValue<int64_t>(), 1);
+      }
+    }
+    EXPECT_EQ(seen.size(), rows);
+    EXPECT_TRUE(state.TakeOutput().empty());
   }
-  EXPECT_EQ(seen.size(), 32);
-  EXPECT_TRUE(state.TakeOutput().empty());
 }
 
 TEST(ParallelGroupByTest, NativeCompositeEncodingMatchesGenericValues) {
