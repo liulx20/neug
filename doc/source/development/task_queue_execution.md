@@ -254,8 +254,8 @@ preserves each range's row mapping and duplicate edges. No operator creates its
 own threads. A high-degree vertex is still processed within one input range;
 this is not parallel traversal of a single adjacency list.
 
-Dedicated shortest-path operators, Intersect and the global ExpandCount fusion
-remain outside this chunk-local graph expansion coverage. Ordinary GetV and the seven EdgeExpand variants in
+Dedicated shortest-path operators and the global ExpandCount fusion remain
+outside this chunk-local graph expansion coverage. Ordinary GetV and the seven EdgeExpand variants in
 `edge.cc` are enabled; write parallelism is not broadened.
 
 `PathExpandVOpr`, `PathExpandOpr`, and `PathExpandOprWithPred` also use the
@@ -281,6 +281,24 @@ orders. The final build passes 190 C++ tests and 382 selected Python tests,
 including the existing path suite (34 skipped, 20 deselected). The 47 result-reader,
 scheduler and morsel tests pass 20 repetitions. Dedicated shortest-path operators
 are not enabled by this change, and no path-workload speedup is claimed.
+
+`IntersectOprMultip`, `IntersectWithEdgeOpr` and `TCOpr` also declare chunk-local
+behavior. Intersect builds intersection sets per input row and binds predicates
+per invocation. The TC fusion enumerates matching neighbor pairs for each root;
+its neighbor set, builders and offsets are local. It does not update a shared
+triangle counter. Its optimized LT/GT loops now advance the source-row offset
+when a root has no qualifying neighbors, preventing subsequent matches from
+being attached to an earlier input row.
+
+The triangle integration test checks 1/2/4 workers against independently generated
+rows, including edge properties, and PROFILE confirms both Intersect operators.
+The filtered triangle queries currently retain an unfused plan, so a C++ test
+constructs the actual TCOpr directly. It verifies the optimized storage branch,
+both LT/GT predicates, and correct input-row mapping for 6,000 repeated roots
+with empty roots preceding matches at 1/2/4 workers. The rebuilt engine passes
+191 C++ tests and 385 selected Python tests (34 skipped, 20 deselected); the 48
+result-reader, scheduler and morsel tests pass 20 repetitions. These checks cover
+correctness; they do not establish a triangle-workload speedup.
 
 The graph integration test uses 5,003 vertices, parallel edges and isolated
 vertices, and checks 1/2/4 workers against independently generated expected rows.

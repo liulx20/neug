@@ -29,6 +29,10 @@ namespace ops {
 
 class IntersectOprMultip : public IOperator {
  public:
+  PipelineBehavior pipeline_behavior() const override {
+    return PipelineBehavior::kChunkLocal;
+  }
+
   IntersectOprMultip(const std::vector<EdgeExpandParams>& eeps,
                      std::vector<std::unique_ptr<ExprBase>>&& vertex_preds,
                      std::vector<std::unique_ptr<ExprBase>>&& edge_preds,
@@ -79,6 +83,10 @@ class IntersectOprMultip : public IOperator {
 
 class IntersectWithEdgeOpr : public IOperator {
  public:
+  PipelineBehavior pipeline_behavior() const override {
+    return PipelineBehavior::kChunkLocal;
+  }
+
   IntersectWithEdgeOpr(const std::vector<EdgeExpandParams>& eeps, int v_alias,
                        std::vector<std::unique_ptr<ExprBase>>&& vertex_preds,
                        std::vector<std::unique_ptr<ExprBase>>&& edge_preds,

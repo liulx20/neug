@@ -14,20 +14,31 @@
  */
 #include <google/protobuf/arena.h>
 #include <gtest/gtest.h>
+#include <set>
 
 #include "neug/common/columns/array_columns.h"
 #include "neug/common/columns/list_columns.h"
 #include "neug/common/columns/path_columns.h"
 #include "neug/common/columns/value_columns.h"
+#include "neug/execution/common/operators/retrieve/edge_expand.h"
 #include "neug/execution/common/operators/retrieve/sink.h"
 #include "neug/execution/execute/ops/batch/batch_update_utils.h"
 #include "neug/execution/execute/ops/retrieve/limit.h"
 #include "neug/execution/execute/ops/retrieve/sink.h"
 #include "neug/execution/execute/pipeline.h"
+#include "neug/main/connection.h"
+#include "neug/main/neug_db.h"
 #include "neug/storages/graph/property_graph.h"
 #include "query_test_utils.h"
 
 namespace neug::execution {
+namespace ops {
+std::unique_ptr<IOperator> make_tc_opr(
+    const physical::EdgeExpand&, const physical::EdgeExpand&,
+    const physical::EdgeExpand&, const LabelTriplet&, const LabelTriplet&,
+    const LabelTriplet&, const std::array<DataTypeId, 3>&, int, int);
+}
+
 namespace {
 
 DataChunk chunk(int64_t value, int alias = 0) {
@@ -36,6 +47,92 @@ DataChunk chunk(int64_t value, int alias = 0) {
   DataChunk out;
   out.set(alias, builder.finish());
   return out;
+}
+
+TEST(QueryResultTest, TriangleFusionPreservesSkippedRootOffsetsAcrossWorkers) {
+  NeugDB db;
+  ASSERT_TRUE(db.Open("", 4));
+  auto conn = db.Connect();
+  ASSERT_TRUE(conn->Query("CREATE NODE TABLE V(id INT64, PRIMARY KEY(id))"));
+  ASSERT_TRUE(conn->Query("CREATE REL TABLE E(FROM V TO V, weight INT64)"));
+  ASSERT_TRUE(
+      conn->Query("CREATE (:V {id:0}), (:V {id:1}), (:V {id:2}), (:V {id:3})"));
+  for (const auto& query : {"MATCH (a:V),(b:V) WHERE a.id=1 AND b.id=3 CREATE "
+                            "(a)-[:E {weight:2}]->(b)",
+                            "MATCH (a:V),(b:V) WHERE a.id=1 AND b.id=2 CREATE "
+                            "(a)-[:E {weight:4}]->(b)",
+                            "MATCH (a:V),(b:V) WHERE a.id=2 AND b.id=3 CREATE "
+                            "(a)-[:E {weight:0}]->(b)"}) {
+    ASSERT_TRUE(conn->Query(query));
+  }
+  // The fixture is no longer mutated; GraphView's API takes a mutable
+  // reference.
+  GraphView view(const_cast<PropertyGraph&>(db.graph()));
+  StorageReadInterface storage(view, std::numeric_limits<timestamp_t>::max());
+  auto label = db.schema().get_vertex_label_id("V");
+  auto edge = db.schema().get_edge_label_id("E");
+  EXPECT_EQ(storage.GetGenericOutgoingGraphView(label, label, edge).type(),
+            CsrViewType::kMultipleMutable);
+  EXPECT_TRUE(storage.GetEdgeDataAccessor(label, label, edge, 0).is_bundled());
+  std::vector<vid_t> ids;
+  for (int64_t id = 0; id < 4; ++id) {
+    vid_t lid;
+    ASSERT_TRUE(db.graph().get_lid(label, Value::INT64(id), lid,
+                                   std::numeric_limits<timestamp_t>::max()));
+    ids.push_back(lid);
+  }
+  for (bool less : {false, true}) {
+    for (size_t workers : {1, 2, 4}) {
+      physical::EdgeExpand edge0, edge1, edge2;
+      for (auto* op : {&edge0, &edge1, &edge2}) {
+        op->set_direction(physical::EdgeExpand_Direction_OUT);
+      }
+      edge0.mutable_v_tag()->set_value(0);
+      auto* predicate = edge0.mutable_params()->mutable_predicate();
+      predicate->add_operators()->mutable_var();
+      predicate->add_operators()->set_logical(less ? ::common::Logical::LT
+                                                   : ::common::Logical::GT);
+      predicate->add_operators()->mutable_param()->set_name("threshold");
+      auto op = ops::make_tc_opr(
+          edge0, edge1, edge2, {label, label, edge}, {label, label, edge},
+          {label, label, edge},
+          {DataTypeId::kInt64, DataTypeId::kInt64, DataTypeId::kInt64}, 1, 2);
+      ASSERT_TRUE(op);
+      EXPECT_EQ(op->pipeline_behavior(), PipelineBehavior::kChunkLocal);
+      std::vector<std::unique_ptr<IOperator>> operators;
+      operators.push_back(std::move(op));
+      Pipeline pipeline(std::move(operators));
+      MSVertexColumnBuilder roots(label);
+      ValueColumnBuilder<int64_t> ordinals;
+      for (size_t row = 0; row < 6000; ++row) {
+        roots.push_back_opt(ids[row % 4]);
+        ordinals.push_back_opt(row);
+      }
+      ContextChunk chunk;
+      chunk.set(0, roots.finish());
+      chunk.set(9, ordinals.finish());
+      Context input;
+      input.append_chunk(std::move(chunk));
+      auto result = collect_chunk(pipeline.ExecuteReader(
+          storage, std::move(input),
+          {{"threshold", Value::INT64(less ? 3 : 1)}}, nullptr, workers));
+      ASSERT_TRUE(result);
+      ASSERT_EQ(result->row_num(), 1500);
+      std::set<int64_t> rows;
+      for (size_t row = 0; row < result->row_num(); ++row) {
+        auto ordinal = result->get(9)->get_elem(row).GetValue<int64_t>();
+        EXPECT_EQ(ordinal % 4, 1);
+        EXPECT_TRUE(rows.insert(ordinal).second);
+        for (int alias : {0, 1, 2}) {
+          auto col =
+              std::dynamic_pointer_cast<IVertexColumn>(result->get(alias));
+          EXPECT_EQ(col->get_vertex(row).vid_, ids[alias + 1]);
+        }
+      }
+    }
+  }
+  conn->Close();
+  db.Close();
 }
 
 TEST(QueryResultTest, PathColumnConcatenationPreservesNullAndZeroHopPaths) {

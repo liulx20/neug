@@ -285,6 +285,7 @@ class EdgeExpand {
           typed_csr0.foreach_nbr_lt(
               v, param, [&](vid_t u, const T1& data) { d0_set.emplace(u); });
           if (d0_set.empty()) {
+            ++idx;
             continue;
           }
           auto es1 = csr1.get_edges(v);
@@ -298,6 +299,7 @@ class EdgeExpand {
           typed_csr0.foreach_nbr_gt(
               v, param, [&](vid_t u, const T1& data) { d0_set.emplace(u); });
           if (d0_set.empty()) {
+            ++idx;
             continue;
           }
           auto es1 = csr1.get_edges(v);

@@ -264,3 +264,73 @@ def test_parallel_path_expansion(parallel_conn, tmp_path, workers):
             op["operator_name"] for op in result.get_profile_metrics()["operators"]
         }
         assert ("PathExpandOprWithPred" if filtered else "PathExpandOpr") in names
+
+
+@pytest.mark.parametrize("workers", [1, 2, 4])
+def test_parallel_intersect_and_triangle(parallel_conn, tmp_path, workers):
+    conn = parallel_conn
+    edges = []
+    for base in range(0, 4800, 4):
+        # An empty root precedes each triangle, exposing skipped-row offsets.
+        weight = 2 if base % 8 == 0 else 0
+        edges.extend(
+            [
+                (base + 1, base + 3, weight),
+                (base + 1, base + 2, 2 - weight),
+                (base + 2, base + 3, 0),
+            ]
+        )
+    path = tmp_path / "triangle.csv"
+    path.write_text("src|dst|weight\n" + "".join(f"{a}|{b}|{w}\n" for a, b, w in edges))
+    conn.execute(
+        "CREATE REL TABLE tri(FROM parallel_item TO parallel_item, weight INT64)"
+    )
+    conn.execute(f'COPY tri FROM "{path}"')
+    adjacency = {}
+    for src, dst, weight in edges:
+        adjacency.setdefault(src, []).append((dst, weight))
+    triangles = [
+        (a, b, c, wab, wac, wbc)
+        for a in adjacency
+        for b, wab in adjacency[a]
+        for c, wac in adjacency[a]
+        for end, wbc in adjacency.get(b, [])
+        if end == c
+    ]
+    queries = [
+        (
+            "MATCH (a:parallel_item)-[:tri]->(b:parallel_item), "
+            "(a)-[:tri]->(c:parallel_item), (b)-[:tri]->(c) RETURN a.id, b.id, c.id",
+            [row[:3] for row in triangles],
+        ),
+        (
+            "MATCH (a:parallel_item)-[ab:tri]->(b:parallel_item), "
+            "(a)-[ac:tri]->(c:parallel_item), (b)-[bc:tri]->(c) "
+            "RETURN a.id, b.id, c.id, ab.weight, ac.weight, bc.weight",
+            triangles,
+        ),
+    ]
+    names = set()
+    for query, expected in queries:
+        result = conn.execute("PROFILE " + query, num_threads=workers)
+        assert sorted(map(tuple, result)) == sorted(expected)
+        names.update(
+            op["operator_name"] for op in result.get_profile_metrics()["operators"]
+        )
+    assert {"IntersectOprMultip", "IntersectWithEdgeOpr"} <= names, names
+    # TC fusion is checked directly in the C++ scheduler test; these queries
+    # may retain the unfused plan after compiler optimization.
+    for compare in [">", "<"]:
+        query = (
+            f"MATCH (a:parallel_item)-[e:tri]->(n:parallel_item) WHERE e.weight {compare} 1 "
+            "WITH a, collect(DISTINCT n) AS nbrs "
+            "MATCH (a)-[:tri]->(b:parallel_item)-[:tri]->(c:parallel_item) "
+            "WHERE c IN nbrs RETURN a.id, b.id, c.id"
+        )
+        result = conn.execute("PROFILE " + query, num_threads=workers)
+        expected = [
+            row[:3]
+            for row in triangles
+            if (row[4] > 1 if compare == ">" else row[4] < 1)
+        ]
+        assert sorted(map(tuple, result)) == sorted(expected)

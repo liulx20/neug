@@ -32,6 +32,10 @@ namespace ops {
 template <typename T1>
 class TCOpr : public IOperator {
  public:
+  PipelineBehavior pipeline_behavior() const override {
+    return PipelineBehavior::kChunkLocal;
+  }
+
   TCOpr(const physical::EdgeExpand& ee_opr0,
         const physical::EdgeExpand& ee_opr1,
         const physical::EdgeExpand& ee_opr2, const LabelTriplet& label0,
