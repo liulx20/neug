@@ -15,6 +15,7 @@
 #include <gtest/gtest.h>
 #include <future>
 #include <limits>
+#include <set>
 #include "../../src/execution/execute/ops/retrieve/group_by_state.h"
 #include "neug/common/columns/value_columns.h"
 #include "neug/execution/execute/ops/retrieve/group_by.h"
@@ -105,7 +106,32 @@ std::unique_ptr<IOperator> MakeGroup(const physical::GroupBy& definition,
   return built ? std::move(built->first) : nullptr;
 }
 
-void Equal(const ContextChunk& actual, const ContextChunk& expected) {
+void Equal(ContextChunk actual, ContextChunk expected,
+           const std::vector<std::pair<int, int>>& mappings) {
+  // Group rows are unordered. Match by the complete grouping key, while
+  // preserving aggregate values (including ordered list contents) unchanged.
+  auto canonical = [&](ContextChunk chunk) {
+    std::vector<std::pair<std::string, size_t>> keys;
+    for (size_t row = 0; row < chunk.row_num(); ++row) {
+      vector_t<char> bytes;
+      Encoder encoder(bytes);
+      for (auto [source, dest] : mappings) {
+        auto value = chunk.get(dest)->get_elem(row);
+        encoder.put_byte(value.IsNull());
+        encode_value(value, encoder);
+      }
+      keys.emplace_back(std::string(bytes.begin(), bytes.end()), row);
+    }
+    std::sort(keys.begin(), keys.end());
+    sel_vec_t selection;
+    for (const auto& key : keys) {
+      selection.push_back(key.second);
+    }
+    chunk.reshuffle(selection);
+    return chunk;
+  };
+  actual = canonical(std::move(actual));
+  expected = canonical(std::move(expected));
   ASSERT_EQ(actual.row_num(), expected.row_num());
   ASSERT_EQ(actual.col_num(), expected.col_num());
   EXPECT_EQ(bool(actual.head()), bool(expected.head()));
@@ -168,7 +194,7 @@ void Check(ChunkBatch input, const physical::GroupBy& definition,
     auto result = collect_chunk(pipeline.ExecuteReader(
         storage, context_from_batches(input), {}, nullptr, workers));
     ASSERT_TRUE(result) << result.error().ToString();
-    Equal(*result, *expected);
+    Equal(*result, *expected, mappings);
   }
   if (parallel) {
     std::vector<DataType> key_types;
@@ -202,8 +228,13 @@ void Check(ChunkBatch input, const physical::GroupBy& definition,
         }
         ASSERT_TRUE(state.FinalizeBuild());
         auto output = state.TakeOutput();
-        ASSERT_EQ(output.size(), 1);
-        Equal(output[0], *expected);
+        ChunkAccumulator collected;
+        for (auto& chunk : output) {
+          collected.Add(std::move(chunk));
+        }
+        auto result = collected.Finish();
+        ASSERT_TRUE(result);
+        Equal(*result, *expected, mappings);
       }
     }
   }
@@ -266,6 +297,35 @@ TEST(ParallelGroupByTest, FloatingSumAndAverageUsePartialCounts) {
   Check(input, Definition(true, {Kind::SUM, Kind::AVG, Kind::COUNT}));
   Check(input, Definition(false, {Kind::SUM, Kind::AVG, Kind::COUNT}));
   Check(input, Definition(true, {Kind::MIN, Kind::MAX}), false);
+}
+
+TEST(ParallelGroupByTest, FinalizationPublishesSeparatePartitionChunks) {
+  ops::GroupByState state({{0, 0}}, {DataType::INT64},
+                          {{AggrKind::kCount, -1, 1, DataType::INT64}}, 4);
+  ContextChunk chunk;
+  ValueColumnBuilder<int64_t> keys;
+  for (int64_t key = 31; key >= 0; --key) {
+    keys.push_back_opt(key);
+  }
+  chunk.set(0, keys.finish());
+  auto batch = state.PartitionBuild(chunk);
+  for (size_t part = 0; part < 4; ++part) {
+    ASSERT_TRUE(state.BuildPartition(part, *batch));
+  }
+  ASSERT_TRUE(state.FinalizeBuild());
+  auto output = state.TakeOutput();
+  ASSERT_EQ(output.size(), 4);
+  std::set<int64_t> seen;
+  for (const auto& part : output) {
+    EXPECT_FALSE(part.head());
+    for (size_t row = 0; row < part.row_num(); ++row) {
+      EXPECT_TRUE(
+          seen.insert(part.get(0)->get_elem(row).GetValue<int64_t>()).second);
+      EXPECT_EQ(part.get(1)->get_elem(row).GetValue<int64_t>(), 1);
+    }
+  }
+  EXPECT_EQ(seen.size(), 32);
+  EXPECT_TRUE(state.TakeOutput().empty());
 }
 
 TEST(ParallelGroupByTest, NativeCompositeEncodingMatchesGenericValues) {
@@ -397,7 +457,12 @@ TEST(ParallelGroupByTest, AdaptiveBatchesSwitchBothWaysWithoutChangingGroups) {
   EXPECT_GT(partial_count, 0);
   ASSERT_TRUE(state->FinalizeBuild());
   auto output = state->TakeOutput();
-  ASSERT_EQ(output.size(), 1);
+  ChunkAccumulator collected;
+  for (auto& chunk : output) {
+    collected.Add(std::move(chunk));
+  }
+  auto result = collected.Finish();
+  ASSERT_TRUE(result);
   auto input = all.Finish();
   PropertyGraph graph;
   GraphView view(graph);
@@ -413,7 +478,7 @@ TEST(ParallelGroupByTest, AdaptiveBatchesSwitchBothWaysWithoutChangingGroups) {
   auto expected =
       GroupBy::group_by(std::move(*input), std::move(key), std::move(reducers));
   ASSERT_TRUE(expected);
-  Equal(output[0], *expected);
+  Equal(*result, *expected, mappings);
 }
 
 TEST(ParallelGroupByTest, NativeIntegerKeysPreserveNullAndExtremeIdentity) {

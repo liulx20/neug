@@ -105,14 +105,14 @@ def test_group_by_preserves_null_keys(empty_db):
         "OPTIONAL MATCH (source)-[:links]->(target:target) "
         "RETURN target.group_id, COUNT(*);"
     )
-    assert list(result) == [[0, 1], [None, 2]]
+    assert sorted(result, key=lambda row: row[0] is None) == [[0, 1], [None, 2]]
 
     result = conn.execute(
         "MATCH (source:source) "
         "OPTIONAL MATCH (source)-[:links]->(target:target) "
         "RETURN target.id, source.bucket, COUNT(*);"
     )
-    assert list(result) == [[-1, 7, 1], [None, 7, 2]]
+    assert sorted(result, key=lambda row: row[0] is None) == [[-1, 7, 1], [None, 7, 2]]
 
 
 def test_aggregate_over_empty_input(empty_db):
@@ -960,7 +960,7 @@ def test_aggregate_dependent_key_2(tinysnb):
     )
 
     records = list(result)
-    assert records == [[5, 20, 3], [7, 20, 2]]
+    assert sorted(records) == [[5, 20, 3], [7, 20, 2]]
 
 
 def test_list_extract_function(modern_graph):

@@ -29,6 +29,8 @@ def test_cached_plan_across_worker_counts(parallel_conn, workers):
         "MATCH (a:parallel_item), (b:parallel_item) WHERE a.grp = b.grp AND b.id < 17 "
         "RETURN a.id, b.id ORDER BY a.id",
         "MATCH (n:parallel_item) RETURN n.grp, sum(n.id) ORDER BY n.grp",
+        "MATCH (n:parallel_item) RETURN n.grp, sum(n.id) AS total "
+        "ORDER BY total DESC, n.grp SKIP 2 LIMIT 5",
         "MATCH (n:parallel_item) RETURN n.id ORDER BY n.id SKIP 4090 LIMIT 25",
     ]
     for query in queries:

@@ -221,3 +221,63 @@ Follow-up validation: final C++/Python binding build passed; 187 C++ tests and
 368 selected embedded Python tests passed (28 skipped, 20 deselected). All 52
 concurrency-related tests passed in each of 20 repetitions. Changed C++ files
 pass clang-format 10 and whitespace checks.
+
+## Partition-local GroupBy result chunks
+
+GroupBy no longer preserves global first-occurrence order of group rows. Each
+partition finishes its own key and aggregate columns and publishes a separate
+chunk; empty partitions are omitted. Grouped empty input still produces a typed
+empty result, and ungrouped aggregation still produces its single empty-input
+row. Detecting that case checks all partitions because the empty grouping key
+need not hash to partition zero.
+
+Removed state includes the per-group batch/row positions, per-partition sequence
+counter, heap merge, global row-reference array, and cross-partition aggregate
+output gathering. Group IDs now use a count. The producer still finalizes on one
+task after all updates complete; this change does not add parallel finalization.
+It also leaves Dedup and the global kernels for collect/FIRST/DISTINCT aggregates
+unchanged.
+
+Explicit ORDER BY controls result order. Without it, group row order and which
+groups LIMIT selects can differ across worker counts. The ordering of elements
+inside an aggregate is a separate property and is not relaxed here.
+
+Tests compare group rows using their complete grouping keys, retaining NULL,
+numeric tolerance, and aggregate-content checks. Two Python assertions that
+assumed order without ORDER BY now compare unordered rows. A direct state test
+verifies four populated partitions return four result chunks, each group appears
+once, and TakeOutput transfers ownership once. The per-worker query test also
+checks aggregation followed by ORDER BY, SKIP and LIMIT.
+
+Validation: 188 C++ tests and 368 selected embedded Python tests passed (28 skipped,
+20 deselected). All 53 concurrency-related tests passed in each of 20 repetitions.
+The engine, C++ test binary, Python binding, and diagnostic binary were rebuilt.
+
+Interleaved million-row comparison against d9a1650c (two fresh processes per
+point, three warm execute samples each), with all 24 independent result checks
+passing. Milliseconds below are medians of the six samples:
+
+| Case | Before 1 / 4 workers | After 1 / 4 workers |
+| --- | --- | --- |
+| Unique integer + string key | 609.7 / 479.7 | 556.8 / 387.2 |
+| Two integer keys, 1,717 groups | 118.5 / 33.5 | 112.6 / 33.1 |
+| Unique short string key | 341.4 / 212.9 | 355.1 / 164.3 |
+
+The high-cardinality four-worker cases improve about 19% and 23% in this run.
+Low-cardinality four-worker execution changes little; single-worker unique-string
+execution is about 4% slower in this sample. Timings vary between processes, so
+compare the interleaved variants here rather than treating earlier report values
+as a fixed baseline. Finalization remains serial and is not the only cost.
+
+Four-worker peak RSS ranges are 450.7–461.2 to 363.9–407.6 MiB for unique composite
+keys, and 415.2–444.8 to 303.7–394.3 MiB for unique string keys. Low-cardinality
+peaks instead rise from 155.2–166.1 to 175.3–182.2 MiB. RSS includes the whole
+process and two samples do not establish a universal memory improvement.
+
+The serial state diagnostic reports finalization medians of 133.2 ms for one
+partition and 90.3 ms for four partitions after this change. These runs were not
+interleaved with the prior phase diagnostic, so the query comparison is the
+primary performance evidence.
+
+Raw data: [query comparison](benchmarks/group_partition_output_1m.json),
+[phase diagnostic](benchmarks/group_partition_output_phases_1m.json).

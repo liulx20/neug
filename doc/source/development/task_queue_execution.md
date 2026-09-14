@@ -409,8 +409,8 @@ keys retain the existing encoded-key equivalence and fixed null bitmap.
 
 Strategy hints are execution-owned relaxed atomics. Concurrent local batches
 can update the hint in completion order, so task timing can affect which mode a
-later batch uses. The partition lanes still process batches in input order and
-preserve group first appearance. Floating SUM/AVG association can also vary
+later batch uses. The partition lanes still process batches in input order, but GroupBy output
+rows have no implicit ordering guarantee. Floating SUM/AVG association can also vary
 with mode selection; bitwise reproducibility is not promised.
 
 COUNT stores a non-null count (COUNT(*) counts every row). SUM retains the input
@@ -420,17 +420,21 @@ been observed. A group containing only NULL has COUNT/SUM = 0 and MIN/MAX/AVG =
 NULL, matching the existing helper. Ungrouped empty input returns one row even
 when upstream produces EOF without a chunk; grouped empty input returns no rows.
 
-Each partition records a group's first batch and row position. Finalization
-merges these already ordered sequences with a heap instead of sorting all groups
-again. The merge produces partition/row references, and aggregate columns read
-state directly in that order. Key columns are gathered from the partition key
-columns. This avoids generating partial aggregate result columns, concatenating
-them and reshuffling the concatenation. A single partition already has final
-order and bypasses the heap and row-reference array entirely. The output head
-is cleared to match the collected GroupBy helper.
-This final phase is still serial, and all groups must be merged before any
-output is published. The scheduler, demand, cancellation and profiling mechanisms
-are shared with Join and Dedup; no worker recursively reads another operator.
+Each partition finalizes its own key and aggregate columns into a result chunk.
+GroupBy does not record first-appearance positions or globally merge groups by
+those positions. Empty partitions are omitted; grouped empty input retains one
+typed empty chunk, and ungrouped empty input emits one aggregate row. Output
+heads are cleared to match the collected GroupBy helper.
+
+Finalization still runs on one task after partition updates complete. It avoids
+the heap, global row-reference array, and copying keys into a merged column, but
+does not yet finalize partitions concurrently. The result consumer and downstream
+operators receive multiple chunks. Explicit ORDER BY remains responsible for
+sorting; LIMIT without ORDER BY can select different groups with different worker
+counts. List/FIRST and other ineligible aggregates still use their existing global
+kernel; the ordering of aggregate contents is not changed by this optimization.
+The scheduler, demand, cancellation and profiling mechanisms remain shared with
+Join and Dedup; no worker recursively reads another operator.
 
 The current eligibility rules are:
 
@@ -566,12 +570,11 @@ partition scheduler remains covered by the existing build ordering/error tests.
 
 `ParallelGroupByTest.*` compares grouped/ungrouped results at 1/2/4 workers with
 the collected helper, covering nullable and composite keys, string extrema,
-INT32 result width, empty/all-null groups, partial AVG counts and preserved
-group order. Additional tests cover no-batch EOF, fixed-width overflow across
+INT32 result width, empty/all-null groups, partial AVG counts and grouping-key-based result equality. Additional tests cover no-batch EOF, fixed-width overflow across
 concurrently built partials and unchanged global handling of DISTINCT/list and
 floating MIN/MAX. Eligible cases also compare forced raw, forced partial and
 adaptive modes at 1/2/4 partitions with concurrent bucket consumption. A changing
 70-batch distribution exercises both mode transitions, NULL identity, AVG counts,
-output head and first-occurrence order. Native key tests distinguish NULL, zero,
+output head and complete group membership. Native key tests distinguish NULL, zero,
 negative values and both INT32/INT64 extrema across batches. Floating comparisons use tolerance, not
 bitwise identity.

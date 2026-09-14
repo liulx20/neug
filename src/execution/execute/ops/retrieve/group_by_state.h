@@ -17,8 +17,6 @@
 
 #include <atomic>
 #include <bit>
-#include <queue>
-#include <tuple>
 #include "neug/common/columns/columns_utils.h"
 #include "neug/common/columns/value_columns.h"
 #include "neug/execution/execute/operator.h"
@@ -43,9 +41,6 @@ class AggregateColumn {
   virtual void Merge(const AggregateColumn& input, size_t source,
                      size_t dest) = 0;
   virtual std::shared_ptr<IContextColumn> Finish() const = 0;
-  virtual std::shared_ptr<IContextColumn> FinishMerged(
-      const std::vector<const AggregateColumn*>& partitions,
-      const std::vector<std::pair<size_t, size_t>>& rows) const = 0;
 };
 
 template <typename T>
@@ -115,18 +110,6 @@ class TypedAggregateColumn final : public AggregateColumn {
     auto size = kind_ == AggrKind::kSum ? values_.size() : counts_.size();
     return FinishRows(size, [this](size_t row) {
       return std::pair{this, row};
-    });
-  }
-  std::shared_ptr<IContextColumn> FinishMerged(
-      const std::vector<const AggregateColumn*>& partitions,
-      const std::vector<std::pair<size_t, size_t>>& rows) const override {
-    std::vector<const TypedAggregateColumn*> inputs;
-    for (auto* partition : partitions) {
-      inputs.push_back(static_cast<const TypedAggregateColumn*>(partition));
-    }
-    return FinishRows(rows.size(), [&](size_t row) {
-      auto [part, index] = rows[row];
-      return std::pair{inputs[part], index};
     });
   }
 
@@ -407,7 +390,6 @@ class GroupByState final : public PartitionState {
   Status BuildPartition(size_t part, const Batch& batch) override {
     const auto& input = static_cast<const Input&>(batch);
     auto& partition = partitions_.at(part);
-    auto sequence = partition.sequence++;
     const auto* scalar = mappings_.size() == 1
                              ? input.keys.get(mappings_[0].second).get()
                              : nullptr;
@@ -455,24 +437,23 @@ class GroupByState final : public PartitionState {
         if (!number) {
           added = !partition.null_group;
           if (added) {
-            partition.null_group = partition.order.size();
+            partition.null_group = partition.group_count;
           }
           dest = *partition.null_group;
         } else {
           auto entry =
-              partition.typed_groups.emplace(*number, partition.order.size());
+              partition.typed_groups.emplace(*number, partition.group_count);
           dest = entry.first->second;
           added = entry.second;
         }
       } else {
         auto entry = partition.groups.emplace(input.signatures[group],
-                                              partition.order.size());
+                                              partition.group_count);
         dest = entry.first->second;
         added = entry.second;
       }
       if (added) {
-        partition.order.emplace_back(sequence,
-                                     input.raw ? group : input.offsets[group]);
+        ++partition.group_count;
         if (output64) {
           if (keys64->has_value(group)) {
             output64->push_back_opt(keys64->get_value(group));
@@ -493,7 +474,7 @@ class GroupByState final : public PartitionState {
         }
         if (!input.raw) {
           for (auto& aggregate : partition.aggregates) {
-            aggregate->Resize(partition.order.size());
+            aggregate->Resize(partition.group_count);
           }
         }
       }
@@ -508,7 +489,7 @@ class GroupByState final : public PartitionState {
     if (input.raw) {
       for (size_t i = 0; i < specs_.size(); ++i) {
         auto& aggregate = partition.aggregates[i];
-        aggregate->Resize(partition.order.size());
+        aggregate->Resize(partition.group_count);
         aggregate->Consume(specs_[i].input < 0
                                ? nullptr
                                : input.source.get(specs_[i].input).get(),
@@ -518,73 +499,33 @@ class GroupByState final : public PartitionState {
     return Status::OK();
   }
   Status FinalizeBuild() override {
-    if (mappings_.empty() && partitions_[0].sequence == 0) {
-      // An upstream producer may signal EOF without publishing a typed empty
-      // batch. Ungrouped aggregation must still emit its empty-input row.
-      partitions_[0].order.emplace_back(0, 0);
+    bool has_groups = false;
+    for (const auto& partition : partitions_) {
+      has_groups = has_groups || partition.group_count != 0;
+    }
+    if (mappings_.empty() && !has_groups) {
+      // Ungrouped aggregation emits its empty-input row even without a batch.
+      partitions_[0].group_count = 1;
+      has_groups = true;
       for (auto& aggregate : partitions_[0].aggregates) {
         aggregate->Resize(1);
       }
     }
-    ContextChunk output;
-    if (partitions_.size() == 1) {
-      // A single partition already has the final row order.
-      auto& partition = partitions_[0];
+    for (auto& partition : partitions_) {
+      // Preserve one typed empty chunk when the grouped input is empty.
+      if (!partition.group_count && (has_groups || !output_.empty())) {
+        continue;
+      }
+      ContextChunk output;
       for (size_t key = 0; key < mappings_.size(); ++key) {
         output.set(mappings_[key].second, partition.keys[key]->finish());
       }
       for (size_t i = 0; i < specs_.size(); ++i) {
         output.set(specs_[i].output, partition.aggregates[i]->Finish());
       }
-    } else {
-      // Determine final first-appearance order once, then write each result
-      // column directly. Do not concatenate and reshuffle intermediate columns.
-      using Position = std::tuple<size_t, size_t, size_t, size_t>;
-      std::priority_queue<Position, std::vector<Position>,
-                          std::greater<Position>>
-          ready;
-      size_t size = 0;
-      for (size_t part = 0; part < partitions_.size(); ++part) {
-        const auto& order = partitions_[part].order;
-        size += order.size();
-        if (!order.empty()) {
-          auto [sequence, row] = order[0];
-          ready.emplace(sequence, row, part, 0);
-        }
-      }
-      std::vector<std::pair<size_t, size_t>> rows;
-      rows.reserve(size);
-      while (!ready.empty()) {
-        auto [sequence, row, part, index] = ready.top();
-        ready.pop();
-        rows.emplace_back(part, index);
-        if (++index < partitions_[part].order.size()) {
-          auto [next_sequence, next_row] = partitions_[part].order[index];
-          ready.emplace(next_sequence, next_row, part, index);
-        }
-      }
-      for (size_t key = 0; key < mappings_.size(); ++key) {
-        std::vector<std::shared_ptr<IContextColumn>> inputs;
-        for (auto& partition : partitions_) {
-          inputs.push_back(partition.keys[key]->finish());
-        }
-        auto column = ColumnsUtils::create_builder(key_types_[key]);
-        column->reserve(rows.size());
-        for (auto [part, index] : rows) {
-          column->push_back_elem(inputs[part]->get_elem(index));
-        }
-        output.set(mappings_[key].second, column->finish());
-      }
-      for (size_t i = 0; i < specs_.size(); ++i) {
-        std::vector<const AggregateColumn*> inputs;
-        for (auto& partition : partitions_) {
-          inputs.push_back(partition.aggregates[i].get());
-        }
-        output.set(specs_[i].output, inputs[0]->FinishMerged(inputs, rows));
-      }
+      output.head().reset();
+      output_.push_back(std::move(output));
     }
-    output.head().reset();
-    output_ = one_chunk(std::move(output));
     partitions_.clear();
     return Status::OK();
   }
@@ -592,11 +533,10 @@ class GroupByState final : public PartitionState {
 
  private:
   struct Partition {
-    size_t sequence = 0;
+    size_t group_count = 0;
     flat_hash_map<std::string, size_t> groups;
     flat_hash_map<int64_t, size_t> typed_groups;
     std::optional<size_t> null_group;
-    std::vector<std::pair<size_t, size_t>> order;
     std::vector<std::shared_ptr<IContextColumnBuilder>> keys;
     std::vector<std::unique_ptr<AggregateColumn>> aggregates;
   };
