@@ -15,6 +15,7 @@
 
 #include "neug/execution/common/operators/retrieve/sink.h"
 
+#include <algorithm>
 #include <type_traits>
 
 #include "neug/common/columns/array_columns.h"
@@ -555,7 +556,7 @@ static void add_column(const std::shared_ptr<IContextColumn>& col,
 template <typename T, typename ArrayType>
 static bool add_primitive_chunks(
     const std::vector<std::shared_ptr<IContextColumn>>& columns,
-    ArrayType* output) {
+    ArrayType* output, bool normalize_nulls = false) {
   std::vector<const ValueColumn<T>*> inputs;
   inputs.reserve(columns.size());
   size_t rows = 0;
@@ -567,7 +568,13 @@ static bool add_primitive_chunks(
     }
     inputs.push_back(input);
     rows += input->size();
-    optional = optional || input->is_optional();
+    bool nullable = input->is_optional();
+    if (nullable && normalize_nulls) {
+      const auto& validity = input->validity_bitmap();
+      nullable =
+          std::find(validity.begin(), validity.end(), false) != validity.end();
+    }
+    optional = optional || nullable;
   }
   auto* values = output->mutable_values();
   values->Reserve(rows);
@@ -597,32 +604,112 @@ static bool add_primitive_chunks(
   return true;
 }
 
-static bool add_primitive_chunks(
+static bool add_chunk_columns(
     const std::vector<std::shared_ptr<IContextColumn>>& columns,
-    neug::Array* output) {
+    const StorageReadInterface& graph, neug::Array* output,
+    bool normalize_nulls = false);
+
+static bool add_list_chunks(
+    const std::vector<std::shared_ptr<IContextColumn>>& columns,
+    const StorageReadInterface& graph, neug::Array* output) {
+  std::vector<const ListColumn*> inputs;
+  size_t rows = 0;
+  bool optional = false;
+  for (const auto& column : columns) {
+    auto* input = dynamic_cast<const ListColumn*>(column.get());
+    if (!input || input->elem_type() != columns[0]->elem_type()) {
+      return false;
+    }
+    inputs.push_back(input);
+    rows += input->size();
+    optional = optional || input->is_optional();
+  }
+  auto* list = output->mutable_list_array();
+  list->mutable_offsets()->Reserve(rows + 1);
+  std::string validity(optional ? (rows + 7) / 8 : 0, 0);
+  std::vector<std::shared_ptr<IContextColumn>> children;
+  children.reserve(inputs.size());
+  size_t offset = 0, row_index = 0;
+  bool has_null = false;
+  for (auto* input : inputs) {
+    // A sliced list can retain a much larger child column. Select only its
+    // referenced elements, preserving repetitions and logical row order.
+    size_t count = 0;
+    for (size_t row = 0; row < input->size(); ++row) {
+      if (input->has_value(row)) {
+        count += input->items()[row].length;
+      }
+    }
+    sel_vec_t selection;
+    selection.reserve(count);
+    for (size_t row = 0; row < input->size(); ++row, ++row_index) {
+      list->add_offsets(offset);
+      if (!input->has_value(row)) {
+        has_null = true;
+        continue;
+      }
+      if (optional) {
+        validity[row_index / 8] |= (1 << (row_index % 8));
+      }
+      const auto& item = input->items()[row];
+      for (size_t index = item.offset; index < item.offset + item.length;
+           ++index) {
+        selection.push_back(index);
+      }
+      offset += item.length;
+    }
+    children.push_back(input->data_column()->shuffle(selection));
+  }
+  list->add_offsets(offset);
+  // The collected ListColumn builder retains NULL metadata only when a NULL
+  // survives selection. Match that normalization at every child level.
+  if (has_null) {
+    list->set_validity(std::move(validity));
+  }
+  if (!add_chunk_columns(children, graph, list->mutable_elements(), true)) {
+    auto builder = ColumnsUtils::create_builder(children[0]->elem_type());
+    builder->reserve(offset);
+    for (const auto& child : children) {
+      for (size_t row = 0; row < child->size(); ++row) {
+        builder->push_back_elem(child->get_elem(row));
+      }
+    }
+    add_column(builder->finish(), graph, list->mutable_elements());
+  }
+  return true;
+}
+
+static bool add_chunk_columns(
+    const std::vector<std::shared_ptr<IContextColumn>>& columns,
+    const StorageReadInterface& graph, neug::Array* output,
+    bool normalize_nulls) {
   switch (columns[0]->elem_type().id()) {
   case DataTypeId::kBoolean:
-    return add_primitive_chunks<bool>(columns, output->mutable_bool_array());
+    return add_primitive_chunks<bool>(columns, output->mutable_bool_array(),
+                                      normalize_nulls);
   case DataTypeId::kInt32:
-    return add_primitive_chunks<int32_t>(columns,
-                                         output->mutable_int32_array());
+    return add_primitive_chunks<int32_t>(columns, output->mutable_int32_array(),
+                                         normalize_nulls);
   case DataTypeId::kUInt32:
-    return add_primitive_chunks<uint32_t>(columns,
-                                          output->mutable_uint32_array());
+    return add_primitive_chunks<uint32_t>(
+        columns, output->mutable_uint32_array(), normalize_nulls);
   case DataTypeId::kInt64:
-    return add_primitive_chunks<int64_t>(columns,
-                                         output->mutable_int64_array());
+    return add_primitive_chunks<int64_t>(columns, output->mutable_int64_array(),
+                                         normalize_nulls);
   case DataTypeId::kUInt64:
-    return add_primitive_chunks<uint64_t>(columns,
-                                          output->mutable_uint64_array());
+    return add_primitive_chunks<uint64_t>(
+        columns, output->mutable_uint64_array(), normalize_nulls);
   case DataTypeId::kFloat:
-    return add_primitive_chunks<float>(columns, output->mutable_float_array());
+    return add_primitive_chunks<float>(columns, output->mutable_float_array(),
+                                       normalize_nulls);
   case DataTypeId::kDouble:
-    return add_primitive_chunks<double>(columns,
-                                        output->mutable_double_array());
+    return add_primitive_chunks<double>(columns, output->mutable_double_array(),
+                                        normalize_nulls);
   case DataTypeId::kVarchar:
-    return add_primitive_chunks<std::string>(columns,
-                                             output->mutable_string_array());
+    return add_primitive_chunks<std::string>(
+        columns, output->mutable_string_array(), normalize_nulls);
+  case DataTypeId::kList:
+    return add_list_chunks(columns, graph, output);
   default:
     return false;
   }
@@ -644,7 +731,7 @@ void Sink::sink_results(const Context& ctx, const StorageReadInterface& graph,
     }
     if (inputs.size() > 1) {
       auto* array = response->add_arrays();
-      if (add_primitive_chunks(inputs, array)) {
+      if (add_chunk_columns(inputs, graph, array)) {
         continue;
       }
       response->mutable_arrays()->RemoveLast();

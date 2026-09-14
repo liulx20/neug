@@ -143,8 +143,15 @@ bits are concatenated by row index, including boundaries not divisible by eight;
 a nullable chunk makes the full output validity bitmap explicit. Chunk order,
 empty typed chunks, sparse/repeated output aliases and the wire representation
 are preserved. All backing columns are checked before values are written.
-Single chunks use the existing direct serializer. Other types or column
+Native list chunks also bypass parent-column concatenation: the serializer
+writes global offsets and validity while selecting each chunk's referenced child
+elements in logical row order. Primitive and nested-list children use the same
+chunk serializer recursively. Other child types are rebuilt once through their
+column builder before serialization. This preserves sliced/repeated elements,
+NULL versus empty lists, and the collected representation's nullable metadata.
+Single chunks use the existing direct serializer. Other root types or column
 representations still use the general column accumulator and serializer.
+See [representative GroupBy validation](groupby_workload_validation.md).
 
 This removes intermediate primitive-column concatenation, not result buffering:
 `materialize` still retains output chunks, and the response arrays still contain

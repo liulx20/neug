@@ -839,3 +839,9 @@ empty chunks, sparse/repeated aliases, and heap/Arena-backed responses. Existing
 nested-column tests continue exercising the general serializer.
 
 Raw report: [uninstrumented interleaved execute results](benchmarks/task_queue_direct_sink_1m.json).
+
+### Representative GroupBy workloads and list outputs
+
+The [follow-up validation](groupby_workload_validation.md) covers composite and
+string keys, skew, Join followed by aggregation, process RSS, and the list
+serialization bottleneck discovered with a million singleton lists.

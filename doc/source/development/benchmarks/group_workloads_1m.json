@@ -1,0 +1,6157 @@
+{
+  "platform": "macOS-13.2.1-arm64-arm-64bit",
+  "rows": 1000000,
+  "repeats": 3,
+  "queries": {
+    "composite_low": "MATCH (n:item) RETURN n.grp, n.sub, count(*), sum(n.id)",
+    "string_low": "MATCH (n:item) RETURN n.category, count(*), sum(n.id)",
+    "string_unique": "MATCH (n:item) RETURN n.name, count(*), sum(n.value)",
+    "composite_unique": "MATCH (n:item) RETURN n.id, n.name, count(*), sum(n.value)",
+    "skewed": "MATCH (n:item) RETURN n.skew, count(*), sum(n.id)",
+    "join_group": "MATCH (a:item), (b:item) WHERE a.grp = b.grp AND b.id < 17 RETURN a.grp, count(*), sum(a.id), sum(b.id)",
+    "collect_values": "MATCH (n:item) RETURN n.grp, collect(n.id)"
+  },
+  "method": "Fresh process per case/worker/variant/memory run. Sample RSS every 2ms during first execute only, including cold planning and native response, excluding Python validation and PROFILE. Record loaded-process RSS separately from lifetime high-water mark. Warm timings follow correctness validation, with prior result released outside each timing. RSS is process memory, not operator allocations; sampling may miss short peaks.",
+  "libraries": {
+    "before": {
+      "sha256": "ee68af11ed54b0284ec05b7f98863a97a3404a38b410043399d772ba25119522"
+    },
+    "current": {
+      "sha256": "fdd9185f0195fb01091b2839f4b7b9ff5c25a2efef04d81c6c6c50c330cbf781"
+    }
+  },
+  "runs": [
+    {
+      "variant": "before",
+      "memory_run": 1,
+      "case": "composite_low",
+      "workers": 1,
+      "process_high_water_before": 374243328,
+      "library_override_verified": true,
+      "cold_execute_ms": 166.016417,
+      "process_high_water_after": 374243328,
+      "result_rows": 1717,
+      "row_hash_sum_sha256": "537bbbdc2d84a3128b7b5374751c23a365c8eaa66735b3bc5fb89109afb53f59",
+      "samples_ms": [
+        154.829125,
+        152.690583,
+        150.353916
+      ],
+      "median_ms": 152.690583,
+      "profile": {
+        "total_elapsed_ms": 374.66683100000023,
+        "total_output_rows": 1717,
+        "operators": [
+          {
+            "operator_id": 126921744,
+            "parent_id": -1,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 141.1316070000001,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 126912608,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 138.3624870000001,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 126913728,
+            "parent_id": -1,
+            "operator_name": "GroupByOpr",
+            "elapsed_ms": 95.16936000000008,
+            "output_rows": 1717,
+            "child_ids": []
+          },
+          {
+            "operator_id": 126913808,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 0.0024180000000000004,
+            "output_rows": 1717,
+            "child_ids": []
+          },
+          {
+            "operator_id": 126914768,
+            "parent_id": -1,
+            "operator_name": "SinkOpr",
+            "elapsed_ms": 0.000959,
+            "output_rows": 1717,
+            "child_ids": []
+          }
+        ]
+      },
+      "rss_before_execute": 142131200,
+      "sampled_peak_rss": 166805504,
+      "sampled_rss_increase": 24674304,
+      "rss_samples": 69
+    },
+    {
+      "variant": "current",
+      "memory_run": 0,
+      "case": "string_unique",
+      "workers": 2,
+      "process_high_water_before": 372752384,
+      "library_override_verified": true,
+      "cold_execute_ms": 322.667583,
+      "process_high_water_after": 377077760,
+      "result_rows": 1000000,
+      "row_hash_sum_sha256": "5b352ecfc7934385672ddfaab0ffcf17612ec47a27d36cf5111816b9fd38ff93",
+      "samples_ms": [
+        293.738459,
+        288.379208,
+        267.004667
+      ],
+      "median_ms": 288.379208,
+      "profile": {
+        "total_elapsed_ms": 1262.2989830000001,
+        "total_output_rows": 1000000,
+        "operators": [
+          {
+            "operator_id": 402311376,
+            "parent_id": -1,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 432.7461210000001,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 402398208,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 429.6279830000001,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 402398288,
+            "parent_id": -1,
+            "operator_name": "GroupByOpr",
+            "elapsed_ms": 399.3261970000001,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 402398368,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 0.46470500000000087,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 402396992,
+            "parent_id": -1,
+            "operator_name": "SinkOpr",
+            "elapsed_ms": 0.13397700000000096,
+            "output_rows": 1000000,
+            "child_ids": []
+          }
+        ]
+      },
+      "rss_before_execute": 130744320,
+      "sampled_peak_rss": 377077760,
+      "sampled_rss_increase": 246333440,
+      "rss_samples": 130
+    },
+    {
+      "variant": "before",
+      "memory_run": 1,
+      "case": "collect_values",
+      "workers": 4,
+      "process_high_water_before": 379240448,
+      "library_override_verified": true,
+      "cold_execute_ms": 102.61375,
+      "process_high_water_after": 379240448,
+      "result_rows": 17,
+      "row_hash_sum_sha256": "86085a0da7ab5e5da4dda7545b26bb9de1f889174b87614f248b7e3fbe5f0c28",
+      "samples_ms": [
+        91.198666,
+        94.917166,
+        93.255084
+      ],
+      "median_ms": 93.255084,
+      "profile": {
+        "total_elapsed_ms": 287.75843899999995,
+        "total_output_rows": 17,
+        "operators": [
+          {
+            "operator_id": 123770176,
+            "parent_id": -1,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 108.16633499999999,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 123770000,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 105.082699,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 123755424,
+            "parent_id": -1,
+            "operator_name": "GroupByOpr",
+            "elapsed_ms": 74.50528299999999,
+            "output_rows": 17,
+            "child_ids": []
+          },
+          {
+            "operator_id": 123754112,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 0.003123,
+            "output_rows": 17,
+            "child_ids": []
+          },
+          {
+            "operator_id": 123754272,
+            "parent_id": -1,
+            "operator_name": "SinkOpr",
+            "elapsed_ms": 0.000999,
+            "output_rows": 17,
+            "child_ids": []
+          }
+        ]
+      },
+      "rss_before_execute": 137101312,
+      "sampled_peak_rss": 250232832,
+      "sampled_rss_increase": 113131520,
+      "rss_samples": 42
+    },
+    {
+      "variant": "before",
+      "memory_run": 0,
+      "case": "skewed",
+      "workers": 1,
+      "process_high_water_before": 380207104,
+      "library_override_verified": true,
+      "cold_execute_ms": 91.980833,
+      "process_high_water_after": 380207104,
+      "result_rows": 100000,
+      "row_hash_sum_sha256": "263755d85d33b4a8677023d4832834dc44100ed690d273bb82878f8187a0523c",
+      "samples_ms": [
+        81.177125,
+        80.843,
+        87.177542
+      ],
+      "median_ms": 81.177125,
+      "profile": {
+        "total_elapsed_ms": 184.91419599999958,
+        "total_output_rows": 100000,
+        "operators": [
+          {
+            "operator_id": 135772256,
+            "parent_id": -1,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 73.30102099999986,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 135983536,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 70.45796599999987,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 135648912,
+            "parent_id": -1,
+            "operator_name": "GroupByOpr",
+            "elapsed_ms": 41.152084999999865,
+            "output_rows": 100000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 136021152,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 0.002166,
+            "output_rows": 100000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 135315072,
+            "parent_id": -1,
+            "operator_name": "SinkOpr",
+            "elapsed_ms": 0.000958,
+            "output_rows": 100000,
+            "child_ids": []
+          }
+        ]
+      },
+      "rss_before_execute": 146112512,
+      "sampled_peak_rss": 164134912,
+      "sampled_rss_increase": 18022400,
+      "rss_samples": 37
+    },
+    {
+      "variant": "current",
+      "memory_run": 0,
+      "case": "composite_low",
+      "workers": 4,
+      "process_high_water_before": 381255680,
+      "library_override_verified": true,
+      "cold_execute_ms": 54.569167,
+      "process_high_water_after": 381255680,
+      "result_rows": 1717,
+      "row_hash_sum_sha256": "537bbbdc2d84a3128b7b5374751c23a365c8eaa66735b3bc5fb89109afb53f59",
+      "samples_ms": [
+        46.93325,
+        45.556834,
+        44.211542
+      ],
+      "median_ms": 45.556834,
+      "profile": {
+        "total_elapsed_ms": 413.3476309999997,
+        "total_output_rows": 1717,
+        "operators": [
+          {
+            "operator_id": 59804096,
+            "parent_id": -1,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 155.14390099999991,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 59803168,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 152.1196009999999,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 59793776,
+            "parent_id": -1,
+            "operator_name": "GroupByOpr",
+            "elapsed_ms": 106.08083899999987,
+            "output_rows": 1717,
+            "child_ids": []
+          },
+          {
+            "operator_id": 59792240,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 0.002291,
+            "output_rows": 1717,
+            "child_ids": []
+          },
+          {
+            "operator_id": 59792416,
+            "parent_id": -1,
+            "operator_name": "SinkOpr",
+            "elapsed_ms": 0.000999,
+            "output_rows": 1717,
+            "child_ids": []
+          }
+        ]
+      },
+      "rss_before_execute": 147013632,
+      "sampled_peak_rss": 175652864,
+      "sampled_rss_increase": 28639232,
+      "rss_samples": 23
+    },
+    {
+      "variant": "before",
+      "memory_run": 1,
+      "case": "collect_values",
+      "workers": 1,
+      "process_high_water_before": 397934592,
+      "library_override_verified": true,
+      "cold_execute_ms": 128.646583,
+      "process_high_water_after": 397934592,
+      "result_rows": 17,
+      "row_hash_sum_sha256": "86085a0da7ab5e5da4dda7545b26bb9de1f889174b87614f248b7e3fbe5f0c28",
+      "samples_ms": [
+        120.386042,
+        116.133125,
+        117.289083
+      ],
+      "median_ms": 117.289083,
+      "profile": {
+        "total_elapsed_ms": 275.23438400000015,
+        "total_output_rows": 17,
+        "operators": [
+          {
+            "operator_id": 209744576,
+            "parent_id": -1,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 103.24704700000007,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 209747024,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 100.48212500000007,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 209735312,
+            "parent_id": -1,
+            "operator_name": "GroupByOpr",
+            "elapsed_ms": 71.50075400000004,
+            "output_rows": 17,
+            "child_ids": []
+          },
+          {
+            "operator_id": 209742480,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 0.0035830000000000002,
+            "output_rows": 17,
+            "child_ids": []
+          },
+          {
+            "operator_id": 209745344,
+            "parent_id": -1,
+            "operator_name": "SinkOpr",
+            "elapsed_ms": 0.000875,
+            "output_rows": 17,
+            "child_ids": []
+          }
+        ]
+      },
+      "rss_before_execute": 159301632,
+      "sampled_peak_rss": 241614848,
+      "sampled_rss_increase": 82313216,
+      "rss_samples": 54
+    },
+    {
+      "variant": "current",
+      "memory_run": 0,
+      "case": "string_low",
+      "workers": 4,
+      "process_high_water_before": 395935744,
+      "library_override_verified": true,
+      "cold_execute_ms": 55.852625,
+      "process_high_water_after": 395935744,
+      "result_rows": 4096,
+      "row_hash_sum_sha256": "1d54bd9cb7825e077f7bec3772d09d9c207d034d0a3964b80d782d393f124f50",
+      "samples_ms": [
+        46.044083,
+        48.340459,
+        49.056458
+      ],
+      "median_ms": 48.340459,
+      "profile": {
+        "total_elapsed_ms": 444.54881399999834,
+        "total_output_rows": 4096,
+        "operators": [
+          {
+            "operator_id": 368378352,
+            "parent_id": -1,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 160.54500099999947,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 368322896,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 157.44178199999945,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 368341984,
+            "parent_id": -1,
+            "operator_name": "GroupByOpr",
+            "elapsed_ms": 126.55490499999944,
+            "output_rows": 4096,
+            "child_ids": []
+          },
+          {
+            "operator_id": 368390608,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 0.005084,
+            "output_rows": 4096,
+            "child_ids": []
+          },
+          {
+            "operator_id": 368113024,
+            "parent_id": -1,
+            "operator_name": "SinkOpr",
+            "elapsed_ms": 0.002042,
+            "output_rows": 4096,
+            "child_ids": []
+          }
+        ]
+      },
+      "rss_before_execute": 154927104,
+      "sampled_peak_rss": 186220544,
+      "sampled_rss_increase": 31293440,
+      "rss_samples": 23
+    },
+    {
+      "variant": "before",
+      "memory_run": 1,
+      "case": "string_low",
+      "workers": 1,
+      "process_high_water_before": 383336448,
+      "library_override_verified": true,
+      "cold_execute_ms": 169.670625,
+      "process_high_water_after": 383336448,
+      "result_rows": 4096,
+      "row_hash_sum_sha256": "1d54bd9cb7825e077f7bec3772d09d9c207d034d0a3964b80d782d393f124f50",
+      "samples_ms": [
+        155.578875,
+        155.62975,
+        155.220958
+      ],
+      "median_ms": 155.578875,
+      "profile": {
+        "total_elapsed_ms": 402.78632499999975,
+        "total_output_rows": 4096,
+        "operators": [
+          {
+            "operator_id": 368320976,
+            "parent_id": -1,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 145.9229399999999,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 368309920,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 143.10060899999988,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 368321536,
+            "parent_id": -1,
+            "operator_name": "GroupByOpr",
+            "elapsed_ms": 113.76044299999992,
+            "output_rows": 4096,
+            "child_ids": []
+          },
+          {
+            "operator_id": 368321616,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 0.0016250000000000001,
+            "output_rows": 4096,
+            "child_ids": []
+          },
+          {
+            "operator_id": 368323472,
+            "parent_id": -1,
+            "operator_name": "SinkOpr",
+            "elapsed_ms": 0.0007080000000000001,
+            "output_rows": 4096,
+            "child_ids": []
+          }
+        ]
+      },
+      "rss_before_execute": 150257664,
+      "sampled_peak_rss": 176685056,
+      "sampled_rss_increase": 26427392,
+      "rss_samples": 70
+    },
+    {
+      "variant": "before",
+      "memory_run": 1,
+      "case": "skewed",
+      "workers": 4,
+      "process_high_water_before": 385466368,
+      "library_override_verified": true,
+      "cold_execute_ms": 45.11075,
+      "process_high_water_after": 385466368,
+      "result_rows": 100000,
+      "row_hash_sum_sha256": "263755d85d33b4a8677023d4832834dc44100ed690d273bb82878f8187a0523c",
+      "samples_ms": [
+        34.363833,
+        34.719916,
+        34.126792
+      ],
+      "median_ms": 34.363833,
+      "profile": {
+        "total_elapsed_ms": 211.00655899999825,
+        "total_output_rows": 100000,
+        "operators": [
+          {
+            "operator_id": 118512368,
+            "parent_id": -1,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 82.64691399999941,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 118511664,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 79.47087399999941,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 118514016,
+            "parent_id": -1,
+            "operator_name": "GroupByOpr",
+            "elapsed_ms": 48.820523999999416,
+            "output_rows": 100000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 118514160,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 0.053081999999999976,
+            "output_rows": 100000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 118518928,
+            "parent_id": -1,
+            "operator_name": "SinkOpr",
+            "elapsed_ms": 0.01516499999999999,
+            "output_rows": 100000,
+            "child_ids": []
+          }
+        ]
+      },
+      "rss_before_execute": 144015360,
+      "sampled_peak_rss": 171589632,
+      "sampled_rss_increase": 27574272,
+      "rss_samples": 19
+    },
+    {
+      "variant": "before",
+      "memory_run": 1,
+      "case": "string_low",
+      "workers": 4,
+      "process_high_water_before": 375701504,
+      "library_override_verified": true,
+      "cold_execute_ms": 57.3215,
+      "process_high_water_after": 375701504,
+      "result_rows": 4096,
+      "row_hash_sum_sha256": "1d54bd9cb7825e077f7bec3772d09d9c207d034d0a3964b80d782d393f124f50",
+      "samples_ms": [
+        48.943167,
+        50.1125,
+        47.679542
+      ],
+      "median_ms": 48.943167,
+      "profile": {
+        "total_elapsed_ms": 449.6900079999985,
+        "total_output_rows": 4096,
+        "operators": [
+          {
+            "operator_id": 97198272,
+            "parent_id": -1,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 162.3622239999995,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 97222896,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 159.2086389999995,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 97223568,
+            "parent_id": -1,
+            "operator_name": "GroupByOpr",
+            "elapsed_ms": 128.11276999999947,
+            "output_rows": 4096,
+            "child_ids": []
+          },
+          {
+            "operator_id": 97221120,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 0.004625000000000001,
+            "output_rows": 4096,
+            "child_ids": []
+          },
+          {
+            "operator_id": 97190864,
+            "parent_id": -1,
+            "operator_name": "SinkOpr",
+            "elapsed_ms": 0.0017500000000000003,
+            "output_rows": 4096,
+            "child_ids": []
+          }
+        ]
+      },
+      "rss_before_execute": 129613824,
+      "sampled_peak_rss": 161218560,
+      "sampled_rss_increase": 31604736,
+      "rss_samples": 24
+    },
+    {
+      "variant": "before",
+      "memory_run": 0,
+      "case": "skewed",
+      "workers": 2,
+      "process_high_water_before": 401506304,
+      "library_override_verified": true,
+      "cold_execute_ms": 60.838209,
+      "process_high_water_after": 401506304,
+      "result_rows": 100000,
+      "row_hash_sum_sha256": "263755d85d33b4a8677023d4832834dc44100ed690d273bb82878f8187a0523c",
+      "samples_ms": [
+        52.892542,
+        49.620334,
+        49.869334
+      ],
+      "median_ms": 49.869334,
+      "profile": {
+        "total_elapsed_ms": 188.00388799999922,
+        "total_output_rows": 100000,
+        "operators": [
+          {
+            "operator_id": 125053872,
+            "parent_id": -1,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 74.65938799999972,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 125065344,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 71.75523399999973,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 91160272,
+            "parent_id": -1,
+            "operator_name": "GroupByOpr",
+            "elapsed_ms": 41.523166999999745,
+            "output_rows": 100000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 125064016,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 0.050966999999999985,
+            "output_rows": 100000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 125064192,
+            "parent_id": -1,
+            "operator_name": "SinkOpr",
+            "elapsed_ms": 0.015131999999999987,
+            "output_rows": 100000,
+            "child_ids": []
+          }
+        ]
+      },
+      "rss_before_execute": 167329792,
+      "sampled_peak_rss": 191119360,
+      "sampled_rss_increase": 23789568,
+      "rss_samples": 26
+    },
+    {
+      "variant": "current",
+      "memory_run": 0,
+      "case": "skewed",
+      "workers": 1,
+      "process_high_water_before": 329728000,
+      "library_override_verified": true,
+      "cold_execute_ms": 216.146041,
+      "process_high_water_after": 329728000,
+      "result_rows": 100000,
+      "row_hash_sum_sha256": "263755d85d33b4a8677023d4832834dc44100ed690d273bb82878f8187a0523c",
+      "samples_ms": [
+        103.060292,
+        92.885542,
+        94.169958
+      ],
+      "median_ms": 94.169958,
+      "profile": {
+        "total_elapsed_ms": 267.41934000000003,
+        "total_output_rows": 100000,
+        "operators": [
+          {
+            "operator_id": 1030634112,
+            "parent_id": -1,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 104.76305500000001,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 1030634784,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 101.602168,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 1030625376,
+            "parent_id": -1,
+            "operator_name": "GroupByOpr",
+            "elapsed_ms": 61.0467,
+            "output_rows": 100000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 1030645808,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 0.00625,
+            "output_rows": 100000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 1030645984,
+            "parent_id": -1,
+            "operator_name": "SinkOpr",
+            "elapsed_ms": 0.001167,
+            "output_rows": 100000,
+            "child_ids": []
+          }
+        ]
+      },
+      "rss_before_execute": 92405760,
+      "sampled_peak_rss": 117374976,
+      "sampled_rss_increase": 24969216,
+      "rss_samples": 82
+    },
+    {
+      "variant": "current",
+      "memory_run": 1,
+      "case": "string_unique",
+      "workers": 1,
+      "process_high_water_before": 378355712,
+      "library_override_verified": true,
+      "cold_execute_ms": 472.924042,
+      "process_high_water_after": 378355712,
+      "result_rows": 1000000,
+      "row_hash_sum_sha256": "5b352ecfc7934385672ddfaab0ffcf17612ec47a27d36cf5111816b9fd38ff93",
+      "samples_ms": [
+        525.082875,
+        534.482042,
+        445.88325
+      ],
+      "median_ms": 525.082875,
+      "profile": {
+        "total_elapsed_ms": 1536.6140980000007,
+        "total_output_rows": 1000000,
+        "operators": [
+          {
+            "operator_id": 981338144,
+            "parent_id": -1,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 526.3211920000002,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 981338336,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 522.3287030000004,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 980681136,
+            "parent_id": -1,
+            "operator_name": "GroupByOpr",
+            "elapsed_ms": 487.95824600000026,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 981303392,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 0.004873999999999999,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 154161392,
+            "parent_id": -1,
+            "operator_name": "SinkOpr",
+            "elapsed_ms": 0.001083,
+            "output_rows": 1000000,
+            "child_ids": []
+          }
+        ]
+      },
+      "rss_before_execute": 123256832,
+      "sampled_peak_rss": 336969728,
+      "sampled_rss_increase": 213712896,
+      "rss_samples": 193
+    },
+    {
+      "variant": "before",
+      "memory_run": 0,
+      "case": "string_low",
+      "workers": 2,
+      "process_high_water_before": 357548032,
+      "library_override_verified": true,
+      "cold_execute_ms": 173.723458,
+      "process_high_water_after": 357548032,
+      "result_rows": 4096,
+      "row_hash_sum_sha256": "1d54bd9cb7825e077f7bec3772d09d9c207d034d0a3964b80d782d393f124f50",
+      "samples_ms": [
+        91.399458,
+        87.905042,
+        85.16925
+      ],
+      "median_ms": 87.905042,
+      "profile": {
+        "total_elapsed_ms": 414.90226000000087,
+        "total_output_rows": 4096,
+        "operators": [
+          {
+            "operator_id": 637898096,
+            "parent_id": -1,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 150.3241550000003,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 637797984,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 147.41248800000028,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 637834928,
+            "parent_id": -1,
+            "operator_name": "GroupByOpr",
+            "elapsed_ms": 117.16107300000027,
+            "output_rows": 4096,
+            "child_ids": []
+          },
+          {
+            "operator_id": 637813696,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 0.0029180000000000005,
+            "output_rows": 4096,
+            "child_ids": []
+          },
+          {
+            "operator_id": 637900608,
+            "parent_id": -1,
+            "operator_name": "SinkOpr",
+            "elapsed_ms": 0.0016260000000000003,
+            "output_rows": 4096,
+            "child_ids": []
+          }
+        ]
+      },
+      "rss_before_execute": 125927424,
+      "sampled_peak_rss": 149716992,
+      "sampled_rss_increase": 23789568,
+      "rss_samples": 71
+    },
+    {
+      "variant": "current",
+      "memory_run": 0,
+      "case": "string_low",
+      "workers": 2,
+      "process_high_water_before": 344621056,
+      "library_override_verified": true,
+      "cold_execute_ms": 97.366333,
+      "process_high_water_after": 344621056,
+      "result_rows": 4096,
+      "row_hash_sum_sha256": "1d54bd9cb7825e077f7bec3772d09d9c207d034d0a3964b80d782d393f124f50",
+      "samples_ms": [
+        121.825708,
+        87.697833,
+        86.416417
+      ],
+      "median_ms": 87.697833,
+      "profile": {
+        "total_elapsed_ms": 491.61416100000014,
+        "total_output_rows": 4096,
+        "operators": [
+          {
+            "operator_id": 269780640,
+            "parent_id": -1,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 178.18395700000005,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 269789568,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 174.32702900000004,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 269884832,
+            "parent_id": -1,
+            "operator_name": "GroupByOpr",
+            "elapsed_ms": 139.09575700000005,
+            "output_rows": 4096,
+            "child_ids": []
+          },
+          {
+            "operator_id": 269865712,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 0.0051259999999999995,
+            "output_rows": 4096,
+            "child_ids": []
+          },
+          {
+            "operator_id": 269894144,
+            "parent_id": -1,
+            "operator_name": "SinkOpr",
+            "elapsed_ms": 0.002292,
+            "output_rows": 4096,
+            "child_ids": []
+          }
+        ]
+      },
+      "rss_before_execute": 116703232,
+      "sampled_peak_rss": 145719296,
+      "sampled_rss_increase": 29016064,
+      "rss_samples": 40
+    },
+    {
+      "variant": "before",
+      "memory_run": 1,
+      "case": "composite_unique",
+      "workers": 4,
+      "process_high_water_before": 336642048,
+      "library_override_verified": true,
+      "cold_execute_ms": 750.298625,
+      "process_high_water_after": 445136896,
+      "result_rows": 1000000,
+      "row_hash_sum_sha256": "d0f879cb28e17433c456b465b5dd7bc253b87e3b8ec853bd3e4c6f358c52ddf8",
+      "samples_ms": [
+        705.33975,
+        666.487209,
+        653.774583
+      ],
+      "median_ms": 666.487209,
+      "profile": {
+        "total_elapsed_ms": 2778.170828000004,
+        "total_output_rows": 1000000,
+        "operators": [
+          {
+            "operator_id": 501485568,
+            "parent_id": -1,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 943.5048000000013,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 501522400,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 939.9834280000013,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 501656464,
+            "parent_id": -1,
+            "operator_name": "GroupByOpr",
+            "elapsed_ms": 894.0197610000013,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 501535632,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 0.5075890000000007,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 501595152,
+            "parent_id": -1,
+            "operator_name": "SinkOpr",
+            "elapsed_ms": 0.15525000000000067,
+            "output_rows": 1000000,
+            "child_ids": []
+          }
+        ]
+      },
+      "rss_before_execute": 102907904,
+      "sampled_peak_rss": 445169664,
+      "sampled_rss_increase": 342261760,
+      "rss_samples": 305
+    },
+    {
+      "variant": "current",
+      "memory_run": 0,
+      "case": "composite_unique",
+      "workers": 1,
+      "process_high_water_before": 380665856,
+      "library_override_verified": true,
+      "cold_execute_ms": 787.61625,
+      "process_high_water_after": 396001280,
+      "result_rows": 1000000,
+      "row_hash_sum_sha256": "d0f879cb28e17433c456b465b5dd7bc253b87e3b8ec853bd3e4c6f358c52ddf8",
+      "samples_ms": [
+        777.451208,
+        736.024625,
+        821.002208
+      ],
+      "median_ms": 777.451208,
+      "profile": {
+        "total_elapsed_ms": 2313.3896679999993,
+        "total_output_rows": 1000000,
+        "operators": [
+          {
+            "operator_id": 416327504,
+            "parent_id": -1,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 789.1598579999998,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 416309440,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 785.7904599999997,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 416309600,
+            "parent_id": -1,
+            "operator_name": "GroupByOpr",
+            "elapsed_ms": 738.4331819999998,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 416301840,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 0.0051259999999999995,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 416320096,
+            "parent_id": -1,
+            "operator_name": "SinkOpr",
+            "elapsed_ms": 0.001042,
+            "output_rows": 1000000,
+            "child_ids": []
+          }
+        ]
+      },
+      "rss_before_execute": 147079168,
+      "sampled_peak_rss": 393003008,
+      "sampled_rss_increase": 245923840,
+      "rss_samples": 327
+    },
+    {
+      "variant": "before",
+      "memory_run": 1,
+      "case": "composite_unique",
+      "workers": 1,
+      "process_high_water_before": 403161088,
+      "library_override_verified": true,
+      "cold_execute_ms": 1015.003792,
+      "process_high_water_after": 403161088,
+      "result_rows": 1000000,
+      "row_hash_sum_sha256": "d0f879cb28e17433c456b465b5dd7bc253b87e3b8ec853bd3e4c6f358c52ddf8",
+      "samples_ms": [
+        783.849959,
+        795.033375,
+        841.719333
+      ],
+      "median_ms": 795.033375,
+      "profile": {
+        "total_elapsed_ms": 2139.0743419999985,
+        "total_output_rows": 1000000,
+        "operators": [
+          {
+            "operator_id": 1400707680,
+            "parent_id": -1,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 730.1714389999994,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 1400714480,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 727.0042919999994,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 1400810768,
+            "parent_id": -1,
+            "operator_name": "GroupByOpr",
+            "elapsed_ms": 681.8924029999994,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 1400709904,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 0.005208,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 1400832960,
+            "parent_id": -1,
+            "operator_name": "SinkOpr",
+            "elapsed_ms": 0.001,
+            "output_rows": 1000000,
+            "child_ids": []
+          }
+        ]
+      },
+      "rss_before_execute": 161284096,
+      "sampled_peak_rss": 315490304,
+      "sampled_rss_increase": 154206208,
+      "rss_samples": 396
+    },
+    {
+      "variant": "current",
+      "memory_run": 1,
+      "case": "join_group",
+      "workers": 2,
+      "process_high_water_before": 400375808,
+      "library_override_verified": true,
+      "cold_execute_ms": 111.011417,
+      "process_high_water_after": 400375808,
+      "result_rows": 17,
+      "row_hash_sum_sha256": "6f4cf2aac2e628ff6ea2f0acaa11ac85e7cd1a7d1f4039a65ae46840af82404d",
+      "samples_ms": [
+        91.59975,
+        92.467292,
+        92.718375
+      ],
+      "median_ms": 92.467292,
+      "profile": {
+        "total_elapsed_ms": 230.9723340000006,
+        "total_output_rows": 17,
+        "operators": [
+          {
+            "operator_id": 971877040,
+            "parent_id": -1,
+            "operator_name": "JoinOpr",
+            "elapsed_ms": 134.8453420000002,
+            "output_rows": 1000000,
+            "child_ids": [
+              971452528,
+              971248096
+            ]
+          },
+          {
+            "operator_id": 971452528,
+            "parent_id": 971877040,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 18.402723000000005,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 971848080,
+            "parent_id": 971877040,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 15.416353000000003,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 971248096,
+            "parent_id": 971877040,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 22.505053000000014,
+            "output_rows": 17,
+            "child_ids": []
+          },
+          {
+            "operator_id": 971802944,
+            "parent_id": 971877040,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 1.1952169999999995,
+            "output_rows": 17,
+            "child_ids": []
+          },
+          {
+            "operator_id": 971666432,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 63.35219500000022,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 971702704,
+            "parent_id": -1,
+            "operator_name": "GroupByOpr",
+            "elapsed_ms": 32.77137700000019,
+            "output_rows": 17,
+            "child_ids": []
+          },
+          {
+            "operator_id": 971929616,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 0.002377,
+            "output_rows": 17,
+            "child_ids": []
+          },
+          {
+            "operator_id": 971313872,
+            "parent_id": -1,
+            "operator_name": "SinkOpr",
+            "elapsed_ms": 0.001043,
+            "output_rows": 17,
+            "child_ids": []
+          }
+        ]
+      },
+      "rss_before_execute": 167280640,
+      "sampled_peak_rss": 184434688,
+      "sampled_rss_increase": 17154048,
+      "rss_samples": 46
+    },
+    {
+      "variant": "current",
+      "memory_run": 1,
+      "case": "composite_unique",
+      "workers": 2,
+      "process_high_water_before": 390922240,
+      "library_override_verified": true,
+      "cold_execute_ms": 621.697958,
+      "process_high_water_after": 462503936,
+      "result_rows": 1000000,
+      "row_hash_sum_sha256": "d0f879cb28e17433c456b465b5dd7bc253b87e3b8ec853bd3e4c6f358c52ddf8",
+      "samples_ms": [
+        611.187333,
+        627.796084,
+        607.5335
+      ],
+      "median_ms": 611.187333,
+      "profile": {
+        "total_elapsed_ms": 2271.4665720000016,
+        "total_output_rows": 1000000,
+        "operators": [
+          {
+            "operator_id": 85488928,
+            "parent_id": -1,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 774.2741880000005,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 85430768,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 770.9388560000007,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 85437920,
+            "parent_id": -1,
+            "operator_name": "GroupByOpr",
+            "elapsed_ms": 725.6497270000007,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 85430944,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 0.46166700000000005,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 85437552,
+            "parent_id": -1,
+            "operator_name": "SinkOpr",
+            "elapsed_ms": 0.1421340000000001,
+            "output_rows": 1000000,
+            "child_ids": []
+          }
+        ]
+      },
+      "rss_before_execute": 157401088,
+      "sampled_peak_rss": 462503936,
+      "sampled_rss_increase": 305102848,
+      "rss_samples": 253
+    },
+    {
+      "variant": "current",
+      "memory_run": 0,
+      "case": "composite_low",
+      "workers": 2,
+      "process_high_water_before": 388628480,
+      "library_override_verified": true,
+      "cold_execute_ms": 96.536792,
+      "process_high_water_after": 388628480,
+      "result_rows": 1717,
+      "row_hash_sum_sha256": "537bbbdc2d84a3128b7b5374751c23a365c8eaa66735b3bc5fb89109afb53f59",
+      "samples_ms": [
+        85.967667,
+        87.852667,
+        86.818875
+      ],
+      "median_ms": 86.818875,
+      "profile": {
+        "total_elapsed_ms": 399.1857670000003,
+        "total_output_rows": 1717,
+        "operators": [
+          {
+            "operator_id": 79720112,
+            "parent_id": -1,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 150.46292800000012,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 79718192,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 147.37522300000012,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 79719008,
+            "parent_id": -1,
+            "operator_name": "GroupByOpr",
+            "elapsed_ms": 101.3441160000001,
+            "output_rows": 1717,
+            "child_ids": []
+          },
+          {
+            "operator_id": 79719712,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 0.002375,
+            "output_rows": 1717,
+            "child_ids": []
+          },
+          {
+            "operator_id": 79710720,
+            "parent_id": -1,
+            "operator_name": "SinkOpr",
+            "elapsed_ms": 0.0011250000000000001,
+            "output_rows": 1717,
+            "child_ids": []
+          }
+        ]
+      },
+      "rss_before_execute": 154566656,
+      "sampled_peak_rss": 181272576,
+      "sampled_rss_increase": 26705920,
+      "rss_samples": 39
+    },
+    {
+      "variant": "current",
+      "memory_run": 0,
+      "case": "join_group",
+      "workers": 4,
+      "process_high_water_before": 384974848,
+      "library_override_verified": true,
+      "cold_execute_ms": 69.626291,
+      "process_high_water_after": 384974848,
+      "result_rows": 17,
+      "row_hash_sum_sha256": "6f4cf2aac2e628ff6ea2f0acaa11ac85e7cd1a7d1f4039a65ae46840af82404d",
+      "samples_ms": [
+        49.35225,
+        49.295292,
+        49.402708
+      ],
+      "median_ms": 49.35225,
+      "profile": {
+        "total_elapsed_ms": 246.94868800000063,
+        "total_output_rows": 17,
+        "operators": [
+          {
+            "operator_id": 130611408,
+            "parent_id": -1,
+            "operator_name": "JoinOpr",
+            "elapsed_ms": 143.5104370000002,
+            "output_rows": 1000000,
+            "child_ids": [
+              130611664,
+              130616048
+            ]
+          },
+          {
+            "operator_id": 130611664,
+            "parent_id": 130611408,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 19.100566000000004,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 130614880,
+            "parent_id": 130611408,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 15.899326000000002,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 130616048,
+            "parent_id": 130611408,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 23.71802399999999,
+            "output_rows": 17,
+            "child_ids": []
+          },
+          {
+            "operator_id": 130610368,
+            "parent_id": 130611408,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 1.5353910000000013,
+            "output_rows": 17,
+            "child_ids": []
+          },
+          {
+            "operator_id": 130615216,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 67.97689800000023,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 130615472,
+            "parent_id": -1,
+            "operator_name": "GroupByOpr",
+            "elapsed_ms": 35.45864500000023,
+            "output_rows": 17,
+            "child_ids": []
+          },
+          {
+            "operator_id": 130639120,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 0.001916,
+            "output_rows": 17,
+            "child_ids": []
+          },
+          {
+            "operator_id": 130639680,
+            "parent_id": -1,
+            "operator_name": "SinkOpr",
+            "elapsed_ms": 0.000792,
+            "output_rows": 17,
+            "child_ids": []
+          }
+        ]
+      },
+      "rss_before_execute": 143130624,
+      "sampled_peak_rss": 161382400,
+      "sampled_rss_increase": 18251776,
+      "rss_samples": 29
+    },
+    {
+      "variant": "current",
+      "memory_run": 0,
+      "case": "join_group",
+      "workers": 2,
+      "process_high_water_before": 401342464,
+      "library_override_verified": true,
+      "cold_execute_ms": 111.111791,
+      "process_high_water_after": 401342464,
+      "result_rows": 17,
+      "row_hash_sum_sha256": "6f4cf2aac2e628ff6ea2f0acaa11ac85e7cd1a7d1f4039a65ae46840af82404d",
+      "samples_ms": [
+        92.300917,
+        91.10225,
+        91.253542
+      ],
+      "median_ms": 91.253542,
+      "profile": {
+        "total_elapsed_ms": 231.52544600000056,
+        "total_output_rows": 17,
+        "operators": [
+          {
+            "operator_id": 300670928,
+            "parent_id": -1,
+            "operator_name": "JoinOpr",
+            "elapsed_ms": 135.19205500000018,
+            "output_rows": 1000000,
+            "child_ids": [
+              300355024,
+              300730288
+            ]
+          },
+          {
+            "operator_id": 300355024,
+            "parent_id": 300670928,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 18.360507000000005,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 300647760,
+            "parent_id": 300670928,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 15.376628000000007,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 300730288,
+            "parent_id": 300670928,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 22.183642000000013,
+            "output_rows": 17,
+            "child_ids": []
+          },
+          {
+            "operator_id": 300888224,
+            "parent_id": 300670928,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 1.1232790000000001,
+            "output_rows": 17,
+            "child_ids": []
+          },
+          {
+            "operator_id": 300490560,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 63.50869300000017,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 300871712,
+            "parent_id": -1,
+            "operator_name": "GroupByOpr",
+            "elapsed_ms": 32.8217390000002,
+            "output_rows": 17,
+            "child_ids": []
+          },
+          {
+            "operator_id": 300742752,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 0.0019590000000000002,
+            "output_rows": 17,
+            "child_ids": []
+          },
+          {
+            "operator_id": 300490288,
+            "parent_id": -1,
+            "operator_name": "SinkOpr",
+            "elapsed_ms": 0.001,
+            "output_rows": 17,
+            "child_ids": []
+          }
+        ]
+      },
+      "rss_before_execute": 168640512,
+      "sampled_peak_rss": 185810944,
+      "sampled_rss_increase": 17170432,
+      "rss_samples": 46
+    },
+    {
+      "variant": "before",
+      "memory_run": 0,
+      "case": "string_low",
+      "workers": 4,
+      "process_high_water_before": 385204224,
+      "library_override_verified": true,
+      "cold_execute_ms": 57.744542,
+      "process_high_water_after": 385204224,
+      "result_rows": 4096,
+      "row_hash_sum_sha256": "1d54bd9cb7825e077f7bec3772d09d9c207d034d0a3964b80d782d393f124f50",
+      "samples_ms": [
+        50.118833,
+        47.662917,
+        45.978625
+      ],
+      "median_ms": 47.662917,
+      "profile": {
+        "total_elapsed_ms": 436.96455399999905,
+        "total_output_rows": 4096,
+        "operators": [
+          {
+            "operator_id": 560930672,
+            "parent_id": -1,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 157.74885499999968,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 560953136,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 154.75273199999967,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 560953248,
+            "parent_id": -1,
+            "operator_name": "GroupByOpr",
+            "elapsed_ms": 124.4588419999997,
+            "output_rows": 4096,
+            "child_ids": []
+          },
+          {
+            "operator_id": 560948000,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 0.0029170000000000003,
+            "output_rows": 4096,
+            "child_ids": []
+          },
+          {
+            "operator_id": 560953984,
+            "parent_id": -1,
+            "operator_name": "SinkOpr",
+            "elapsed_ms": 0.001208,
+            "output_rows": 4096,
+            "child_ids": []
+          }
+        ]
+      },
+      "rss_before_execute": 152076288,
+      "sampled_peak_rss": 184172544,
+      "sampled_rss_increase": 32096256,
+      "rss_samples": 24
+    },
+    {
+      "variant": "current",
+      "memory_run": 1,
+      "case": "composite_low",
+      "workers": 4,
+      "process_high_water_before": 386220032,
+      "library_override_verified": true,
+      "cold_execute_ms": 59.573542,
+      "process_high_water_after": 386220032,
+      "result_rows": 1717,
+      "row_hash_sum_sha256": "537bbbdc2d84a3128b7b5374751c23a365c8eaa66735b3bc5fb89109afb53f59",
+      "samples_ms": [
+        48.103084,
+        45.707042,
+        45.79175
+      ],
+      "median_ms": 45.79175,
+      "profile": {
+        "total_elapsed_ms": 422.4994289999995,
+        "total_output_rows": 1717,
+        "operators": [
+          {
+            "operator_id": 1385289200,
+            "parent_id": -1,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 158.42159299999983,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 1385188016,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 155.29429899999982,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 1385737440,
+            "parent_id": -1,
+            "operator_name": "GroupByOpr",
+            "elapsed_ms": 108.77886999999983,
+            "output_rows": 1717,
+            "child_ids": []
+          },
+          {
+            "operator_id": 1385479600,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 0.002958,
+            "output_rows": 1717,
+            "child_ids": []
+          },
+          {
+            "operator_id": 1385734192,
+            "parent_id": -1,
+            "operator_name": "SinkOpr",
+            "elapsed_ms": 0.001709,
+            "output_rows": 1717,
+            "child_ids": []
+          }
+        ]
+      },
+      "rss_before_execute": 144097280,
+      "sampled_peak_rss": 171737088,
+      "sampled_rss_increase": 27639808,
+      "rss_samples": 25
+    },
+    {
+      "variant": "before",
+      "memory_run": 0,
+      "case": "composite_low",
+      "workers": 2,
+      "process_high_water_before": 393723904,
+      "library_override_verified": true,
+      "cold_execute_ms": 90.595917,
+      "process_high_water_after": 393723904,
+      "result_rows": 1717,
+      "row_hash_sum_sha256": "537bbbdc2d84a3128b7b5374751c23a365c8eaa66735b3bc5fb89109afb53f59",
+      "samples_ms": [
+        79.921083,
+        80.8645,
+        78.309916
+      ],
+      "median_ms": 79.921083,
+      "profile": {
+        "total_elapsed_ms": 386.7929750000002,
+        "total_output_rows": 1717,
+        "operators": [
+          {
+            "operator_id": 310997760,
+            "parent_id": -1,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 145.81512000000006,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 110134544,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 142.9148050000001,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 311164704,
+            "parent_id": -1,
+            "operator_name": "GroupByOpr",
+            "elapsed_ms": 98.05959300000006,
+            "output_rows": 1717,
+            "child_ids": []
+          },
+          {
+            "operator_id": 310537040,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 0.002249,
+            "output_rows": 1717,
+            "child_ids": []
+          },
+          {
+            "operator_id": 311050192,
+            "parent_id": -1,
+            "operator_name": "SinkOpr",
+            "elapsed_ms": 0.001208,
+            "output_rows": 1717,
+            "child_ids": []
+          }
+        ]
+      },
+      "rss_before_execute": 158695424,
+      "sampled_peak_rss": 184778752,
+      "sampled_rss_increase": 26083328,
+      "rss_samples": 38
+    },
+    {
+      "variant": "current",
+      "memory_run": 1,
+      "case": "skewed",
+      "workers": 1,
+      "process_high_water_before": 380141568,
+      "library_override_verified": true,
+      "cold_execute_ms": 96.974916,
+      "process_high_water_after": 380141568,
+      "result_rows": 100000,
+      "row_hash_sum_sha256": "263755d85d33b4a8677023d4832834dc44100ed690d273bb82878f8187a0523c",
+      "samples_ms": [
+        83.823875,
+        82.3265,
+        81.366833
+      ],
+      "median_ms": 82.3265,
+      "profile": {
+        "total_elapsed_ms": 181.26002200000005,
+        "total_output_rows": 100000,
+        "operators": [
+          {
+            "operator_id": 1308202688,
+            "parent_id": -1,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 71.97977600000004,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 502114928,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 69.20149700000003,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 109073712,
+            "parent_id": -1,
+            "operator_name": "GroupByOpr",
+            "elapsed_ms": 40.076165,
+            "output_rows": 100000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 1307861760,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 0.00175,
+            "output_rows": 100000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 502118768,
+            "parent_id": -1,
+            "operator_name": "SinkOpr",
+            "elapsed_ms": 0.000834,
+            "output_rows": 100000,
+            "child_ids": []
+          }
+        ]
+      },
+      "rss_before_execute": 139837440,
+      "sampled_peak_rss": 156401664,
+      "sampled_rss_increase": 16564224,
+      "rss_samples": 41
+    },
+    {
+      "variant": "current",
+      "memory_run": 1,
+      "case": "skewed",
+      "workers": 2,
+      "process_high_water_before": 374685696,
+      "library_override_verified": true,
+      "cold_execute_ms": 57.488833,
+      "process_high_water_after": 374685696,
+      "result_rows": 100000,
+      "row_hash_sum_sha256": "263755d85d33b4a8677023d4832834dc44100ed690d273bb82878f8187a0523c",
+      "samples_ms": [
+        48.7005,
+        48.086542,
+        45.570584
+      ],
+      "median_ms": 48.086542,
+      "profile": {
+        "total_elapsed_ms": 184.17325899999932,
+        "total_output_rows": 100000,
+        "operators": [
+          {
+            "operator_id": 954952208,
+            "parent_id": -1,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 73.42950899999975,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 418634640,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 70.52368399999975,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 417591376,
+            "parent_id": -1,
+            "operator_name": "GroupByOpr",
+            "elapsed_ms": 40.15756499999978,
+            "output_rows": 100000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 418638784,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 0.04833499999999998,
+            "output_rows": 100000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 418615824,
+            "parent_id": -1,
+            "operator_name": "SinkOpr",
+            "elapsed_ms": 0.014165999999999984,
+            "output_rows": 100000,
+            "child_ids": []
+          }
+        ]
+      },
+      "rss_before_execute": 132595712,
+      "sampled_peak_rss": 158941184,
+      "sampled_rss_increase": 26345472,
+      "rss_samples": 24
+    },
+    {
+      "variant": "current",
+      "memory_run": 0,
+      "case": "string_low",
+      "workers": 1,
+      "process_high_water_before": 397950976,
+      "library_override_verified": true,
+      "cold_execute_ms": 171.790084,
+      "process_high_water_after": 397950976,
+      "result_rows": 4096,
+      "row_hash_sum_sha256": "1d54bd9cb7825e077f7bec3772d09d9c207d034d0a3964b80d782d393f124f50",
+      "samples_ms": [
+        157.076833,
+        155.568625,
+        185.684458
+      ],
+      "median_ms": 157.076833,
+      "profile": {
+        "total_elapsed_ms": 407.3452429999998,
+        "total_output_rows": 4096,
+        "operators": [
+          {
+            "operator_id": 309531520,
+            "parent_id": -1,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 147.60101799999995,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 309421488,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 144.7062999999999,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 309474080,
+            "parent_id": -1,
+            "operator_name": "GroupByOpr",
+            "elapsed_ms": 115.03538099999994,
+            "output_rows": 4096,
+            "child_ids": []
+          },
+          {
+            "operator_id": 309459872,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 0.0018350000000000003,
+            "output_rows": 4096,
+            "child_ids": []
+          },
+          {
+            "operator_id": 309460048,
+            "parent_id": -1,
+            "operator_name": "SinkOpr",
+            "elapsed_ms": 0.000709,
+            "output_rows": 4096,
+            "child_ids": []
+          }
+        ]
+      },
+      "rss_before_execute": 165068800,
+      "sampled_peak_rss": 191414272,
+      "sampled_rss_increase": 26345472,
+      "rss_samples": 70
+    },
+    {
+      "variant": "before",
+      "memory_run": 0,
+      "case": "join_group",
+      "workers": 4,
+      "process_high_water_before": 401506304,
+      "library_override_verified": true,
+      "cold_execute_ms": 66.370625,
+      "process_high_water_after": 401506304,
+      "result_rows": 17,
+      "row_hash_sum_sha256": "6f4cf2aac2e628ff6ea2f0acaa11ac85e7cd1a7d1f4039a65ae46840af82404d",
+      "samples_ms": [
+        47.152416,
+        48.032334,
+        47.314167
+      ],
+      "median_ms": 47.314167,
+      "profile": {
+        "total_elapsed_ms": 234.29050500000025,
+        "total_output_rows": 17,
+        "operators": [
+          {
+            "operator_id": 129027952,
+            "parent_id": -1,
+            "operator_name": "JoinOpr",
+            "elapsed_ms": 136.44325500000008,
+            "output_rows": 1000000,
+            "child_ids": [
+              129026832,
+              129018560
+            ]
+          },
+          {
+            "operator_id": 129026832,
+            "parent_id": 129027952,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 18.202802,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 128999696,
+            "parent_id": 129027952,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 15.283465999999995,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 129018560,
+            "parent_id": 129027952,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 22.402918000000007,
+            "output_rows": 17,
+            "child_ids": []
+          },
+          {
+            "operator_id": 129002976,
+            "parent_id": 129027952,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 1.3124649999999998,
+            "output_rows": 17,
+            "child_ids": []
+          },
+          {
+            "operator_id": 129014432,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 64.3659030000001,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 129027248,
+            "parent_id": -1,
+            "operator_name": "GroupByOpr",
+            "elapsed_ms": 33.4787220000001,
+            "output_rows": 17,
+            "child_ids": []
+          },
+          {
+            "operator_id": 129003680,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 0.001792,
+            "output_rows": 17,
+            "child_ids": []
+          },
+          {
+            "operator_id": 129029088,
+            "parent_id": -1,
+            "operator_name": "SinkOpr",
+            "elapsed_ms": 0.000833,
+            "output_rows": 17,
+            "child_ids": []
+          }
+        ]
+      },
+      "rss_before_execute": 168312832,
+      "sampled_peak_rss": 187088896,
+      "sampled_rss_increase": 18776064,
+      "rss_samples": 27
+    },
+    {
+      "variant": "current",
+      "memory_run": 1,
+      "case": "join_group",
+      "workers": 4,
+      "process_high_water_before": 388759552,
+      "library_override_verified": true,
+      "cold_execute_ms": 65.031791,
+      "process_high_water_after": 388759552,
+      "result_rows": 17,
+      "row_hash_sum_sha256": "6f4cf2aac2e628ff6ea2f0acaa11ac85e7cd1a7d1f4039a65ae46840af82404d",
+      "samples_ms": [
+        47.097792,
+        47.205375,
+        45.945208
+      ],
+      "median_ms": 47.097792,
+      "profile": {
+        "total_elapsed_ms": 234.382018000001,
+        "total_output_rows": 17,
+        "operators": [
+          {
+            "operator_id": 554040640,
+            "parent_id": -1,
+            "operator_name": "JoinOpr",
+            "elapsed_ms": 136.46103000000033,
+            "output_rows": 1000000,
+            "child_ids": [
+              115364048,
+              115364128
+            ]
+          },
+          {
+            "operator_id": 115364048,
+            "parent_id": 554040640,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 18.21427999999999,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 554690256,
+            "parent_id": 554040640,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 15.295918999999994,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 115364128,
+            "parent_id": 554040640,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 22.178367999999995,
+            "output_rows": 17,
+            "child_ids": []
+          },
+          {
+            "operator_id": 554692096,
+            "parent_id": 554040640,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 1.3555279999999992,
+            "output_rows": 17,
+            "child_ids": []
+          },
+          {
+            "operator_id": 115369024,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 64.46285500000033,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 554691648,
+            "parent_id": -1,
+            "operator_name": "GroupByOpr",
+            "elapsed_ms": 33.45554900000034,
+            "output_rows": 17,
+            "child_ids": []
+          },
+          {
+            "operator_id": 554690720,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 0.0018340000000000001,
+            "output_rows": 17,
+            "child_ids": []
+          },
+          {
+            "operator_id": 554691280,
+            "parent_id": -1,
+            "operator_name": "SinkOpr",
+            "elapsed_ms": 0.00075,
+            "output_rows": 17,
+            "child_ids": []
+          }
+        ]
+      },
+      "rss_before_execute": 155910144,
+      "sampled_peak_rss": 174129152,
+      "sampled_rss_increase": 18219008,
+      "rss_samples": 26
+    },
+    {
+      "variant": "current",
+      "memory_run": 0,
+      "case": "skewed",
+      "workers": 4,
+      "process_high_water_before": 390348800,
+      "library_override_verified": true,
+      "cold_execute_ms": 42.029542,
+      "process_high_water_after": 390348800,
+      "result_rows": 100000,
+      "row_hash_sum_sha256": "263755d85d33b4a8677023d4832834dc44100ed690d273bb82878f8187a0523c",
+      "samples_ms": [
+        30.134041,
+        27.002666,
+        29.754542
+      ],
+      "median_ms": 29.754542,
+      "profile": {
+        "total_elapsed_ms": 219.33373199999983,
+        "total_output_rows": 100000,
+        "operators": [
+          {
+            "operator_id": 124820256,
+            "parent_id": -1,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 85.62969499999996,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 124820336,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 82.34240699999994,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 124809008,
+            "parent_id": -1,
+            "operator_name": "GroupByOpr",
+            "elapsed_ms": 51.29041999999992,
+            "output_rows": 100000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 124814816,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 0.05562699999999999,
+            "output_rows": 100000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 124804128,
+            "parent_id": -1,
+            "operator_name": "SinkOpr",
+            "elapsed_ms": 0.015582999999999986,
+            "output_rows": 100000,
+            "child_ids": []
+          }
+        ]
+      },
+      "rss_before_execute": 156942336,
+      "sampled_peak_rss": 184598528,
+      "sampled_rss_increase": 27656192,
+      "rss_samples": 17
+    },
+    {
+      "variant": "before",
+      "memory_run": 0,
+      "case": "string_unique",
+      "workers": 2,
+      "process_high_water_before": 383074304,
+      "library_override_verified": true,
+      "cold_execute_ms": 453.402084,
+      "process_high_water_after": 383565824,
+      "result_rows": 1000000,
+      "row_hash_sum_sha256": "5b352ecfc7934385672ddfaab0ffcf17612ec47a27d36cf5111816b9fd38ff93",
+      "samples_ms": [
+        441.91775,
+        433.159375,
+        464.960917
+      ],
+      "median_ms": 441.91775,
+      "profile": {
+        "total_elapsed_ms": 1359.1603670000006,
+        "total_output_rows": 1000000,
+        "operators": [
+          {
+            "operator_id": 1256426720,
+            "parent_id": -1,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 465.4565450000002,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 1256261440,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 462.12833300000017,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 1256428608,
+            "parent_id": -1,
+            "operator_name": "GroupByOpr",
+            "elapsed_ms": 430.99311700000015,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 1256426864,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 0.45005500000000126,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 1256431344,
+            "parent_id": -1,
+            "operator_name": "SinkOpr",
+            "elapsed_ms": 0.1323170000000012,
+            "output_rows": 1000000,
+            "child_ids": []
+          }
+        ]
+      },
+      "rss_before_execute": 140836864,
+      "sampled_peak_rss": 383565824,
+      "sampled_rss_increase": 242728960,
+      "rss_samples": 183
+    },
+    {
+      "variant": "current",
+      "memory_run": 0,
+      "case": "join_group",
+      "workers": 1,
+      "process_high_water_before": 400916480,
+      "library_override_verified": true,
+      "cold_execute_ms": 208.393167,
+      "process_high_water_after": 400916480,
+      "result_rows": 17,
+      "row_hash_sum_sha256": "6f4cf2aac2e628ff6ea2f0acaa11ac85e7cd1a7d1f4039a65ae46840af82404d",
+      "samples_ms": [
+        188.565084,
+        190.296125,
+        185.037167
+      ],
+      "median_ms": 188.565084,
+      "profile": {
+        "total_elapsed_ms": 223.61194499999988,
+        "total_output_rows": 17,
+        "operators": [
+          {
+            "operator_id": 90230640,
+            "parent_id": -1,
+            "operator_name": "JoinOpr",
+            "elapsed_ms": 129.80157999999997,
+            "output_rows": 1000000,
+            "child_ids": [
+              90229520,
+              90221248
+            ]
+          },
+          {
+            "operator_id": 90229520,
+            "parent_id": 90230640,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 17.671877999999996,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 90202384,
+            "parent_id": 90230640,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 14.837264999999997,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 90221248,
+            "parent_id": 90230640,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 21.719396,
+            "output_rows": 17,
+            "child_ids": []
+          },
+          {
+            "operator_id": 90205664,
+            "parent_id": 90230640,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 0.9930339999999996,
+            "output_rows": 17,
+            "child_ids": []
+          },
+          {
+            "operator_id": 90217120,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 61.47015999999995,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 90229936,
+            "parent_id": -1,
+            "operator_name": "GroupByOpr",
+            "elapsed_ms": 32.33741199999996,
+            "output_rows": 17,
+            "child_ids": []
+          },
+          {
+            "operator_id": 90206368,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 0.002001,
+            "output_rows": 17,
+            "child_ids": []
+          },
+          {
+            "operator_id": 90230112,
+            "parent_id": -1,
+            "operator_name": "SinkOpr",
+            "elapsed_ms": 0.000792,
+            "output_rows": 17,
+            "child_ids": []
+          }
+        ]
+      },
+      "rss_before_execute": 159809536,
+      "sampled_peak_rss": 176488448,
+      "sampled_rss_increase": 16678912,
+      "rss_samples": 84
+    },
+    {
+      "variant": "before",
+      "memory_run": 0,
+      "case": "composite_low",
+      "workers": 4,
+      "process_high_water_before": 386236416,
+      "library_override_verified": true,
+      "cold_execute_ms": 57.0165,
+      "process_high_water_after": 386236416,
+      "result_rows": 1717,
+      "row_hash_sum_sha256": "537bbbdc2d84a3128b7b5374751c23a365c8eaa66735b3bc5fb89109afb53f59",
+      "samples_ms": [
+        44.385334,
+        43.413333,
+        42.74625
+      ],
+      "median_ms": 43.413333,
+      "profile": {
+        "total_elapsed_ms": 408.567103999999,
+        "total_output_rows": 1717,
+        "operators": [
+          {
+            "operator_id": 956035056,
+            "parent_id": -1,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 153.27858499999968,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 956033360,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 150.2935419999997,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 956046432,
+            "parent_id": -1,
+            "operator_name": "GroupByOpr",
+            "elapsed_ms": 104.99201999999968,
+            "output_rows": 1717,
+            "child_ids": []
+          },
+          {
+            "operator_id": 956046512,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 0.002124,
+            "output_rows": 1717,
+            "child_ids": []
+          },
+          {
+            "operator_id": 956018560,
+            "parent_id": -1,
+            "operator_name": "SinkOpr",
+            "elapsed_ms": 0.000833,
+            "output_rows": 1717,
+            "child_ids": []
+          }
+        ]
+      },
+      "rss_before_execute": 154583040,
+      "sampled_peak_rss": 183730176,
+      "sampled_rss_increase": 29147136,
+      "rss_samples": 24
+    },
+    {
+      "variant": "current",
+      "memory_run": 0,
+      "case": "collect_values",
+      "workers": 4,
+      "process_high_water_before": 381681664,
+      "library_override_verified": true,
+      "cold_execute_ms": 106.593584,
+      "process_high_water_after": 381681664,
+      "result_rows": 17,
+      "row_hash_sum_sha256": "86085a0da7ab5e5da4dda7545b26bb9de1f889174b87614f248b7e3fbe5f0c28",
+      "samples_ms": [
+        98.325958,
+        102.859458,
+        99.694875
+      ],
+      "median_ms": 99.694875,
+      "profile": {
+        "total_elapsed_ms": 295.79274399999997,
+        "total_output_rows": 17,
+        "operators": [
+          {
+            "operator_id": 485416400,
+            "parent_id": -1,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 111.169073,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 485472000,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 107.96821499999999,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 485328480,
+            "parent_id": -1,
+            "operator_name": "GroupByOpr",
+            "elapsed_ms": 76.650415,
+            "output_rows": 17,
+            "child_ids": []
+          },
+          {
+            "operator_id": 485396480,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 0.0037909999999999997,
+            "output_rows": 17,
+            "child_ids": []
+          },
+          {
+            "operator_id": 485406592,
+            "parent_id": -1,
+            "operator_name": "SinkOpr",
+            "elapsed_ms": 0.00125,
+            "output_rows": 17,
+            "child_ids": []
+          }
+        ]
+      },
+      "rss_before_execute": 148733952,
+      "sampled_peak_rss": 266403840,
+      "sampled_rss_increase": 117669888,
+      "rss_samples": 44
+    },
+    {
+      "variant": "before",
+      "memory_run": 1,
+      "case": "string_unique",
+      "workers": 2,
+      "process_high_water_before": 380944384,
+      "library_override_verified": true,
+      "cold_execute_ms": 439.654333,
+      "process_high_water_after": 420888576,
+      "result_rows": 1000000,
+      "row_hash_sum_sha256": "5b352ecfc7934385672ddfaab0ffcf17612ec47a27d36cf5111816b9fd38ff93",
+      "samples_ms": [
+        467.869833,
+        480.021458,
+        424.666708
+      ],
+      "median_ms": 467.869833,
+      "profile": {
+        "total_elapsed_ms": 1294.5380780000012,
+        "total_output_rows": 1000000,
+        "operators": [
+          {
+            "operator_id": 292605680,
+            "parent_id": -1,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 443.70999000000035,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 292839872,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 440.5271400000004,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 292713952,
+            "parent_id": -1,
+            "operator_name": "GroupByOpr",
+            "elapsed_ms": 409.7130550000004,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 292872784,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 0.46077800000000085,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 292763856,
+            "parent_id": -1,
+            "operator_name": "SinkOpr",
+            "elapsed_ms": 0.12711500000000128,
+            "output_rows": 1000000,
+            "child_ids": []
+          }
+        ]
+      },
+      "rss_before_execute": 147603456,
+      "sampled_peak_rss": 420888576,
+      "sampled_rss_increase": 273285120,
+      "rss_samples": 178
+    },
+    {
+      "variant": "current",
+      "memory_run": 1,
+      "case": "string_unique",
+      "workers": 4,
+      "process_high_water_before": 397033472,
+      "library_override_verified": true,
+      "cold_execute_ms": 277.073166,
+      "process_high_water_after": 475856896,
+      "result_rows": 1000000,
+      "row_hash_sum_sha256": "5b352ecfc7934385672ddfaab0ffcf17612ec47a27d36cf5111816b9fd38ff93",
+      "samples_ms": [
+        239.442708,
+        242.454458,
+        237.447333
+      ],
+      "median_ms": 239.442708,
+      "profile": {
+        "total_elapsed_ms": 1438.9760160000028,
+        "total_output_rows": 1000000,
+        "operators": [
+          {
+            "operator_id": 435680416,
+            "parent_id": -1,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 491.9735930000009,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 95437200,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 488.61733700000093,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 95449872,
+            "parent_id": -1,
+            "operator_name": "GroupByOpr",
+            "elapsed_ms": 457.71978400000097,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 95440432,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 0.511411,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 95450560,
+            "parent_id": -1,
+            "operator_name": "SinkOpr",
+            "elapsed_ms": 0.15389100000000022,
+            "output_rows": 1000000,
+            "child_ids": []
+          }
+        ]
+      },
+      "rss_before_execute": 163676160,
+      "sampled_peak_rss": 475856896,
+      "sampled_rss_increase": 312180736,
+      "rss_samples": 111
+    },
+    {
+      "variant": "before",
+      "memory_run": 1,
+      "case": "join_group",
+      "workers": 1,
+      "process_high_water_before": 383598592,
+      "library_override_verified": true,
+      "cold_execute_ms": 208.941208,
+      "process_high_water_after": 383598592,
+      "result_rows": 17,
+      "row_hash_sum_sha256": "6f4cf2aac2e628ff6ea2f0acaa11ac85e7cd1a7d1f4039a65ae46840af82404d",
+      "samples_ms": [
+        186.415375,
+        182.307959,
+        183.861125
+      ],
+      "median_ms": 183.861125,
+      "profile": {
+        "total_elapsed_ms": 224.0047080000001,
+        "total_output_rows": 17,
+        "operators": [
+          {
+            "operator_id": 128183488,
+            "parent_id": -1,
+            "operator_name": "JoinOpr",
+            "elapsed_ms": 130.05484100000004,
+            "output_rows": 1000000,
+            "child_ids": [
+              128476864,
+              128496448
+            ]
+          },
+          {
+            "operator_id": 128476864,
+            "parent_id": 128183488,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 17.621283999999996,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 128494560,
+            "parent_id": 128183488,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 14.827699999999995,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 128496448,
+            "parent_id": 128183488,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 22.023949999999985,
+            "output_rows": 17,
+            "child_ids": []
+          },
+          {
+            "operator_id": 128315136,
+            "parent_id": 128183488,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 0.9751200000000021,
+            "output_rows": 17,
+            "child_ids": []
+          },
+          {
+            "operator_id": 128199152,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 61.50445300000005,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 128410528,
+            "parent_id": -1,
+            "operator_name": "GroupByOpr",
+            "elapsed_ms": 32.44270400000003,
+            "output_rows": 17,
+            "child_ids": []
+          },
+          {
+            "operator_id": 128344112,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 0.0018759999999999998,
+            "output_rows": 17,
+            "child_ids": []
+          },
+          {
+            "operator_id": 128290864,
+            "parent_id": -1,
+            "operator_name": "SinkOpr",
+            "elapsed_ms": 0.000834,
+            "output_rows": 17,
+            "child_ids": []
+          }
+        ]
+      },
+      "rss_before_execute": 149815296,
+      "sampled_peak_rss": 167460864,
+      "sampled_rss_increase": 17645568,
+      "rss_samples": 88
+    },
+    {
+      "variant": "current",
+      "memory_run": 0,
+      "case": "composite_low",
+      "workers": 1,
+      "process_high_water_before": 395509760,
+      "library_override_verified": true,
+      "cold_execute_ms": 168.89225,
+      "process_high_water_after": 395509760,
+      "result_rows": 1717,
+      "row_hash_sum_sha256": "537bbbdc2d84a3128b7b5374751c23a365c8eaa66735b3bc5fb89109afb53f59",
+      "samples_ms": [
+        159.0835,
+        152.786584,
+        154.394083
+      ],
+      "median_ms": 154.394083,
+      "profile": {
+        "total_elapsed_ms": 392.64125599999966,
+        "total_output_rows": 1717,
+        "operators": [
+          {
+            "operator_id": 1130869408,
+            "parent_id": -1,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 148.0938009999999,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 1130849008,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 145.06782699999988,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 1130848864,
+            "parent_id": -1,
+            "operator_name": "GroupByOpr",
+            "elapsed_ms": 99.47558699999988,
+            "output_rows": 1717,
+            "child_ids": []
+          },
+          {
+            "operator_id": 1131372656,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 0.002791,
+            "output_rows": 1717,
+            "child_ids": []
+          },
+          {
+            "operator_id": 1131063072,
+            "parent_id": -1,
+            "operator_name": "SinkOpr",
+            "elapsed_ms": 0.0012499999999999998,
+            "output_rows": 1717,
+            "child_ids": []
+          }
+        ]
+      },
+      "rss_before_execute": 162349056,
+      "sampled_peak_rss": 186925056,
+      "sampled_rss_increase": 24576000,
+      "rss_samples": 70
+    },
+    {
+      "variant": "before",
+      "memory_run": 1,
+      "case": "skewed",
+      "workers": 1,
+      "process_high_water_before": 390103040,
+      "library_override_verified": true,
+      "cold_execute_ms": 100.201542,
+      "process_high_water_after": 390103040,
+      "result_rows": 100000,
+      "row_hash_sum_sha256": "263755d85d33b4a8677023d4832834dc44100ed690d273bb82878f8187a0523c",
+      "samples_ms": [
+        89.844666,
+        85.731,
+        90.936792
+      ],
+      "median_ms": 89.844666,
+      "profile": {
+        "total_elapsed_ms": 247.91682899999995,
+        "total_output_rows": 100000,
+        "operators": [
+          {
+            "operator_id": 431069712,
+            "parent_id": -1,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 99.79163699999998,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 431092336,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 96.58950599999997,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 431073376,
+            "parent_id": -1,
+            "operator_name": "GroupByOpr",
+            "elapsed_ms": 51.53118699999998,
+            "output_rows": 100000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 431085664,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 0.002833,
+            "output_rows": 100000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 431033664,
+            "parent_id": -1,
+            "operator_name": "SinkOpr",
+            "elapsed_ms": 0.001666,
+            "output_rows": 100000,
+            "child_ids": []
+          }
+        ]
+      },
+      "rss_before_execute": 152780800,
+      "sampled_peak_rss": 170344448,
+      "sampled_rss_increase": 17563648,
+      "rss_samples": 43
+    },
+    {
+      "variant": "current",
+      "memory_run": 1,
+      "case": "collect_values",
+      "workers": 2,
+      "process_high_water_before": 403537920,
+      "library_override_verified": true,
+      "cold_execute_ms": 111.777833,
+      "process_high_water_after": 403537920,
+      "result_rows": 17,
+      "row_hash_sum_sha256": "86085a0da7ab5e5da4dda7545b26bb9de1f889174b87614f248b7e3fbe5f0c28",
+      "samples_ms": [
+        110.248875,
+        121.756,
+        95.648208
+      ],
+      "median_ms": 110.248875,
+      "profile": {
+        "total_elapsed_ms": 284.3461800000002,
+        "total_output_rows": 17,
+        "operators": [
+          {
+            "operator_id": 44490464,
+            "parent_id": -1,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 106.70741500000005,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 1524902128,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 103.77300600000005,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 44471616,
+            "parent_id": -1,
+            "operator_name": "GroupByOpr",
+            "elapsed_ms": 73.86154900000007,
+            "output_rows": 17,
+            "child_ids": []
+          },
+          {
+            "operator_id": 44484832,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 0.0032510000000000004,
+            "output_rows": 17,
+            "child_ids": []
+          },
+          {
+            "operator_id": 44484944,
+            "parent_id": -1,
+            "operator_name": "SinkOpr",
+            "elapsed_ms": 0.000959,
+            "output_rows": 17,
+            "child_ids": []
+          }
+        ]
+      },
+      "rss_before_execute": 162447360,
+      "sampled_peak_rss": 268582912,
+      "sampled_rss_increase": 106135552,
+      "rss_samples": 46
+    },
+    {
+      "variant": "before",
+      "memory_run": 0,
+      "case": "composite_low",
+      "workers": 1,
+      "process_high_water_before": 378093568,
+      "library_override_verified": true,
+      "cold_execute_ms": 167.753,
+      "process_high_water_after": 378093568,
+      "result_rows": 1717,
+      "row_hash_sum_sha256": "537bbbdc2d84a3128b7b5374751c23a365c8eaa66735b3bc5fb89109afb53f59",
+      "samples_ms": [
+        161.703916,
+        164.572125,
+        161.83625
+      ],
+      "median_ms": 161.83625,
+      "profile": {
+        "total_elapsed_ms": 383.94304399999993,
+        "total_output_rows": 1717,
+        "operators": [
+          {
+            "operator_id": 124676096,
+            "parent_id": -1,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 144.68961199999995,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 124519024,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 141.77795099999997,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 124631760,
+            "parent_id": -1,
+            "operator_name": "GroupByOpr",
+            "elapsed_ms": 97.47273199999994,
+            "output_rows": 1717,
+            "child_ids": []
+          },
+          {
+            "operator_id": 124594528,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 0.0018740000000000002,
+            "output_rows": 1717,
+            "child_ids": []
+          },
+          {
+            "operator_id": 124597424,
+            "parent_id": -1,
+            "operator_name": "SinkOpr",
+            "elapsed_ms": 0.000875,
+            "output_rows": 1717,
+            "child_ids": []
+          }
+        ]
+      },
+      "rss_before_execute": 146341888,
+      "sampled_peak_rss": 170999808,
+      "sampled_rss_increase": 24657920,
+      "rss_samples": 70
+    },
+    {
+      "variant": "current",
+      "memory_run": 1,
+      "case": "collect_values",
+      "workers": 4,
+      "process_high_water_before": 391692288,
+      "library_override_verified": true,
+      "cold_execute_ms": 111.606542,
+      "process_high_water_after": 391692288,
+      "result_rows": 17,
+      "row_hash_sum_sha256": "86085a0da7ab5e5da4dda7545b26bb9de1f889174b87614f248b7e3fbe5f0c28",
+      "samples_ms": [
+        113.447042,
+        94.213583,
+        92.895292
+      ],
+      "median_ms": 94.213583,
+      "profile": {
+        "total_elapsed_ms": 284.6399370000001,
+        "total_output_rows": 17,
+        "operators": [
+          {
+            "operator_id": 115406928,
+            "parent_id": -1,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 106.99382500000002,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 1190738016,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 103.95475000000002,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 1191054784,
+            "parent_id": -1,
+            "operator_name": "GroupByOpr",
+            "elapsed_ms": 73.68665100000004,
+            "output_rows": 17,
+            "child_ids": []
+          },
+          {
+            "operator_id": 1191080704,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 0.0035849999999999996,
+            "output_rows": 17,
+            "child_ids": []
+          },
+          {
+            "operator_id": 129465680,
+            "parent_id": -1,
+            "operator_name": "SinkOpr",
+            "elapsed_ms": 0.0011259999999999998,
+            "output_rows": 17,
+            "child_ids": []
+          }
+        ]
+      },
+      "rss_before_execute": 159989760,
+      "sampled_peak_rss": 269942784,
+      "sampled_rss_increase": 109953024,
+      "rss_samples": 46
+    },
+    {
+      "variant": "before",
+      "memory_run": 1,
+      "case": "composite_low",
+      "workers": 2,
+      "process_high_water_before": 398819328,
+      "library_override_verified": true,
+      "cold_execute_ms": 93.594584,
+      "process_high_water_after": 398819328,
+      "result_rows": 1717,
+      "row_hash_sum_sha256": "537bbbdc2d84a3128b7b5374751c23a365c8eaa66735b3bc5fb89109afb53f59",
+      "samples_ms": [
+        82.41175,
+        81.324958,
+        79.515042
+      ],
+      "median_ms": 81.324958,
+      "profile": {
+        "total_elapsed_ms": 458.0094930000005,
+        "total_output_rows": 1717,
+        "operators": [
+          {
+            "operator_id": 839519968,
+            "parent_id": -1,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 171.32382200000018,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 65030288,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 168.16032900000016,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 65028992,
+            "parent_id": -1,
+            "operator_name": "GroupByOpr",
+            "elapsed_ms": 118.52192600000012,
+            "output_rows": 1717,
+            "child_ids": []
+          },
+          {
+            "operator_id": 839792752,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 0.0023330000000000004,
+            "output_rows": 1717,
+            "child_ids": []
+          },
+          {
+            "operator_id": 65030720,
+            "parent_id": -1,
+            "operator_name": "SinkOpr",
+            "elapsed_ms": 0.001083,
+            "output_rows": 1717,
+            "child_ids": []
+          }
+        ]
+      },
+      "rss_before_execute": 160006144,
+      "sampled_peak_rss": 186171392,
+      "sampled_rss_increase": 26165248,
+      "rss_samples": 39
+    },
+    {
+      "variant": "before",
+      "memory_run": 0,
+      "case": "string_unique",
+      "workers": 4,
+      "process_high_water_before": 379076608,
+      "library_override_verified": true,
+      "cold_execute_ms": 369.111709,
+      "process_high_water_after": 489652224,
+      "result_rows": 1000000,
+      "row_hash_sum_sha256": "5b352ecfc7934385672ddfaab0ffcf17612ec47a27d36cf5111816b9fd38ff93",
+      "samples_ms": [
+        365.194875,
+        343.259917,
+        370.0535
+      ],
+      "median_ms": 365.194875,
+      "profile": {
+        "total_elapsed_ms": 1642.9107639999959,
+        "total_output_rows": 1000000,
+        "operators": [
+          {
+            "operator_id": 266807360,
+            "parent_id": -1,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 560.8481939999987,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 267197568,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 557.0797629999986,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 267087104,
+            "parent_id": -1,
+            "operator_name": "GroupByOpr",
+            "elapsed_ms": 524.3266489999986,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 267187088,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 0.5085360000000005,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 266891904,
+            "parent_id": -1,
+            "operator_name": "SinkOpr",
+            "elapsed_ms": 0.14762200000000028,
+            "output_rows": 1000000,
+            "child_ids": []
+          }
+        ]
+      },
+      "rss_before_execute": 141803520,
+      "sampled_peak_rss": 489652224,
+      "sampled_rss_increase": 347848704,
+      "rss_samples": 151
+    },
+    {
+      "variant": "current",
+      "memory_run": 0,
+      "case": "collect_values",
+      "workers": 2,
+      "process_high_water_before": 395935744,
+      "library_override_verified": true,
+      "cold_execute_ms": 109.01975,
+      "process_high_water_after": 395935744,
+      "result_rows": 17,
+      "row_hash_sum_sha256": "86085a0da7ab5e5da4dda7545b26bb9de1f889174b87614f248b7e3fbe5f0c28",
+      "samples_ms": [
+        101.639042,
+        111.666792,
+        106.626375
+      ],
+      "median_ms": 106.626375,
+      "profile": {
+        "total_elapsed_ms": 293.3709979999998,
+        "total_output_rows": 17,
+        "operators": [
+          {
+            "operator_id": 299921424,
+            "parent_id": -1,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 110.31073699999995,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 299917728,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 107.16473299999996,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 299919632,
+            "parent_id": -1,
+            "operator_name": "GroupByOpr",
+            "elapsed_ms": 75.89165399999996,
+            "output_rows": 17,
+            "child_ids": []
+          },
+          {
+            "operator_id": 299930432,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 0.003208,
+            "output_rows": 17,
+            "child_ids": []
+          },
+          {
+            "operator_id": 299920176,
+            "parent_id": -1,
+            "operator_name": "SinkOpr",
+            "elapsed_ms": 0.0006659999999999999,
+            "output_rows": 17,
+            "child_ids": []
+          }
+        ]
+      },
+      "rss_before_execute": 155271168,
+      "sampled_peak_rss": 239009792,
+      "sampled_rss_increase": 83738624,
+      "rss_samples": 45
+    },
+    {
+      "variant": "before",
+      "memory_run": 0,
+      "case": "skewed",
+      "workers": 4,
+      "process_high_water_before": 395231232,
+      "library_override_verified": true,
+      "cold_execute_ms": 47.641583,
+      "process_high_water_after": 395231232,
+      "result_rows": 100000,
+      "row_hash_sum_sha256": "263755d85d33b4a8677023d4832834dc44100ed690d273bb82878f8187a0523c",
+      "samples_ms": [
+        39.694375,
+        39.0325,
+        37.435
+      ],
+      "median_ms": 39.0325,
+      "profile": {
+        "total_elapsed_ms": 233.37529899999942,
+        "total_output_rows": 100000,
+        "operators": [
+          {
+            "operator_id": 47598112,
+            "parent_id": -1,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 90.9426409999998,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 47586256,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 87.49149799999981,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 47558688,
+            "parent_id": -1,
+            "operator_name": "GroupByOpr",
+            "elapsed_ms": 54.855527999999815,
+            "output_rows": 100000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 47531008,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 0.06733699999999998,
+            "output_rows": 100000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 47577552,
+            "parent_id": -1,
+            "operator_name": "SinkOpr",
+            "elapsed_ms": 0.018294999999999985,
+            "output_rows": 100000,
+            "child_ids": []
+          }
+        ]
+      },
+      "rss_before_execute": 153780224,
+      "sampled_peak_rss": 180436992,
+      "sampled_rss_increase": 26656768,
+      "rss_samples": 19
+    },
+    {
+      "variant": "current",
+      "memory_run": 0,
+      "case": "string_unique",
+      "workers": 4,
+      "process_high_water_before": 388907008,
+      "library_override_verified": true,
+      "cold_execute_ms": 286.257917,
+      "process_high_water_after": 454426624,
+      "result_rows": 1000000,
+      "row_hash_sum_sha256": "5b352ecfc7934385672ddfaab0ffcf17612ec47a27d36cf5111816b9fd38ff93",
+      "samples_ms": [
+        228.956583,
+        257.8945,
+        223.927375
+      ],
+      "median_ms": 228.956583,
+      "profile": {
+        "total_elapsed_ms": 1377.3768530000018,
+        "total_output_rows": 1000000,
+        "operators": [
+          {
+            "operator_id": 846230704,
+            "parent_id": -1,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 471.31659500000063,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 846225840,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 467.97706300000056,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 846217984,
+            "parent_id": -1,
+            "operator_name": "GroupByOpr",
+            "elapsed_ms": 437.4656460000006,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 846218128,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 0.4720939999999999,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 846230080,
+            "parent_id": -1,
+            "operator_name": "SinkOpr",
+            "elapsed_ms": 0.145455,
+            "output_rows": 1000000,
+            "child_ids": []
+          }
+        ]
+      },
+      "rss_before_execute": 148406272,
+      "sampled_peak_rss": 454426624,
+      "sampled_rss_increase": 306020352,
+      "rss_samples": 114
+    },
+    {
+      "variant": "current",
+      "memory_run": 0,
+      "case": "collect_values",
+      "workers": 1,
+      "process_high_water_before": 378339328,
+      "library_override_verified": true,
+      "cold_execute_ms": 132.516042,
+      "process_high_water_after": 378339328,
+      "result_rows": 17,
+      "row_hash_sum_sha256": "86085a0da7ab5e5da4dda7545b26bb9de1f889174b87614f248b7e3fbe5f0c28",
+      "samples_ms": [
+        143.196667,
+        123.875875,
+        129.759542
+      ],
+      "median_ms": 129.759542,
+      "profile": {
+        "total_elapsed_ms": 277.8108930000001,
+        "total_output_rows": 17,
+        "operators": [
+          {
+            "operator_id": 325877648,
+            "parent_id": -1,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 104.20831700000002,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 325878848,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 101.44200800000003,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 325725008,
+            "parent_id": -1,
+            "operator_name": "GroupByOpr",
+            "elapsed_ms": 72.15590200000004,
+            "output_rows": 17,
+            "child_ids": []
+          },
+          {
+            "operator_id": 325898944,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 0.003666,
+            "output_rows": 17,
+            "child_ids": []
+          },
+          {
+            "operator_id": 325920240,
+            "parent_id": -1,
+            "operator_name": "SinkOpr",
+            "elapsed_ms": 0.001,
+            "output_rows": 17,
+            "child_ids": []
+          }
+        ]
+      },
+      "rss_before_execute": 141475840,
+      "sampled_peak_rss": 228409344,
+      "sampled_rss_increase": 86933504,
+      "rss_samples": 54
+    },
+    {
+      "variant": "before",
+      "memory_run": 1,
+      "case": "string_unique",
+      "workers": 1,
+      "process_high_water_before": 383401984,
+      "library_override_verified": true,
+      "cold_execute_ms": 459.51225,
+      "process_high_water_after": 383401984,
+      "result_rows": 1000000,
+      "row_hash_sum_sha256": "5b352ecfc7934385672ddfaab0ffcf17612ec47a27d36cf5111816b9fd38ff93",
+      "samples_ms": [
+        395.258083,
+        403.557958,
+        393.977166
+      ],
+      "median_ms": 395.258083,
+      "profile": {
+        "total_elapsed_ms": 1004.4195870000001,
+        "total_output_rows": 1000000,
+        "operators": [
+          {
+            "operator_id": 677683760,
+            "parent_id": -1,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 346.55263400000007,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 677906592,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 343.6764320000001,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 677953328,
+            "parent_id": -1,
+            "operator_name": "GroupByOpr",
+            "elapsed_ms": 314.185689,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 677617968,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 0.0037910000000000005,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 678123152,
+            "parent_id": -1,
+            "operator_name": "SinkOpr",
+            "elapsed_ms": 0.001041,
+            "output_rows": 1000000,
+            "child_ids": []
+          }
+        ]
+      },
+      "rss_before_execute": 150929408,
+      "sampled_peak_rss": 356122624,
+      "sampled_rss_increase": 205193216,
+      "rss_samples": 184
+    },
+    {
+      "variant": "before",
+      "memory_run": 0,
+      "case": "collect_values",
+      "workers": 4,
+      "process_high_water_before": 380747776,
+      "library_override_verified": true,
+      "cold_execute_ms": 106.327458,
+      "process_high_water_after": 380747776,
+      "result_rows": 17,
+      "row_hash_sum_sha256": "86085a0da7ab5e5da4dda7545b26bb9de1f889174b87614f248b7e3fbe5f0c28",
+      "samples_ms": [
+        97.3245,
+        91.094875,
+        90.588208
+      ],
+      "median_ms": 91.094875,
+      "profile": {
+        "total_elapsed_ms": 303.94914400000005,
+        "total_output_rows": 17,
+        "operators": [
+          {
+            "operator_id": 862517056,
+            "parent_id": -1,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 113.87619500000002,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 862588864,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 110.65236700000001,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 862578320,
+            "parent_id": -1,
+            "operator_name": "GroupByOpr",
+            "elapsed_ms": 79.40941600000002,
+            "output_rows": 17,
+            "child_ids": []
+          },
+          {
+            "operator_id": 862591392,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 0.007208,
+            "output_rows": 17,
+            "child_ids": []
+          },
+          {
+            "operator_id": 862604432,
+            "parent_id": -1,
+            "operator_name": "SinkOpr",
+            "elapsed_ms": 0.003958,
+            "output_rows": 17,
+            "child_ids": []
+          }
+        ]
+      },
+      "rss_before_execute": 148799488,
+      "sampled_peak_rss": 251346944,
+      "sampled_rss_increase": 102547456,
+      "rss_samples": 45
+    },
+    {
+      "variant": "current",
+      "memory_run": 1,
+      "case": "collect_values",
+      "workers": 1,
+      "process_high_water_before": 379961344,
+      "library_override_verified": true,
+      "cold_execute_ms": 132.235708,
+      "process_high_water_after": 379961344,
+      "result_rows": 17,
+      "row_hash_sum_sha256": "86085a0da7ab5e5da4dda7545b26bb9de1f889174b87614f248b7e3fbe5f0c28",
+      "samples_ms": [
+        151.274542,
+        128.962792,
+        116.375334
+      ],
+      "median_ms": 128.962792,
+      "profile": {
+        "total_elapsed_ms": 287.802552,
+        "total_output_rows": 17,
+        "operators": [
+          {
+            "operator_id": 1107228320,
+            "parent_id": -1,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 107.586878,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 1107295168,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 104.812878,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 1107203552,
+            "parent_id": -1,
+            "operator_name": "GroupByOpr",
+            "elapsed_ms": 75.39725500000002,
+            "output_rows": 17,
+            "child_ids": []
+          },
+          {
+            "operator_id": 1107196864,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 0.004333000000000001,
+            "output_rows": 17,
+            "child_ids": []
+          },
+          {
+            "operator_id": 1107086096,
+            "parent_id": -1,
+            "operator_name": "SinkOpr",
+            "elapsed_ms": 0.001208,
+            "output_rows": 17,
+            "child_ids": []
+          }
+        ]
+      },
+      "rss_before_execute": 146636800,
+      "sampled_peak_rss": 228851712,
+      "sampled_rss_increase": 82214912,
+      "rss_samples": 54
+    },
+    {
+      "variant": "before",
+      "memory_run": 0,
+      "case": "composite_unique",
+      "workers": 2,
+      "process_high_water_before": 376569856,
+      "library_override_verified": true,
+      "cold_execute_ms": 757.260417,
+      "process_high_water_after": 475594752,
+      "result_rows": 1000000,
+      "row_hash_sum_sha256": "d0f879cb28e17433c456b465b5dd7bc253b87e3b8ec853bd3e4c6f358c52ddf8",
+      "samples_ms": [
+        875.563375,
+        784.788333,
+        783.093792
+      ],
+      "median_ms": 784.788333,
+      "profile": {
+        "total_elapsed_ms": 2543.624089000004,
+        "total_output_rows": 1000000,
+        "operators": [
+          {
+            "operator_id": 1401639664,
+            "parent_id": -1,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 866.2859410000013,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 318040768,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 862.6865160000013,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 1401682064,
+            "parent_id": -1,
+            "operator_name": "GroupByOpr",
+            "elapsed_ms": 814.0292280000014,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 1401680944,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 0.4836980000000004,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 1400999776,
+            "parent_id": -1,
+            "operator_name": "SinkOpr",
+            "elapsed_ms": 0.13870600000000052,
+            "output_rows": 1000000,
+            "child_ids": []
+          }
+        ]
+      },
+      "rss_before_execute": 136396800,
+      "sampled_peak_rss": 475594752,
+      "sampled_rss_increase": 339197952,
+      "rss_samples": 307
+    },
+    {
+      "variant": "current",
+      "memory_run": 1,
+      "case": "join_group",
+      "workers": 1,
+      "process_high_water_before": 399196160,
+      "library_override_verified": true,
+      "cold_execute_ms": 203.823834,
+      "process_high_water_after": 399196160,
+      "result_rows": 17,
+      "row_hash_sum_sha256": "6f4cf2aac2e628ff6ea2f0acaa11ac85e7cd1a7d1f4039a65ae46840af82404d",
+      "samples_ms": [
+        191.745292,
+        188.038625,
+        185.085083
+      ],
+      "median_ms": 188.038625,
+      "profile": {
+        "total_elapsed_ms": 221.47712499999983,
+        "total_output_rows": 17,
+        "operators": [
+          {
+            "operator_id": 1216059264,
+            "parent_id": -1,
+            "operator_name": "JoinOpr",
+            "elapsed_ms": 128.77261899999996,
+            "output_rows": 1000000,
+            "child_ids": [
+              1216066416,
+              1216101408
+            ]
+          },
+          {
+            "operator_id": 1216066416,
+            "parent_id": 1216059264,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 17.428427999999997,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 1216084544,
+            "parent_id": 1216059264,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 14.697924999999998,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 1216101408,
+            "parent_id": 1216059264,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 21.72984599999999,
+            "output_rows": 17,
+            "child_ids": []
+          },
+          {
+            "operator_id": 1216060256,
+            "parent_id": 1216059264,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 1.0005970000000006,
+            "output_rows": 17,
+            "child_ids": []
+          },
+          {
+            "operator_id": 1216085296,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 60.73420999999993,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 1216087472,
+            "parent_id": -1,
+            "operator_name": "GroupByOpr",
+            "elapsed_ms": 31.967503999999952,
+            "output_rows": 17,
+            "child_ids": []
+          },
+          {
+            "operator_id": 1216087552,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 0.001917,
+            "output_rows": 17,
+            "child_ids": []
+          },
+          {
+            "operator_id": 1216099536,
+            "parent_id": -1,
+            "operator_name": "SinkOpr",
+            "elapsed_ms": 0.000875,
+            "output_rows": 17,
+            "child_ids": []
+          }
+        ]
+      },
+      "rss_before_execute": 165675008,
+      "sampled_peak_rss": 182632448,
+      "sampled_rss_increase": 16957440,
+      "rss_samples": 84
+    },
+    {
+      "variant": "before",
+      "memory_run": 0,
+      "case": "composite_unique",
+      "workers": 4,
+      "process_high_water_before": 393543680,
+      "library_override_verified": true,
+      "cold_execute_ms": 731.057584,
+      "process_high_water_after": 532021248,
+      "result_rows": 1000000,
+      "row_hash_sum_sha256": "d0f879cb28e17433c456b465b5dd7bc253b87e3b8ec853bd3e4c6f358c52ddf8",
+      "samples_ms": [
+        664.155417,
+        652.621084,
+        649.520917
+      ],
+      "median_ms": 652.621084,
+      "profile": {
+        "total_elapsed_ms": 2761.3116809999997,
+        "total_output_rows": 1000000,
+        "operators": [
+          {
+            "operator_id": 300530496,
+            "parent_id": -1,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 937.9775649999999,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 106971344,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 934.4520349999999,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 107222944,
+            "parent_id": -1,
+            "operator_name": "GroupByOpr",
+            "elapsed_ms": 888.206011,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 300234112,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 0.5292760000000004,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 106984896,
+            "parent_id": -1,
+            "operator_name": "SinkOpr",
+            "elapsed_ms": 0.1467940000000004,
+            "output_rows": 1000000,
+            "child_ids": []
+          }
+        ]
+      },
+      "rss_before_execute": 153010176,
+      "sampled_peak_rss": 531415040,
+      "sampled_rss_increase": 378404864,
+      "rss_samples": 296
+    },
+    {
+      "variant": "before",
+      "memory_run": 0,
+      "case": "string_low",
+      "workers": 1,
+      "process_high_water_before": 393216000,
+      "library_override_verified": true,
+      "cold_execute_ms": 172.748041,
+      "process_high_water_after": 393216000,
+      "result_rows": 4096,
+      "row_hash_sum_sha256": "1d54bd9cb7825e077f7bec3772d09d9c207d034d0a3964b80d782d393f124f50",
+      "samples_ms": [
+        161.510583,
+        156.428333,
+        155.713666
+      ],
+      "median_ms": 156.428333,
+      "profile": {
+        "total_elapsed_ms": 414.28376600000007,
+        "total_output_rows": 4096,
+        "operators": [
+          {
+            "operator_id": 1258115712,
+            "parent_id": -1,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 150.01511,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 1258056768,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 147.11111400000001,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 1258148192,
+            "parent_id": -1,
+            "operator_name": "GroupByOpr",
+            "elapsed_ms": 117.15400000000002,
+            "output_rows": 4096,
+            "child_ids": []
+          },
+          {
+            "operator_id": 1258075456,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 0.002375,
+            "output_rows": 4096,
+            "child_ids": []
+          },
+          {
+            "operator_id": 1258120080,
+            "parent_id": -1,
+            "operator_name": "SinkOpr",
+            "elapsed_ms": 0.001167,
+            "output_rows": 4096,
+            "child_ids": []
+          }
+        ]
+      },
+      "rss_before_execute": 151306240,
+      "sampled_peak_rss": 177733632,
+      "sampled_rss_increase": 26427392,
+      "rss_samples": 72
+    },
+    {
+      "variant": "before",
+      "memory_run": 1,
+      "case": "join_group",
+      "workers": 4,
+      "process_high_water_before": 391004160,
+      "library_override_verified": true,
+      "cold_execute_ms": 65.232375,
+      "process_high_water_after": 391004160,
+      "result_rows": 17,
+      "row_hash_sum_sha256": "6f4cf2aac2e628ff6ea2f0acaa11ac85e7cd1a7d1f4039a65ae46840af82404d",
+      "samples_ms": [
+        47.19875,
+        47.036167,
+        47.24625
+      ],
+      "median_ms": 47.19875,
+      "profile": {
+        "total_elapsed_ms": 237.79786000000098,
+        "total_output_rows": 17,
+        "operators": [
+          {
+            "operator_id": 234625376,
+            "parent_id": -1,
+            "operator_name": "JoinOpr",
+            "elapsed_ms": 138.15483400000028,
+            "output_rows": 1000000,
+            "child_ids": [
+              234577856,
+              234644432
+            ]
+          },
+          {
+            "operator_id": 234577856,
+            "parent_id": 234625376,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 18.632375000000003,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 234612640,
+            "parent_id": 234625376,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 15.594098000000002,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 234644432,
+            "parent_id": 234625376,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 22.412678,
+            "output_rows": 17,
+            "child_ids": []
+          },
+          {
+            "operator_id": 234625728,
+            "parent_id": 234625376,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 1.3292010000000003,
+            "output_rows": 17,
+            "child_ids": []
+          },
+          {
+            "operator_id": 234606192,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 65.54168000000035,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 234628896,
+            "parent_id": -1,
+            "operator_name": "GroupByOpr",
+            "elapsed_ms": 34.09888800000034,
+            "output_rows": 17,
+            "child_ids": []
+          },
+          {
+            "operator_id": 234612032,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 0.0017499999999999998,
+            "output_rows": 17,
+            "child_ids": []
+          },
+          {
+            "operator_id": 234612112,
+            "parent_id": -1,
+            "operator_name": "SinkOpr",
+            "elapsed_ms": 0.000708,
+            "output_rows": 17,
+            "child_ids": []
+          }
+        ]
+      },
+      "rss_before_execute": 150994944,
+      "sampled_peak_rss": 168230912,
+      "sampled_rss_increase": 17235968,
+      "rss_samples": 27
+    },
+    {
+      "variant": "before",
+      "memory_run": 0,
+      "case": "join_group",
+      "workers": 1,
+      "process_high_water_before": 384647168,
+      "library_override_verified": true,
+      "cold_execute_ms": 208.681625,
+      "process_high_water_after": 384647168,
+      "result_rows": 17,
+      "row_hash_sum_sha256": "6f4cf2aac2e628ff6ea2f0acaa11ac85e7cd1a7d1f4039a65ae46840af82404d",
+      "samples_ms": [
+        187.337958,
+        185.067584,
+        184.705625
+      ],
+      "median_ms": 185.067584,
+      "profile": {
+        "total_elapsed_ms": 223.478953,
+        "total_output_rows": 17,
+        "operators": [
+          {
+            "operator_id": 1113997168,
+            "parent_id": -1,
+            "operator_name": "JoinOpr",
+            "elapsed_ms": 129.98817700000004,
+            "output_rows": 1000000,
+            "child_ids": [
+              1113998064,
+              1114003712
+            ]
+          },
+          {
+            "operator_id": 1113998064,
+            "parent_id": 1113997168,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 17.626170000000005,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 1113998352,
+            "parent_id": 1113997168,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 14.817830000000006,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 1114003712,
+            "parent_id": 1113997168,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 21.90358299999998,
+            "output_rows": 17,
+            "child_ids": []
+          },
+          {
+            "operator_id": 1114010720,
+            "parent_id": 1113997168,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 0.9967429999999998,
+            "output_rows": 17,
+            "child_ids": []
+          },
+          {
+            "operator_id": 1113970832,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 61.335590999999965,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 1113971136,
+            "parent_id": -1,
+            "operator_name": "GroupByOpr",
+            "elapsed_ms": 32.15268499999997,
+            "output_rows": 17,
+            "child_ids": []
+          },
+          {
+            "operator_id": 1113990912,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 0.0018750000000000001,
+            "output_rows": 17,
+            "child_ids": []
+          },
+          {
+            "operator_id": 1113991344,
+            "parent_id": -1,
+            "operator_name": "SinkOpr",
+            "elapsed_ms": 0.0006249999999999999,
+            "output_rows": 17,
+            "child_ids": []
+          }
+        ]
+      },
+      "rss_before_execute": 150077440,
+      "sampled_peak_rss": 166739968,
+      "sampled_rss_increase": 16662528,
+      "rss_samples": 88
+    },
+    {
+      "variant": "before",
+      "memory_run": 1,
+      "case": "composite_unique",
+      "workers": 2,
+      "process_high_water_before": 393609216,
+      "library_override_verified": true,
+      "cold_execute_ms": 725.689458,
+      "process_high_water_after": 485130240,
+      "result_rows": 1000000,
+      "row_hash_sum_sha256": "d0f879cb28e17433c456b465b5dd7bc253b87e3b8ec853bd3e4c6f358c52ddf8",
+      "samples_ms": [
+        693.244333,
+        692.225334,
+        726.529625
+      ],
+      "median_ms": 693.244333,
+      "profile": {
+        "total_elapsed_ms": 2242.0548970000027,
+        "total_output_rows": 1000000,
+        "operators": [
+          {
+            "operator_id": 119172240,
+            "parent_id": -1,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 764.7748970000009,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 118996608,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 761.4775670000009,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 118701632,
+            "parent_id": -1,
+            "operator_name": "GroupByOpr",
+            "elapsed_ms": 715.1745960000009,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 119126688,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 0.47911799999999993,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 119178608,
+            "parent_id": -1,
+            "operator_name": "SinkOpr",
+            "elapsed_ms": 0.14871900000000024,
+            "output_rows": 1000000,
+            "child_ids": []
+          }
+        ]
+      },
+      "rss_before_execute": 151552000,
+      "sampled_peak_rss": 485130240,
+      "sampled_rss_increase": 333578240,
+      "rss_samples": 300
+    },
+    {
+      "variant": "current",
+      "memory_run": 1,
+      "case": "composite_low",
+      "workers": 1,
+      "process_high_water_before": 392593408,
+      "library_override_verified": true,
+      "cold_execute_ms": 161.713,
+      "process_high_water_after": 392593408,
+      "result_rows": 1717,
+      "row_hash_sum_sha256": "537bbbdc2d84a3128b7b5374751c23a365c8eaa66735b3bc5fb89109afb53f59",
+      "samples_ms": [
+        150.161208,
+        148.26425,
+        149.795583
+      ],
+      "median_ms": 149.795583,
+      "profile": {
+        "total_elapsed_ms": 371.42461100000014,
+        "total_output_rows": 1717,
+        "operators": [
+          {
+            "operator_id": 1008724912,
+            "parent_id": -1,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 139.87383000000003,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 1009383408,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 137.16605400000003,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 1009305856,
+            "parent_id": -1,
+            "operator_name": "GroupByOpr",
+            "elapsed_ms": 94.38135200000002,
+            "output_rows": 1717,
+            "child_ids": []
+          },
+          {
+            "operator_id": 1009332928,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 0.002292,
+            "output_rows": 1717,
+            "child_ids": []
+          },
+          {
+            "operator_id": 1009115584,
+            "parent_id": -1,
+            "operator_name": "SinkOpr",
+            "elapsed_ms": 0.001083,
+            "output_rows": 1717,
+            "child_ids": []
+          }
+        ]
+      },
+      "rss_before_execute": 146898944,
+      "sampled_peak_rss": 171524096,
+      "sampled_rss_increase": 24625152,
+      "rss_samples": 66
+    },
+    {
+      "variant": "current",
+      "memory_run": 0,
+      "case": "string_unique",
+      "workers": 1,
+      "process_high_water_before": 380878848,
+      "library_override_verified": true,
+      "cold_execute_ms": 369.393625,
+      "process_high_water_after": 380878848,
+      "result_rows": 1000000,
+      "row_hash_sum_sha256": "5b352ecfc7934385672ddfaab0ffcf17612ec47a27d36cf5111816b9fd38ff93",
+      "samples_ms": [
+        367.704958,
+        362.38525,
+        368.195834
+      ],
+      "median_ms": 367.704958,
+      "profile": {
+        "total_elapsed_ms": 896.0384679999999,
+        "total_output_rows": 1000000,
+        "operators": [
+          {
+            "operator_id": 85824720,
+            "parent_id": -1,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 310.24954199999996,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 85973040,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 307.444345,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 85907504,
+            "parent_id": -1,
+            "operator_name": "GroupByOpr",
+            "elapsed_ms": 278.33991299999997,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 85974256,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 0.003584,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 85975136,
+            "parent_id": -1,
+            "operator_name": "SinkOpr",
+            "elapsed_ms": 0.0010840000000000001,
+            "output_rows": 1000000,
+            "child_ids": []
+          }
+        ]
+      },
+      "rss_before_execute": 148602880,
+      "sampled_peak_rss": 347193344,
+      "sampled_rss_increase": 198590464,
+      "rss_samples": 152
+    },
+    {
+      "variant": "current",
+      "memory_run": 1,
+      "case": "string_unique",
+      "workers": 2,
+      "process_high_water_before": 371736576,
+      "library_override_verified": true,
+      "cold_execute_ms": 281.482708,
+      "process_high_water_after": 371736576,
+      "result_rows": 1000000,
+      "row_hash_sum_sha256": "5b352ecfc7934385672ddfaab0ffcf17612ec47a27d36cf5111816b9fd38ff93",
+      "samples_ms": [
+        385.301375,
+        331.6585,
+        271.722958
+      ],
+      "median_ms": 331.6585,
+      "profile": {
+        "total_elapsed_ms": 1421.2222049999996,
+        "total_output_rows": 1000000,
+        "operators": [
+          {
+            "operator_id": 247877184,
+            "parent_id": -1,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 486.0782849999998,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 247506960,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 482.8070909999998,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 247716432,
+            "parent_id": -1,
+            "operator_name": "GroupByOpr",
+            "elapsed_ms": 451.75370099999986,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 247656896,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 0.4514170000000008,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 248221520,
+            "parent_id": -1,
+            "operator_name": "SinkOpr",
+            "elapsed_ms": 0.13171100000000105,
+            "output_rows": 1000000,
+            "child_ids": []
+          }
+        ]
+      },
+      "rss_before_execute": 139444224,
+      "sampled_peak_rss": 370868224,
+      "sampled_rss_increase": 231424000,
+      "rss_samples": 116
+    },
+    {
+      "variant": "before",
+      "memory_run": 1,
+      "case": "string_low",
+      "workers": 2,
+      "process_high_water_before": 401391616,
+      "library_override_verified": true,
+      "cold_execute_ms": 99.749875,
+      "process_high_water_after": 401391616,
+      "result_rows": 4096,
+      "row_hash_sum_sha256": "1d54bd9cb7825e077f7bec3772d09d9c207d034d0a3964b80d782d393f124f50",
+      "samples_ms": [
+        94.821292,
+        91.046208,
+        91.843625
+      ],
+      "median_ms": 91.843625,
+      "profile": {
+        "total_elapsed_ms": 428.94724099999996,
+        "total_output_rows": 4096,
+        "operators": [
+          {
+            "operator_id": 578709488,
+            "parent_id": -1,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 155.311547,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 578778800,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 152.270943,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 578681760,
+            "parent_id": -1,
+            "operator_name": "GroupByOpr",
+            "elapsed_ms": 121.35950100000001,
+            "output_rows": 4096,
+            "child_ids": []
+          },
+          {
+            "operator_id": 578786624,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 0.003625,
+            "output_rows": 4096,
+            "child_ids": []
+          },
+          {
+            "operator_id": 578724528,
+            "parent_id": -1,
+            "operator_name": "SinkOpr",
+            "elapsed_ms": 0.0016250000000000001,
+            "output_rows": 4096,
+            "child_ids": []
+          }
+        ]
+      },
+      "rss_before_execute": 75612160,
+      "sampled_peak_rss": 106479616,
+      "sampled_rss_increase": 30867456,
+      "rss_samples": 40
+    },
+    {
+      "variant": "current",
+      "memory_run": 0,
+      "case": "skewed",
+      "workers": 2,
+      "process_high_water_before": 382828544,
+      "library_override_verified": true,
+      "cold_execute_ms": 60.391167,
+      "process_high_water_after": 382828544,
+      "result_rows": 100000,
+      "row_hash_sum_sha256": "263755d85d33b4a8677023d4832834dc44100ed690d273bb82878f8187a0523c",
+      "samples_ms": [
+        49.579333,
+        46.311875,
+        45.524416
+      ],
+      "median_ms": 46.311875,
+      "profile": {
+        "total_elapsed_ms": 188.0201109999996,
+        "total_output_rows": 100000,
+        "operators": [
+          {
+            "operator_id": 510355008,
+            "parent_id": -1,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 74.71328199999988,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 510362640,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 71.80628899999986,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 510362720,
+            "parent_id": -1,
+            "operator_name": "GroupByOpr",
+            "elapsed_ms": 41.43499299999986,
+            "output_rows": 100000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 510362800,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 0.051587999999999995,
+            "output_rows": 100000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 510410528,
+            "parent_id": -1,
+            "operator_name": "SinkOpr",
+            "elapsed_ms": 0.013958999999999987,
+            "output_rows": 100000,
+            "child_ids": []
+          }
+        ]
+      },
+      "rss_before_execute": 137625600,
+      "sampled_peak_rss": 159219712,
+      "sampled_rss_increase": 21594112,
+      "rss_samples": 25
+    },
+    {
+      "variant": "before",
+      "memory_run": 1,
+      "case": "collect_values",
+      "workers": 2,
+      "process_high_water_before": 389201920,
+      "library_override_verified": true,
+      "cold_execute_ms": 121.420583,
+      "process_high_water_after": 389201920,
+      "result_rows": 17,
+      "row_hash_sum_sha256": "86085a0da7ab5e5da4dda7545b26bb9de1f889174b87614f248b7e3fbe5f0c28",
+      "samples_ms": [
+        110.242625,
+        102.075334,
+        95.757959
+      ],
+      "median_ms": 102.075334,
+      "profile": {
+        "total_elapsed_ms": 281.6253690000001,
+        "total_output_rows": 17,
+        "operators": [
+          {
+            "operator_id": 1509716368,
+            "parent_id": -1,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 105.74147100000002,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 1509757488,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 102.86751600000002,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 1509704800,
+            "parent_id": -1,
+            "operator_name": "GroupByOpr",
+            "elapsed_ms": 73.01171400000001,
+            "output_rows": 17,
+            "child_ids": []
+          },
+          {
+            "operator_id": 1509767168,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 0.003501,
+            "output_rows": 17,
+            "child_ids": []
+          },
+          {
+            "operator_id": 1509781856,
+            "parent_id": -1,
+            "operator_name": "SinkOpr",
+            "elapsed_ms": 0.001167,
+            "output_rows": 17,
+            "child_ids": []
+          }
+        ]
+      },
+      "rss_before_execute": 156188672,
+      "sampled_peak_rss": 269123584,
+      "sampled_rss_increase": 112934912,
+      "rss_samples": 49
+    },
+    {
+      "variant": "before",
+      "memory_run": 0,
+      "case": "composite_unique",
+      "workers": 1,
+      "process_high_water_before": 389120000,
+      "library_override_verified": true,
+      "cold_execute_ms": 827.171583,
+      "process_high_water_after": 411910144,
+      "result_rows": 1000000,
+      "row_hash_sum_sha256": "d0f879cb28e17433c456b465b5dd7bc253b87e3b8ec853bd3e4c6f358c52ddf8",
+      "samples_ms": [
+        752.775708,
+        738.646209,
+        752.173708
+      ],
+      "median_ms": 752.173708,
+      "profile": {
+        "total_elapsed_ms": 1909.2012060000002,
+        "total_output_rows": 1000000,
+        "operators": [
+          {
+            "operator_id": 132659536,
+            "parent_id": -1,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 652.828842,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 132982560,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 649.937078,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 132909680,
+            "parent_id": -1,
+            "operator_name": "GroupByOpr",
+            "elapsed_ms": 606.430119,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 132973888,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 0.00425,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 132975200,
+            "parent_id": -1,
+            "operator_name": "SinkOpr",
+            "elapsed_ms": 0.000917,
+            "output_rows": 1000000,
+            "child_ids": []
+          }
+        ]
+      },
+      "rss_before_execute": 153616384,
+      "sampled_peak_rss": 408535040,
+      "sampled_rss_increase": 254918656,
+      "rss_samples": 337
+    },
+    {
+      "variant": "before",
+      "memory_run": 0,
+      "case": "join_group",
+      "workers": 2,
+      "process_high_water_before": 383909888,
+      "library_override_verified": true,
+      "cold_execute_ms": 111.791916,
+      "process_high_water_after": 383909888,
+      "result_rows": 17,
+      "row_hash_sum_sha256": "6f4cf2aac2e628ff6ea2f0acaa11ac85e7cd1a7d1f4039a65ae46840af82404d",
+      "samples_ms": [
+        91.400875,
+        91.061125,
+        90.983958
+      ],
+      "median_ms": 91.061125,
+      "profile": {
+        "total_elapsed_ms": 263.6290990000003,
+        "total_output_rows": 17,
+        "operators": [
+          {
+            "operator_id": 308309936,
+            "parent_id": -1,
+            "operator_name": "JoinOpr",
+            "elapsed_ms": 154.81015400000013,
+            "output_rows": 1000000,
+            "child_ids": [
+              308313936,
+              308333504
+            ]
+          },
+          {
+            "operator_id": 308313936,
+            "parent_id": 308309936,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 18.760300000000008,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 308313632,
+            "parent_id": 308309936,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 15.579187000000006,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 308333504,
+            "parent_id": 308309936,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 22.447866,
+            "output_rows": 17,
+            "child_ids": []
+          },
+          {
+            "operator_id": 308320880,
+            "parent_id": 308309936,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 1.1744849999999998,
+            "output_rows": 17,
+            "child_ids": []
+          },
+          {
+            "operator_id": 308312944,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 71.42204400000007,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 308310496,
+            "parent_id": -1,
+            "operator_name": "GroupByOpr",
+            "elapsed_ms": 37.394068000000054,
+            "output_rows": 17,
+            "child_ids": []
+          },
+          {
+            "operator_id": 308328224,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 0.001958,
+            "output_rows": 17,
+            "child_ids": []
+          },
+          {
+            "operator_id": 308336992,
+            "parent_id": -1,
+            "operator_name": "SinkOpr",
+            "elapsed_ms": 0.0008750000000000001,
+            "output_rows": 17,
+            "child_ids": []
+          }
+        ]
+      },
+      "rss_before_execute": 142606336,
+      "sampled_peak_rss": 159776768,
+      "sampled_rss_increase": 17170432,
+      "rss_samples": 46
+    },
+    {
+      "variant": "before",
+      "memory_run": 0,
+      "case": "string_unique",
+      "workers": 1,
+      "process_high_water_before": 395231232,
+      "library_override_verified": true,
+      "cold_execute_ms": 472.417042,
+      "process_high_water_after": 395231232,
+      "result_rows": 1000000,
+      "row_hash_sum_sha256": "5b352ecfc7934385672ddfaab0ffcf17612ec47a27d36cf5111816b9fd38ff93",
+      "samples_ms": [
+        442.734958,
+        430.781459,
+        390.364625
+      ],
+      "median_ms": 430.781459,
+      "profile": {
+        "total_elapsed_ms": 1116.8428949999989,
+        "total_output_rows": 1000000,
+        "operators": [
+          {
+            "operator_id": 561484496,
+            "parent_id": -1,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 384.74891799999955,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 561262688,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 381.66671499999956,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 561955680,
+            "parent_id": -1,
+            "operator_name": "GroupByOpr",
+            "elapsed_ms": 350.4210539999996,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 562002496,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 0.004958000000000001,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 561958320,
+            "parent_id": -1,
+            "operator_name": "SinkOpr",
+            "elapsed_ms": 0.00125,
+            "output_rows": 1000000,
+            "child_ids": []
+          }
+        ]
+      },
+      "rss_before_execute": 162775040,
+      "sampled_peak_rss": 324550656,
+      "sampled_rss_increase": 161775616,
+      "rss_samples": 193
+    },
+    {
+      "variant": "current",
+      "memory_run": 1,
+      "case": "skewed",
+      "workers": 4,
+      "process_high_water_before": 395591680,
+      "library_override_verified": true,
+      "cold_execute_ms": 41.776208,
+      "process_high_water_after": 395591680,
+      "result_rows": 100000,
+      "row_hash_sum_sha256": "263755d85d33b4a8677023d4832834dc44100ed690d273bb82878f8187a0523c",
+      "samples_ms": [
+        30.21625,
+        29.800542,
+        28.779
+      ],
+      "median_ms": 29.800542,
+      "profile": {
+        "total_elapsed_ms": 204.92715799999942,
+        "total_output_rows": 100000,
+        "operators": [
+          {
+            "operator_id": 132600720,
+            "parent_id": -1,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 80.4693279999998,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 132582208,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 77.4279519999998,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 132532064,
+            "parent_id": -1,
+            "operator_name": "GroupByOpr",
+            "elapsed_ms": 46.9599639999998,
+            "output_rows": 100000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 132538832,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 0.053999,
+            "output_rows": 100000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 132554080,
+            "parent_id": -1,
+            "operator_name": "SinkOpr",
+            "elapsed_ms": 0.015914999999999995,
+            "output_rows": 100000,
+            "child_ids": []
+          }
+        ]
+      },
+      "rss_before_execute": 160284672,
+      "sampled_peak_rss": 184565760,
+      "sampled_rss_increase": 24281088,
+      "rss_samples": 17
+    },
+    {
+      "variant": "before",
+      "memory_run": 0,
+      "case": "collect_values",
+      "workers": 1,
+      "process_high_water_before": 387072000,
+      "library_override_verified": true,
+      "cold_execute_ms": 174.976208,
+      "process_high_water_after": 387072000,
+      "result_rows": 17,
+      "row_hash_sum_sha256": "86085a0da7ab5e5da4dda7545b26bb9de1f889174b87614f248b7e3fbe5f0c28",
+      "samples_ms": [
+        132.602541,
+        134.741208,
+        123.315042
+      ],
+      "median_ms": 132.602541,
+      "profile": {
+        "total_elapsed_ms": 335.47922299999993,
+        "total_output_rows": 17,
+        "operators": [
+          {
+            "operator_id": 28773888,
+            "parent_id": -1,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 123.73881499999999,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 28773968,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 120.86316599999998,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 28773568,
+            "parent_id": -1,
+            "operator_name": "GroupByOpr",
+            "elapsed_ms": 90.87107499999998,
+            "output_rows": 17,
+            "child_ids": []
+          },
+          {
+            "operator_id": 28752880,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 0.005084000000000001,
+            "output_rows": 17,
+            "child_ids": []
+          },
+          {
+            "operator_id": 28774976,
+            "parent_id": -1,
+            "operator_name": "SinkOpr",
+            "elapsed_ms": 0.001083,
+            "output_rows": 17,
+            "child_ids": []
+          }
+        ]
+      },
+      "rss_before_execute": 154632192,
+      "sampled_peak_rss": 255934464,
+      "sampled_rss_increase": 101302272,
+      "rss_samples": 71
+    },
+    {
+      "variant": "before",
+      "memory_run": 1,
+      "case": "string_unique",
+      "workers": 4,
+      "process_high_water_before": 395018240,
+      "library_override_verified": true,
+      "cold_execute_ms": 423.052167,
+      "process_high_water_after": 500957184,
+      "result_rows": 1000000,
+      "row_hash_sum_sha256": "5b352ecfc7934385672ddfaab0ffcf17612ec47a27d36cf5111816b9fd38ff93",
+      "samples_ms": [
+        357.229417,
+        350.449834,
+        353.460333
+      ],
+      "median_ms": 353.460333,
+      "profile": {
+        "total_elapsed_ms": 1459.7167449999956,
+        "total_output_rows": 1000000,
+        "operators": [
+          {
+            "operator_id": 730526480,
+            "parent_id": -1,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 498.8254619999986,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 730528368,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 495.58103599999856,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 729975856,
+            "parent_id": -1,
+            "operator_name": "GroupByOpr",
+            "elapsed_ms": 464.6802499999986,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 729838176,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 0.48597799999999997,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 729838288,
+            "parent_id": -1,
+            "operator_name": "SinkOpr",
+            "elapsed_ms": 0.14401900000000015,
+            "output_rows": 1000000,
+            "child_ids": []
+          }
+        ]
+      },
+      "rss_before_execute": 154681344,
+      "sampled_peak_rss": 500957184,
+      "sampled_rss_increase": 346275840,
+      "rss_samples": 165
+    },
+    {
+      "variant": "current",
+      "memory_run": 0,
+      "case": "composite_unique",
+      "workers": 4,
+      "process_high_water_before": 387432448,
+      "library_override_verified": true,
+      "cold_execute_ms": 581.595834,
+      "process_high_water_after": 483950592,
+      "result_rows": 1000000,
+      "row_hash_sum_sha256": "d0f879cb28e17433c456b465b5dd7bc253b87e3b8ec853bd3e4c6f358c52ddf8",
+      "samples_ms": [
+        515.18875,
+        529.615041,
+        511.705458
+      ],
+      "median_ms": 515.18875,
+      "profile": {
+        "total_elapsed_ms": 2822.551766000005,
+        "total_output_rows": 1000000,
+        "operators": [
+          {
+            "operator_id": 871900112,
+            "parent_id": -1,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 958.3237220000017,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 872085792,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 954.7737500000018,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 872011968,
+            "parent_id": -1,
+            "operator_name": "GroupByOpr",
+            "elapsed_ms": 908.7975810000017,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 871951552,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 0.506592,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 872095504,
+            "parent_id": -1,
+            "operator_name": "SinkOpr",
+            "elapsed_ms": 0.15012100000000037,
+            "output_rows": 1000000,
+            "child_ids": []
+          }
+        ]
+      },
+      "rss_before_execute": 145326080,
+      "sampled_peak_rss": 483950592,
+      "sampled_rss_increase": 338624512,
+      "rss_samples": 229
+    },
+    {
+      "variant": "before",
+      "memory_run": 1,
+      "case": "skewed",
+      "workers": 2,
+      "process_high_water_before": 386662400,
+      "library_override_verified": true,
+      "cold_execute_ms": 63.436416,
+      "process_high_water_after": 386662400,
+      "result_rows": 100000,
+      "row_hash_sum_sha256": "263755d85d33b4a8677023d4832834dc44100ed690d273bb82878f8187a0523c",
+      "samples_ms": [
+        51.651875,
+        49.903709,
+        49.417375
+      ],
+      "median_ms": 49.903709,
+      "profile": {
+        "total_elapsed_ms": 186.75707199999928,
+        "total_output_rows": 100000,
+        "operators": [
+          {
+            "operator_id": 999369056,
+            "parent_id": -1,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 74.26539299999975,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 999428880,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 71.34396499999974,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 999351952,
+            "parent_id": -1,
+            "operator_name": "GroupByOpr",
+            "elapsed_ms": 41.07775999999978,
+            "output_rows": 100000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 999330400,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 0.052831,
+            "output_rows": 100000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 999385504,
+            "parent_id": -1,
+            "operator_name": "SinkOpr",
+            "elapsed_ms": 0.017122999999999992,
+            "output_rows": 100000,
+            "child_ids": []
+          }
+        ]
+      },
+      "rss_before_execute": 144523264,
+      "sampled_peak_rss": 165003264,
+      "sampled_rss_increase": 20480000,
+      "rss_samples": 26
+    },
+    {
+      "variant": "current",
+      "memory_run": 1,
+      "case": "composite_low",
+      "workers": 2,
+      "process_high_water_before": 367935488,
+      "library_override_verified": true,
+      "cold_execute_ms": 92.481542,
+      "process_high_water_after": 367935488,
+      "result_rows": 1717,
+      "row_hash_sum_sha256": "537bbbdc2d84a3128b7b5374751c23a365c8eaa66735b3bc5fb89109afb53f59",
+      "samples_ms": [
+        83.754834,
+        83.228708,
+        79.34975
+      ],
+      "median_ms": 83.228708,
+      "profile": {
+        "total_elapsed_ms": 395.39301600000044,
+        "total_output_rows": 1717,
+        "operators": [
+          {
+            "operator_id": 956113488,
+            "parent_id": -1,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 149.05877200000012,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 956152688,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 146.00501000000014,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 679508432,
+            "parent_id": -1,
+            "operator_name": "GroupByOpr",
+            "elapsed_ms": 100.32552300000012,
+            "output_rows": 1717,
+            "child_ids": []
+          },
+          {
+            "operator_id": 679510720,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 0.002377,
+            "output_rows": 1717,
+            "child_ids": []
+          },
+          {
+            "operator_id": 956135008,
+            "parent_id": -1,
+            "operator_name": "SinkOpr",
+            "elapsed_ms": 0.0013340000000000001,
+            "output_rows": 1717,
+            "child_ids": []
+          }
+        ]
+      },
+      "rss_before_execute": 127778816,
+      "sampled_peak_rss": 154042368,
+      "sampled_rss_increase": 26263552,
+      "rss_samples": 37
+    },
+    {
+      "variant": "current",
+      "memory_run": 1,
+      "case": "composite_unique",
+      "workers": 1,
+      "process_high_water_before": 395837440,
+      "library_override_verified": true,
+      "cold_execute_ms": 804.73625,
+      "process_high_water_after": 395837440,
+      "result_rows": 1000000,
+      "row_hash_sum_sha256": "d0f879cb28e17433c456b465b5dd7bc253b87e3b8ec853bd3e4c6f358c52ddf8",
+      "samples_ms": [
+        854.46125,
+        852.341334,
+        761.886208
+      ],
+      "median_ms": 852.341334,
+      "profile": {
+        "total_elapsed_ms": 2086.4801330000005,
+        "total_output_rows": 1000000,
+        "operators": [
+          {
+            "operator_id": 110128928,
+            "parent_id": -1,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 712.128448,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 110117200,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 709.1235890000002,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 110118992,
+            "parent_id": -1,
+            "operator_name": "GroupByOpr",
+            "elapsed_ms": 665.2222230000001,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 110119488,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 0.004664999999999999,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 110119984,
+            "parent_id": -1,
+            "operator_name": "SinkOpr",
+            "elapsed_ms": 0.0012079999999999999,
+            "output_rows": 1000000,
+            "child_ids": []
+          }
+        ]
+      },
+      "rss_before_execute": 163987456,
+      "sampled_peak_rss": 366510080,
+      "sampled_rss_increase": 202522624,
+      "rss_samples": 324
+    },
+    {
+      "variant": "before",
+      "memory_run": 0,
+      "case": "collect_values",
+      "workers": 2,
+      "process_high_water_before": 394428416,
+      "library_override_verified": true,
+      "cold_execute_ms": 110.731292,
+      "process_high_water_after": 394428416,
+      "result_rows": 17,
+      "row_hash_sum_sha256": "86085a0da7ab5e5da4dda7545b26bb9de1f889174b87614f248b7e3fbe5f0c28",
+      "samples_ms": [
+        107.464834,
+        98.159625,
+        99.504167
+      ],
+      "median_ms": 99.504167,
+      "profile": {
+        "total_elapsed_ms": 276.44168000000025,
+        "total_output_rows": 17,
+        "operators": [
+          {
+            "operator_id": 1365459312,
+            "parent_id": -1,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 104.21316600000007,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 1365448816,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 101.27626000000008,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 1365460080,
+            "parent_id": -1,
+            "operator_name": "GroupByOpr",
+            "elapsed_ms": 70.94775400000007,
+            "output_rows": 17,
+            "child_ids": []
+          },
+          {
+            "operator_id": 1365453648,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 0.003666,
+            "output_rows": 17,
+            "child_ids": []
+          },
+          {
+            "operator_id": 1365458832,
+            "parent_id": -1,
+            "operator_name": "SinkOpr",
+            "elapsed_ms": 0.000834,
+            "output_rows": 17,
+            "child_ids": []
+          }
+        ]
+      },
+      "rss_before_execute": 162611200,
+      "sampled_peak_rss": 268697600,
+      "sampled_rss_increase": 106086400,
+      "rss_samples": 45
+    },
+    {
+      "variant": "current",
+      "memory_run": 1,
+      "case": "string_low",
+      "workers": 2,
+      "process_high_water_before": 388169728,
+      "library_override_verified": true,
+      "cold_execute_ms": 91.511875,
+      "process_high_water_after": 388169728,
+      "result_rows": 4096,
+      "row_hash_sum_sha256": "1d54bd9cb7825e077f7bec3772d09d9c207d034d0a3964b80d782d393f124f50",
+      "samples_ms": [
+        82.189541,
+        80.083417,
+        82.2225
+      ],
+      "median_ms": 82.189541,
+      "profile": {
+        "total_elapsed_ms": 420.51635200000044,
+        "total_output_rows": 4096,
+        "operators": [
+          {
+            "operator_id": 48265952,
+            "parent_id": -1,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 152.3566200000001,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 48251520,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 149.3968310000001,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 48272656,
+            "parent_id": -1,
+            "operator_name": "GroupByOpr",
+            "elapsed_ms": 118.75690200000014,
+            "output_rows": 4096,
+            "child_ids": []
+          },
+          {
+            "operator_id": 48272800,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 0.004082,
+            "output_rows": 4096,
+            "child_ids": []
+          },
+          {
+            "operator_id": 48272912,
+            "parent_id": -1,
+            "operator_name": "SinkOpr",
+            "elapsed_ms": 0.001917,
+            "output_rows": 4096,
+            "child_ids": []
+          }
+        ]
+      },
+      "rss_before_execute": 146112512,
+      "sampled_peak_rss": 173998080,
+      "sampled_rss_increase": 27885568,
+      "rss_samples": 37
+    },
+    {
+      "variant": "current",
+      "memory_run": 0,
+      "case": "composite_unique",
+      "workers": 2,
+      "process_high_water_before": 383467520,
+      "library_override_verified": true,
+      "cold_execute_ms": 690.583333,
+      "process_high_water_after": 438861824,
+      "result_rows": 1000000,
+      "row_hash_sum_sha256": "d0f879cb28e17433c456b465b5dd7bc253b87e3b8ec853bd3e4c6f358c52ddf8",
+      "samples_ms": [
+        602.36825,
+        608.587792,
+        590.7925
+      ],
+      "median_ms": 602.36825,
+      "profile": {
+        "total_elapsed_ms": 2300.304094999999,
+        "total_output_rows": 1000000,
+        "operators": [
+          {
+            "operator_id": 132965744,
+            "parent_id": -1,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 783.7970139999998,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 132893824,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 780.5071259999999,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 132979200,
+            "parent_id": -1,
+            "operator_name": "GroupByOpr",
+            "elapsed_ms": 735.4185009999999,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 132965824,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 0.45296200000000086,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 132966208,
+            "parent_id": -1,
+            "operator_name": "SinkOpr",
+            "elapsed_ms": 0.12849200000000124,
+            "output_rows": 1000000,
+            "child_ids": []
+          }
+        ]
+      },
+      "rss_before_execute": 150798336,
+      "sampled_peak_rss": 438861824,
+      "sampled_rss_increase": 288063488,
+      "rss_samples": 269
+    },
+    {
+      "variant": "current",
+      "memory_run": 1,
+      "case": "composite_unique",
+      "workers": 4,
+      "process_high_water_before": 398131200,
+      "library_override_verified": true,
+      "cold_execute_ms": 552.145542,
+      "process_high_water_after": 500514816,
+      "result_rows": 1000000,
+      "row_hash_sum_sha256": "d0f879cb28e17433c456b465b5dd7bc253b87e3b8ec853bd3e4c6f358c52ddf8",
+      "samples_ms": [
+        556.138541,
+        537.035792,
+        502.232167
+      ],
+      "median_ms": 537.035792,
+      "profile": {
+        "total_elapsed_ms": 2890.7902440000053,
+        "total_output_rows": 1000000,
+        "operators": [
+          {
+            "operator_id": 69359360,
+            "parent_id": -1,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 981.3537900000017,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 69387120,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 977.6646950000016,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 69650160,
+            "parent_id": -1,
+            "operator_name": "GroupByOpr",
+            "elapsed_ms": 931.1086130000017,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 69922896,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 0.5135769999999998,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 69632112,
+            "parent_id": -1,
+            "operator_name": "SinkOpr",
+            "elapsed_ms": 0.14956900000000023,
+            "output_rows": 1000000,
+            "child_ids": []
+          }
+        ]
+      },
+      "rss_before_execute": 165347328,
+      "sampled_peak_rss": 500514816,
+      "sampled_rss_increase": 335167488,
+      "rss_samples": 222
+    },
+    {
+      "variant": "before",
+      "memory_run": 1,
+      "case": "join_group",
+      "workers": 2,
+      "process_high_water_before": 387366912,
+      "library_override_verified": true,
+      "cold_execute_ms": 111.767834,
+      "process_high_water_after": 387366912,
+      "result_rows": 17,
+      "row_hash_sum_sha256": "6f4cf2aac2e628ff6ea2f0acaa11ac85e7cd1a7d1f4039a65ae46840af82404d",
+      "samples_ms": [
+        92.710625,
+        92.658042,
+        92.834625
+      ],
+      "median_ms": 92.710625,
+      "profile": {
+        "total_elapsed_ms": 230.77531300000047,
+        "total_output_rows": 17,
+        "operators": [
+          {
+            "operator_id": 116355840,
+            "parent_id": -1,
+            "operator_name": "JoinOpr",
+            "elapsed_ms": 134.7323730000002,
+            "output_rows": 1000000,
+            "child_ids": [
+              116340496,
+              116340576
+            ]
+          },
+          {
+            "operator_id": 116340496,
+            "parent_id": 116355840,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 18.197476999999996,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 116352960,
+            "parent_id": 116355840,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 15.273057999999995,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 116340576,
+            "parent_id": 116355840,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 22.669066999999995,
+            "output_rows": 17,
+            "child_ids": []
+          },
+          {
+            "operator_id": 116340656,
+            "parent_id": 116355840,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 1.2025429999999995,
+            "output_rows": 17,
+            "child_ids": []
+          },
+          {
+            "operator_id": 116272672,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 63.264927000000135,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 116338768,
+            "parent_id": -1,
+            "operator_name": "GroupByOpr",
+            "elapsed_ms": 32.774930000000154,
+            "output_rows": 17,
+            "child_ids": []
+          },
+          {
+            "operator_id": 116339200,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 0.002125,
+            "output_rows": 17,
+            "child_ids": []
+          },
+          {
+            "operator_id": 116339760,
+            "parent_id": -1,
+            "operator_name": "SinkOpr",
+            "elapsed_ms": 0.000958,
+            "output_rows": 17,
+            "child_ids": []
+          }
+        ]
+      },
+      "rss_before_execute": 153616384,
+      "sampled_peak_rss": 171524096,
+      "sampled_rss_increase": 17907712,
+      "rss_samples": 45
+    },
+    {
+      "variant": "before",
+      "memory_run": 1,
+      "case": "composite_low",
+      "workers": 4,
+      "process_high_water_before": 385597440,
+      "library_override_verified": true,
+      "cold_execute_ms": 54.934209,
+      "process_high_water_after": 385597440,
+      "result_rows": 1717,
+      "row_hash_sum_sha256": "537bbbdc2d84a3128b7b5374751c23a365c8eaa66735b3bc5fb89109afb53f59",
+      "samples_ms": [
+        44.283625,
+        43.840625,
+        43.411334
+      ],
+      "median_ms": 43.840625,
+      "profile": {
+        "total_elapsed_ms": 412.67587399999957,
+        "total_output_rows": 1717,
+        "operators": [
+          {
+            "operator_id": 174869888,
+            "parent_id": -1,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 154.98100199999988,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 442717456,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 151.8886989999999,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 442648368,
+            "parent_id": -1,
+            "operator_name": "GroupByOpr",
+            "elapsed_ms": 105.80250699999985,
+            "output_rows": 1717,
+            "child_ids": []
+          },
+          {
+            "operator_id": 174750944,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 0.002458,
+            "output_rows": 1717,
+            "child_ids": []
+          },
+          {
+            "operator_id": 174779776,
+            "parent_id": -1,
+            "operator_name": "SinkOpr",
+            "elapsed_ms": 0.001208,
+            "output_rows": 1717,
+            "child_ids": []
+          }
+        ]
+      },
+      "rss_before_execute": 145506304,
+      "sampled_peak_rss": 174358528,
+      "sampled_rss_increase": 28852224,
+      "rss_samples": 22
+    },
+    {
+      "variant": "current",
+      "memory_run": 1,
+      "case": "string_low",
+      "workers": 4,
+      "process_high_water_before": 377241600,
+      "library_override_verified": true,
+      "cold_execute_ms": 58.448541,
+      "process_high_water_after": 377241600,
+      "result_rows": 4096,
+      "row_hash_sum_sha256": "1d54bd9cb7825e077f7bec3772d09d9c207d034d0a3964b80d782d393f124f50",
+      "samples_ms": [
+        47.157042,
+        46.768084,
+        48.893583
+      ],
+      "median_ms": 47.157042,
+      "profile": {
+        "total_elapsed_ms": 460.24127799999735,
+        "total_output_rows": 4096,
+        "operators": [
+          {
+            "operator_id": 1164153744,
+            "parent_id": -1,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 166.21129599999912,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 1164162928,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 162.9373139999991,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 1163974624,
+            "parent_id": -1,
+            "operator_name": "GroupByOpr",
+            "elapsed_ms": 131.08762699999912,
+            "output_rows": 4096,
+            "child_ids": []
+          },
+          {
+            "operator_id": 1164153072,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 0.0035830000000000002,
+            "output_rows": 4096,
+            "child_ids": []
+          },
+          {
+            "operator_id": 1164153152,
+            "parent_id": -1,
+            "operator_name": "SinkOpr",
+            "elapsed_ms": 0.0014580000000000003,
+            "output_rows": 4096,
+            "child_ids": []
+          }
+        ]
+      },
+      "rss_before_execute": 137166848,
+      "sampled_peak_rss": 168886272,
+      "sampled_rss_increase": 31719424,
+      "rss_samples": 24
+    },
+    {
+      "variant": "current",
+      "memory_run": 1,
+      "case": "string_low",
+      "workers": 1,
+      "process_high_water_before": 379273216,
+      "library_override_verified": true,
+      "cold_execute_ms": 178.880791,
+      "process_high_water_after": 379273216,
+      "result_rows": 4096,
+      "row_hash_sum_sha256": "1d54bd9cb7825e077f7bec3772d09d9c207d034d0a3964b80d782d393f124f50",
+      "samples_ms": [
+        166.575042,
+        161.232792,
+        156.671
+      ],
+      "median_ms": 161.232792,
+      "profile": {
+        "total_elapsed_ms": 408.2908059999997,
+        "total_output_rows": 4096,
+        "operators": [
+          {
+            "operator_id": 1182729584,
+            "parent_id": -1,
+            "operator_name": "ScanWithGPredOpr",
+            "elapsed_ms": 147.9224819999999,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 87624544,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 145.06291699999989,
+            "output_rows": 1000000,
+            "child_ids": []
+          },
+          {
+            "operator_id": 87609984,
+            "parent_id": -1,
+            "operator_name": "GroupByOpr",
+            "elapsed_ms": 115.30207099999993,
+            "output_rows": 4096,
+            "child_ids": []
+          },
+          {
+            "operator_id": 87569552,
+            "parent_id": -1,
+            "operator_name": "ProjectOpr",
+            "elapsed_ms": 0.002418,
+            "output_rows": 4096,
+            "child_ids": []
+          },
+          {
+            "operator_id": 87614432,
+            "parent_id": -1,
+            "operator_name": "SinkOpr",
+            "elapsed_ms": 0.000918,
+            "output_rows": 4096,
+            "child_ids": []
+          }
+        ]
+      },
+      "rss_before_execute": 147603456,
+      "sampled_peak_rss": 174243840,
+      "sampled_rss_increase": 26640384,
+      "rss_samples": 73
+    }
+  ]
+}

@@ -1,0 +1,129 @@
+{
+  "method": "Temporary steady_clock around Sink::sink_results, removed from final source. Last five calls per child are cold execute, three warm executes, PROFILE. Million singleton lists; no concurrent benchmarks/builds.",
+  "runs": [
+    {
+      "variant": "before",
+      "workers": 1,
+      "calls": [
+        {
+          "phase": "cold",
+          "chunks": 1,
+          "sink_ms": 17.8193
+        },
+        {
+          "phase": "warm",
+          "chunks": 1,
+          "sink_ms": 17.4986
+        },
+        {
+          "phase": "warm",
+          "chunks": 1,
+          "sink_ms": 17.0121
+        },
+        {
+          "phase": "warm",
+          "chunks": 1,
+          "sink_ms": 17.4787
+        },
+        {
+          "phase": "profile",
+          "chunks": 1,
+          "sink_ms": 19.1237
+        }
+      ]
+    },
+    {
+      "variant": "before",
+      "workers": 4,
+      "calls": [
+        {
+          "phase": "cold",
+          "chunks": 977,
+          "sink_ms": 1813.58
+        },
+        {
+          "phase": "warm",
+          "chunks": 977,
+          "sink_ms": 1828.21
+        },
+        {
+          "phase": "warm",
+          "chunks": 977,
+          "sink_ms": 1808.92
+        },
+        {
+          "phase": "warm",
+          "chunks": 977,
+          "sink_ms": 1808.08
+        },
+        {
+          "phase": "profile",
+          "chunks": 977,
+          "sink_ms": 1881.03
+        }
+      ]
+    },
+    {
+      "variant": "after",
+      "workers": 1,
+      "calls": [
+        {
+          "phase": "cold",
+          "chunks": 1,
+          "sink_ms": 18.7303
+        },
+        {
+          "phase": "warm",
+          "chunks": 1,
+          "sink_ms": 16.5595
+        },
+        {
+          "phase": "warm",
+          "chunks": 1,
+          "sink_ms": 17.3665
+        },
+        {
+          "phase": "warm",
+          "chunks": 1,
+          "sink_ms": 17.855
+        },
+        {
+          "phase": "profile",
+          "chunks": 1,
+          "sink_ms": 17.4477
+        }
+      ]
+    },
+    {
+      "variant": "after",
+      "workers": 4,
+      "calls": [
+        {
+          "phase": "cold",
+          "chunks": 977,
+          "sink_ms": 19.0975
+        },
+        {
+          "phase": "warm",
+          "chunks": 977,
+          "sink_ms": 17.3168
+        },
+        {
+          "phase": "warm",
+          "chunks": 977,
+          "sink_ms": 17.7546
+        },
+        {
+          "phase": "warm",
+          "chunks": 977,
+          "sink_ms": 17.8783
+        },
+        {
+          "phase": "profile",
+          "chunks": 977,
+          "sink_ms": 17.2278
+        }
+      ]
+    }
+  ]
+}

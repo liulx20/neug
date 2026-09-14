@@ -246,6 +246,69 @@ TEST(QueryResultTest, PrimitiveChunkSerializationMatchesCollectedColumns) {
   check.template operator()<std::string>();
 }
 
+TEST(QueryResultTest, ListChunkSerializationPreservesSlicedNestedValues) {
+  const auto list_type = DataType::List(DataType::INT64);
+  const auto nested_type = DataType::List(list_type);
+  const auto array_type = DataType::Array(DataType::INT64, 2);
+  const auto arrays_type = DataType::List(array_type);
+  const auto pair =
+      Value::LIST(DataType::INT64, {Value::INT64(1), Value(DataType::INT64)});
+  const auto full =
+      Value::LIST(DataType::INT64, {Value::INT64(7), Value::INT64(8)});
+  const auto array =
+      Value::ARRAY(array_type, {Value::INT64(1), Value(DataType::INT64)});
+  const auto full_array =
+      Value::ARRAY(array_type, {Value::INT64(7), Value::INT64(8)});
+  PropertyGraph graph;
+  GraphView view(graph);
+  StorageReadInterface storage(view, 0);
+  for (const auto& pattern : std::vector<std::vector<Value>>{
+           {pair, Value(list_type), Value::LIST(DataType::INT64, {}), full,
+            Value::LIST(DataType::INT64, {Value(DataType::INT64)}), full},
+           {Value::LIST(list_type, {pair, Value(list_type)}),
+            Value(nested_type), Value::LIST(list_type, {}),
+            Value::LIST(list_type, {full}),
+            Value::LIST(list_type, {Value(list_type)}),
+            Value::LIST(list_type, {full})},
+           {Value::LIST(array_type, {array}), Value(arrays_type),
+            Value::LIST(array_type, {}), Value::LIST(array_type, {full_array}),
+            Value::LIST(array_type, {Value(array_type)}),
+            Value::LIST(array_type, {full_array})}}) {
+    auto builder = ColumnsUtils::create_builder(pattern[0].type());
+    ValueColumnBuilder<int64_t> keys;
+    for (size_t row = 0; row < pattern.size(); ++row) {
+      builder->push_back_elem(pattern[row]);
+      keys.push_back_opt(row);
+    }
+    auto source = builder->finish();
+    auto key_column = keys.finish();
+    for (const auto& selections : std::vector<std::vector<sel_vec_t>>{
+             {{3, 5, 3}, {}, {2, 5}, {3}},
+             {{1, 3, 0}, {}, {4, 2, 5, 3}, {0, 1}},
+             {{}, {}}}) {
+      Context input;
+      input.tag_ids = {2, 0, 2};
+      for (const auto& selection : selections) {
+        ContextChunk chunk;
+        chunk.set(2, source->shuffle(selection));
+        chunk.set(0, key_column->shuffle(selection));
+        input.append_chunk(std::move(chunk));
+      }
+      Context reference = input;
+      reference.flatten();
+      QueryResponse actual, expected;
+      Sink::sink_results(input, storage, &actual);
+      Sink::sink_results(reference, storage, &expected);
+      EXPECT_EQ(actual.SerializeAsString(), expected.SerializeAsString());
+      google::protobuf::Arena arena;
+      auto* response =
+          google::protobuf::Arena::CreateMessage<QueryResponse>(&arena);
+      Sink::sink_results(input, storage, response);
+      EXPECT_EQ(response->SerializeAsString(), expected.SerializeAsString());
+    }
+  }
+}
+
 TEST(QueryResultTest, IsLazyAndReleasesCursorOnCancellation) {
   int pulls = 0;
   std::weak_ptr<int> weak;
