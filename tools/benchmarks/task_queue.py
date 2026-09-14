@@ -33,6 +33,11 @@ def main():
     parser.add_argument(
         "--dedup", action="store_true", help="include low and high cardinality DISTINCT"
     )
+    parser.add_argument(
+        "--aggregates",
+        action="store_true",
+        help="include low, high and skewed cardinality aggregation",
+    )
     args = parser.parse_args()
     if args.rows < 17 or args.repeats < 1 or min(args.workers) < 1:
         parser.error("rows >= 17, repeats >= 1 and positive workers are required")
@@ -72,6 +77,13 @@ def main():
     }
     if args.dedup:
         queries.update(dedup_queries)
+    aggregate_queries = {
+        "aggregate_repeated": "MATCH (n:parallel_item) RETURN n.grp, count(*), sum(n.id), min(n.id), max(n.id), avg(n.id)",
+        "aggregate_unique": "MATCH (n:parallel_item) RETURN n.id, count(*), sum(n.grp)",
+        "aggregate_hot": "MATCH (n:parallel_item) RETURN n.grp % 1, count(*), sum(n.id), avg(n.id)",
+    }
+    if args.aggregates:
+        queries.update(aggregate_queries)
     report = {
         "platform": platform.platform(),
         "logical_cpus": os.cpu_count(),
@@ -133,12 +145,23 @@ def main():
                     (args.join_shapes and name.startswith("hash_join"))
                     or (args.intermediate and name in intermediate_queries)
                     or (args.dedup and name in dedup_queries)
+                    or (
+                        args.aggregates
+                        and (name in aggregate_queries or name == "group_sum")
+                    )
                 ):
                     profiled = conn.execute(
                         "PROFILE " + query, num_threads=max(args.workers)
                     )
                     report["queries"][name]["profile"] = profiled.get_profile_metrics()
                     metrics = report["queries"][name]["profile"]
+                    if name in aggregate_queries or (
+                        args.aggregates and name == "group_sum"
+                    ):
+                        assert any(
+                            op["operator_name"] == "GroupByOpr"
+                            for op in metrics["operators"]
+                        ), (name, metrics)
                     if name in dedup_queries:
                         assert any(
                             op["operator_name"] == "DedupOpr"

@@ -357,3 +357,60 @@ batches against the existing Dedup helper.
 
 Raw timings and PROFILE evidence: [partitioned](benchmarks/task_queue_dedup_1m.json),
 [collected comparison](benchmarks/task_queue_dedup_collected_1m.json).
+
+## Partial GroupBy aggregation
+
+Use `--aggregates` to measure multiple ordinary aggregates, nearly unique groups
+and a hot group. The generated input has one million rows with unique `id` and
+`grp = id % 17`. The added queries are recorded verbatim in the JSON reports.
+The partitioned report includes separate PROFILE evidence verifying `GroupByOpr`
+and its output cardinality. PROFILE is outside the timed execute calls.
+
+```sh
+PYTHONPATH=tools/python_bind python tools/benchmarks/task_queue.py --rows 1000000 --repeats 5 --aggregates --output /tmp/task_queue_aggregate.json
+```
+
+The collected comparison temporarily restores only the pre-change `GroupByOpr`
+on the same source/build tree. The compiler and other executor code are
+unchanged. All queries use a warm plan cache and five interleaved repetitions
+per worker count. No builds or tests ran concurrently with these timings.
+These are whole `conn.execute()` medians, including scan, projections, scheduling,
+aggregation, materialization and native serialization, not isolated GroupBy time.
+
+| Groups / functions | Implementation | 1 worker | 2 workers | 4 workers |
+| --- | --- | ---: | ---: | ---: |
+| 17 / SUM | Collected | 97.319 ms | 75.025 ms | 68.501 ms |
+| 17 / SUM | Partial | 65.954 ms | 32.384 ms | 18.958 ms |
+| 17 / COUNT, SUM, MIN, MAX, AVG | Collected | 97.294 ms | 77.406 ms | 71.336 ms |
+| 17 / COUNT, SUM, MIN, MAX, AVG | Partial | 90.760 ms | 45.495 ms | 25.655 ms |
+| 1m / COUNT, SUM | Collected | 153.155 ms | 222.371 ms | 212.308 ms |
+| 1m / COUNT, SUM | Partial | 365.858 ms | 326.580 ms | 275.310 ms |
+| 1 / COUNT, SUM, AVG | Collected | 110.700 ms | 80.978 ms | 68.040 ms |
+| 1 / COUNT, SUM, AVG | Partial | 90.722 ms | 44.869 ms | 23.219 ms |
+
+At four workers, SUM over 17 groups improves by about 3.6x, the five-aggregate
+query by about 2.8x, and the hot-group query by about 2.9x. Batch-local reduction
+shrinks the data being exchanged and merged, including for the hot partition.
+
+The unique-group workload regresses by about 30% at four workers (275.310 vs
+212.308 ms), and by about 2.4x at one worker (365.858 vs 153.155 ms). Local and
+partition group tables perform extra work without reducing row count, and final
+result construction remains serial. Integer lookup in local/partition tables,
+preallocated output builders and merging already ordered partition sequences
+reduce overhead but do not eliminate this regression. This implementation has
+no cardinality-based strategy selection yet; the results are not a claim of
+universal aggregate acceleration.
+
+All result row counts and checksums match the collected comparison and across
+worker counts for these datasets. Their integer sums are exactly representable
+in double where AVG is used; this does not establish bitwise equivalence for
+arbitrary floating-point inputs. Partial SUM/AVG changes addition association,
+and ill-conditioned or non-finite inputs can differ materially. The execution
+document describes numerical semantics and unsupported aggregate combinations.
+
+The benchmark does not measure memory peaks, spill, concurrent queries or
+compiler cost-model changes. The collected timing report predates the new
+aggregate PROFILE collection; plan evidence is in the partitioned report.
+
+Raw reports: [partial](benchmarks/task_queue_aggregate_1m.json),
+[collected](benchmarks/task_queue_aggregate_collected_1m.json).

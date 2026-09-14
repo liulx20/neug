@@ -3,6 +3,7 @@ add_neug_test(
 	test_stream.cc
 	test_morsel_execution.cc
 	test_hash_join.cc
+	test_parallel_group_by.cc
 	test_parallel_dedup.cc
 	test_task_scheduler.cc
 	test_logical_expr.cc

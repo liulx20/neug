@@ -1,0 +1,268 @@
+{
+  "platform": "macOS-13.2.1-arm64-arm-64bit",
+  "logical_cpus": 10,
+  "rows": 1000000,
+  "repeats": 5,
+  "timing": "execute only, includes task pool, materialization and native serialization; excludes Python row iteration, warm plan cache, no PROFILE",
+  "queries": {
+    "filter_project": {
+      "query": "MATCH (n:parallel_item) WHERE n.id % 3 = 0 RETURN n.id, n.id * 7 + n.grp",
+      "result_rows": 333334,
+      "sha256": "8faa7f825a27a6a97814258b571add2127851c2de1e849a8cbf2e217e64b2793",
+      "workers": {
+        "1": {
+          "median_ms": 89.825667,
+          "samples_ms": [
+            88.672625,
+            89.825667,
+            82.386167,
+            115.502958,
+            107.75025
+          ]
+        },
+        "2": {
+          "median_ms": 54.562541,
+          "samples_ms": [
+            59.759291,
+            56.286042,
+            53.089542,
+            52.634209,
+            54.562541
+          ]
+        },
+        "4": {
+          "median_ms": 38.55525,
+          "samples_ms": [
+            38.613,
+            37.618958,
+            38.55525,
+            38.217208,
+            45.306875
+          ]
+        }
+      }
+    },
+    "hash_join": {
+      "query": "MATCH (a:parallel_item), (b:parallel_item) WHERE a.grp = b.grp AND b.id < 17 RETURN a.id, b.id",
+      "result_rows": 1000000,
+      "sha256": "b43a5d06d7c986ca6e51d2b6a92078523134d0936ce7e3eee1dcb0f183f7b18c",
+      "workers": {
+        "1": {
+          "median_ms": 213.882458,
+          "samples_ms": [
+            233.947167,
+            233.672833,
+            211.062958,
+            213.882458,
+            212.219958
+          ]
+        },
+        "2": {
+          "median_ms": 138.485791,
+          "samples_ms": [
+            144.847375,
+            143.074041,
+            138.485791,
+            138.194084,
+            136.809375
+          ]
+        },
+        "4": {
+          "median_ms": 102.183083,
+          "samples_ms": [
+            99.820542,
+            103.956209,
+            102.33525,
+            101.619292,
+            102.183083
+          ]
+        }
+      }
+    },
+    "group_sum": {
+      "query": "MATCH (n:parallel_item) RETURN n.grp, sum(n.id)",
+      "result_rows": 17,
+      "sha256": "69d0093b0e840c3fc79cab3608afe96c03fa87d5ffe556074fe1e0a7c0c3d344",
+      "workers": {
+        "1": {
+          "median_ms": 97.319459,
+          "samples_ms": [
+            97.687417,
+            97.319459,
+            97.748958,
+            96.541333,
+            95.618666
+          ]
+        },
+        "2": {
+          "median_ms": 75.0245,
+          "samples_ms": [
+            75.4335,
+            75.0245,
+            75.153708,
+            75.013292,
+            74.827875
+          ]
+        },
+        "4": {
+          "median_ms": 68.501083,
+          "samples_ms": [
+            71.202833,
+            67.853375,
+            67.216791,
+            68.908166,
+            68.501083
+          ]
+        }
+      }
+    },
+    "limit_10": {
+      "query": "MATCH (n:parallel_item) RETURN n.id LIMIT 10",
+      "result_rows": 10,
+      "sha256": "e16be58a09795fdfcef17455a2f04981300b8ff55f3789f3b28dcb77203359d1",
+      "workers": {
+        "1": {
+          "median_ms": 0.206708,
+          "samples_ms": [
+            0.20375,
+            0.206708,
+            0.212084,
+            0.21725,
+            0.189041
+          ]
+        },
+        "2": {
+          "median_ms": 0.270708,
+          "samples_ms": [
+            0.358042,
+            0.270708,
+            0.229,
+            0.320542,
+            0.259083
+          ]
+        },
+        "4": {
+          "median_ms": 0.273291,
+          "samples_ms": [
+            0.273291,
+            0.269417,
+            0.281792,
+            0.271083,
+            0.303
+          ]
+        }
+      }
+    },
+    "aggregate_repeated": {
+      "query": "MATCH (n:parallel_item) RETURN n.grp, count(*), sum(n.id), min(n.id), max(n.id), avg(n.id)",
+      "result_rows": 17,
+      "sha256": "d015aafb22fcb190235f3d8ef2f59e7462e990f08184558b4fe72beee2fc67f2",
+      "workers": {
+        "1": {
+          "median_ms": 97.294042,
+          "samples_ms": [
+            96.332708,
+            95.954959,
+            103.09475,
+            97.294042,
+            98.045167
+          ]
+        },
+        "2": {
+          "median_ms": 77.405584,
+          "samples_ms": [
+            77.854375,
+            76.383666,
+            74.954541,
+            92.726583,
+            77.405584
+          ]
+        },
+        "4": {
+          "median_ms": 71.33625,
+          "samples_ms": [
+            72.387708,
+            70.647542,
+            68.96175,
+            71.33625,
+            71.914833
+          ]
+        }
+      }
+    },
+    "aggregate_unique": {
+      "query": "MATCH (n:parallel_item) RETURN n.id, count(*), sum(n.grp)",
+      "result_rows": 1000000,
+      "sha256": "b5d2c181ba88466b7d956e2dcfa3b7b163fa82ad5912119481eb839719a02ef1",
+      "workers": {
+        "1": {
+          "median_ms": 153.155375,
+          "samples_ms": [
+            155.186791,
+            153.155375,
+            160.567709,
+            150.962333,
+            150.437459
+          ]
+        },
+        "2": {
+          "median_ms": 222.371375,
+          "samples_ms": [
+            227.960708,
+            217.048334,
+            222.371375,
+            220.711125,
+            224.115708
+          ]
+        },
+        "4": {
+          "median_ms": 212.307708,
+          "samples_ms": [
+            212.307708,
+            221.653542,
+            213.949458,
+            210.521084,
+            209.067042
+          ]
+        }
+      }
+    },
+    "aggregate_hot": {
+      "query": "MATCH (n:parallel_item) RETURN n.grp % 1, count(*), sum(n.id), avg(n.id)",
+      "result_rows": 1,
+      "sha256": "4744b6ca158f85e345d08db255d915c32bf06cb3c9d91eeabf74330d5ed1dfe5",
+      "workers": {
+        "1": {
+          "median_ms": 110.700125,
+          "samples_ms": [
+            111.634625,
+            110.700125,
+            110.815709,
+            109.918417,
+            109.144958
+          ]
+        },
+        "2": {
+          "median_ms": 80.977959,
+          "samples_ms": [
+            80.977959,
+            80.18025,
+            81.231042,
+            81.580875,
+            80.205625
+          ]
+        },
+        "4": {
+          "median_ms": 68.039625,
+          "samples_ms": [
+            68.100875,
+            68.111625,
+            67.628625,
+            68.039625,
+            67.45675
+          ]
+        }
+      }
+    }
+  }
+}
