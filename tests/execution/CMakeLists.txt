@@ -20,3 +20,10 @@ if(UNIX)
     target_link_libraries(partition_phases PRIVATE neug ${Protobuf_LIBRARIES}
         ${GLOG_LIBRARIES} ${ARROW_LIB} ${YAML_CPP_LIBRARIES})
 endif()
+
+if(UNIX)
+    add_executable(pk_join_pipeline EXCLUDE_FROM_ALL
+        ../../tools/benchmarks/pk_join_pipeline.cc)
+    target_link_libraries(pk_join_pipeline PRIVATE neug ${Protobuf_LIBRARIES}
+        ${GLOG_LIBRARIES} ${ARROW_LIB} ${YAML_CPP_LIBRARIES})
+endif()
