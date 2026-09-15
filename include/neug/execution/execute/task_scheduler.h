@@ -47,15 +47,18 @@ class TaskPool {
   size_t concurrency() const { return worker_count_; }
   void Submit(const std::shared_ptr<Query>& query, std::function<void()> task) {
     Start();
+    bool ready;
     {
       std::lock_guard<std::mutex> lock(mutex_);
       if (stopping_) {
         throw std::runtime_error("TaskPool is stopped");
       }
       query->tasks.push_back(std::move(task));
-      Ready(query);
+      ready = Ready(query);
     }
-    ready_.notify_one();
+    if (ready) {
+      ready_.notify_one();
+    }
   }
   void Drain(const std::shared_ptr<Query>& query) {
     std::unique_lock<std::mutex> lock(mutex_);
@@ -63,12 +66,14 @@ class TaskPool {
   }
 
  private:
-  void Ready(const std::shared_ptr<Query>& query) {
+  bool Ready(const std::shared_ptr<Query>& query) {
     if (!query->ready && !query->tasks.empty() &&
         query->running < query->limit) {
       queries_.push_back(query);
       query->ready = true;
+      return true;
     }
+    return false;
   }
   void Start() {
     std::call_once(start_, [this] {
@@ -86,6 +91,7 @@ class TaskPool {
     while (true) {
       std::shared_ptr<Query> query;
       std::function<void()> task;
+      bool more;
       {
         std::unique_lock<std::mutex> lock(mutex_);
         ready_.wait(lock, [&] { return stopping_ || !queries_.empty(); });
@@ -98,24 +104,25 @@ class TaskPool {
         task = std::move(query->tasks.front());
         query->tasks.pop_front();
         ++query->running;
-        Ready(query);
+        more = Ready(query);
+      }
+      if (more) {
+        ready_.notify_one();
       }
       // Execution callbacks translate operator exceptions into query errors.
       task();
-      bool idle, ready;
+      bool idle;
       {
         std::lock_guard<std::mutex> lock(mutex_);
         --query->running;
         Ready(query);
         idle = query->tasks.empty() && query->running == 0;
-        ready = !queries_.empty();
       }
       if (idle) {
         idle_.notify_all();
       }
-      if (ready) {
-        ready_.notify_one();
-      }
+      // This worker immediately claims the next ready task. It wakes another
+      // worker above only when additional eligible work remains after a pick.
     }
   }
   void Stop() {

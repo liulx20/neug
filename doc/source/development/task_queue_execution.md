@@ -47,7 +47,9 @@ Each execution registers its own FIFO queue and a running-task quota capped by
 the database capacity. The shared queue contains at most one entry for each
 eligible query. A worker takes one task, then returns that query to the tail if
 it has queued work and quota available. A quota-blocked query occupies no worker.
-Fairness is at task boundaries, not preemptive CPU time slicing; long tasks can
+Wake-ups occur when a query becomes eligible or a pick leaves more eligible
+work. The completing worker continues dispatching without waking an idle worker
+solely to take its place. Fairness is at task boundaries, not preemptive CPU time slicing; long tasks can
 still delay another query. Compilation, caller threads and service bthreads are
 outside the execution-worker budget.
 
@@ -65,7 +67,11 @@ same pool. Python exercises four read-only connections with one-, two- and
 four-worker requests against a two-worker database. The final build passes
 197 C++ tests and 389 selected Python tests (34 skipped, 20 deselected);
 72 reader/scheduler/morsel/Dedup/GroupBy tests pass 20 repetitions. The local
-build disables HTTP service support, so service wiring requires CI validation.
+validation originally disabled HTTP service support. The follow-up
+[shared pool validation](shared_pool_validation.md) enables HTTP, passes all 42
+C++ service tests, and covers concurrent pinned read snapshots with committed
+and rolled-back writes. Its full selected Python run passes 390 tests; the
+three existing TP cases also pass with an ephemeral-port test adapter.
 
 The million-row benchmark is recorded in `benchmarks/shared_pool_1m.json`.
 With four shared workers, one/two/four clients achieved approximately 30/33/33
