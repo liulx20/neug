@@ -14,6 +14,7 @@
  */
 #pragma once
 
+#include <algorithm>
 #include <condition_variable>
 #include <deque>
 #include <functional>
@@ -26,33 +27,49 @@
 
 namespace neug::execution {
 
-// A FIFO of ready work. Dependency waits and backpressure are handled by the
-// execution coordinator; workers never wait for tasks in their own pool.
-class TaskScheduler {
+// Database-owned workers. Ready queries take turns; quotas count running work,
+// so a query waiting for its quota never occupies a worker thread.
+class TaskPool {
  public:
-  explicit TaskScheduler(size_t workers) : worker_count_(workers) {
-    if (workers == 0) {
-      throw std::invalid_argument("TaskScheduler needs at least one worker");
+  struct Query {
+    explicit Query(size_t limit) : limit(limit) {}
+    size_t limit;
+    size_t running = 0;
+    bool ready = false;
+    std::deque<std::function<void()>> tasks;
+  };
+  explicit TaskPool(size_t workers) : worker_count_(workers) {
+    if (!workers) {
+      throw std::invalid_argument("TaskPool needs at least one worker");
     }
   }
-  ~TaskScheduler() { Stop(); }
-  TaskScheduler(const TaskScheduler&) = delete;
-  TaskScheduler& operator=(const TaskScheduler&) = delete;
-
-  void Submit(std::function<void()> task) {
+  ~TaskPool() { Stop(); }
+  size_t concurrency() const { return worker_count_; }
+  void Submit(const std::shared_ptr<Query>& query, std::function<void()> task) {
     Start();
     {
       std::lock_guard<std::mutex> lock(mutex_);
       if (stopping_) {
-        throw std::runtime_error("TaskScheduler is stopped");
+        throw std::runtime_error("TaskPool is stopped");
       }
-      tasks_.push_back(std::move(task));
+      query->tasks.push_back(std::move(task));
+      Ready(query);
     }
     ready_.notify_one();
   }
-  size_t concurrency() const { return worker_count_; }
+  void Drain(const std::shared_ptr<Query>& query) {
+    std::unique_lock<std::mutex> lock(mutex_);
+    idle_.wait(lock, [&] { return query->tasks.empty() && !query->running; });
+  }
 
  private:
+  void Ready(const std::shared_ptr<Query>& query) {
+    if (!query->ready && !query->tasks.empty() &&
+        query->running < query->limit) {
+      queries_.push_back(query);
+      query->ready = true;
+    }
+  }
   void Start() {
     std::call_once(start_, [this] {
       try {
@@ -67,17 +84,38 @@ class TaskScheduler {
   }
   void Run() {
     while (true) {
+      std::shared_ptr<Query> query;
       std::function<void()> task;
       {
         std::unique_lock<std::mutex> lock(mutex_);
-        ready_.wait(lock, [&] { return stopping_ || !tasks_.empty(); });
-        if (tasks_.empty()) {
-          break;
+        ready_.wait(lock, [&] { return stopping_ || !queries_.empty(); });
+        if (queries_.empty()) {
+          return;
         }
-        task = std::move(tasks_.front());
-        tasks_.pop_front();
+        query = std::move(queries_.front());
+        queries_.pop_front();
+        query->ready = false;
+        task = std::move(query->tasks.front());
+        query->tasks.pop_front();
+        ++query->running;
+        Ready(query);
       }
+      // Execution callbacks translate operator exceptions into query errors.
       task();
+      bool idle, ready;
+      {
+        std::lock_guard<std::mutex> lock(mutex_);
+        --query->running;
+        Ready(query);
+        idle = query->tasks.empty() && query->running == 0;
+        ready = !queries_.empty();
+      }
+      if (idle) {
+        idle_.notify_all();
+      }
+      if (ready) {
+        ready_.notify_one();
+      }
     }
   }
   void Stop() {
@@ -92,14 +130,37 @@ class TaskScheduler {
       }
     }
   }
-
   size_t worker_count_;
   std::once_flag start_;
   std::mutex mutex_;
-  std::condition_variable ready_;
-  std::deque<std::function<void()>> tasks_;
+  std::condition_variable ready_, idle_;
+  std::deque<std::shared_ptr<Query>> queries_;
   std::vector<std::thread> workers_;
   bool stopping_ = false;
 };
 
+// Per-query submission handle. Destruction drains only this query's callbacks.
+class TaskScheduler {
+ public:
+  explicit TaskScheduler(size_t workers, std::shared_ptr<TaskPool> pool = {})
+      : pool_(pool ? std::move(pool) : std::make_shared<TaskPool>(workers)),
+        query_(std::make_shared<TaskPool::Query>(
+            std::min(workers, pool_->concurrency()))) {
+    if (!workers) {
+      throw std::invalid_argument("TaskScheduler needs at least one worker");
+    }
+  }
+  ~TaskScheduler() { Drain(); }
+  void Drain() { pool_->Drain(query_); }
+  TaskScheduler(const TaskScheduler&) = delete;
+  TaskScheduler& operator=(const TaskScheduler&) = delete;
+  void Submit(std::function<void()> task) {
+    pool_->Submit(query_, std::move(task));
+  }
+  size_t concurrency() const { return query_->limit; }
+
+ private:
+  std::shared_ptr<TaskPool> pool_;
+  std::shared_ptr<TaskPool::Query> query_;
+};
 }  // namespace neug::execution

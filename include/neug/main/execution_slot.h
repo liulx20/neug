@@ -249,7 +249,8 @@ class ExecutionSlot {
                 IWalWriter* wal_writer,
                 CheckpointCoordinator& checkpoint_coordinator,
                 ExtensionManager& extension_manager,
-                const NeugDBConfig& config_, int slot_id)
+                const NeugDBConfig& config_, int slot_id,
+                std::shared_ptr<execution::TaskPool> task_pool)
       : snapshot_store_(snapshot_store),
         planner_(planner),
         pipeline_cache_(global_query_cache),
@@ -260,6 +261,7 @@ class ExecutionSlot {
         checkpoint_coordinator_(checkpoint_coordinator),
         extension_manager_(extension_manager),
         db_config_(config_),
+        task_pool_(std::move(task_pool)),
         slot_id_(slot_id),
         eval_duration_(0),
         query_num_(0) {
@@ -325,6 +327,7 @@ class ExecutionSlot {
   CheckpointCoordinator& checkpoint_coordinator_;
   ExtensionManager& extension_manager_;
   const NeugDBConfig& db_config_;
+  std::shared_ptr<execution::TaskPool> task_pool_;
   int slot_id_;
 
   std::atomic<int64_t> eval_duration_;

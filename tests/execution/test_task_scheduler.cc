@@ -31,6 +31,7 @@
 #include "neug/execution/execute/ops/retrieve/sink.h"
 #include "neug/execution/execute/pipeline.h"
 #include "neug/execution/execute/plan_parser.h"
+#include "neug/execution/execute/task_scheduler.h"
 #include "neug/storages/graph/property_graph.h"
 
 namespace neug::execution {
@@ -41,6 +42,121 @@ ContextChunk MakeChunk(int64_t value) {
   ContextChunk chunk;
   chunk.set(0, builder.finish());
   return chunk;
+}
+
+TEST(TaskSchedulerTest, SharedPoolRotatesReadyQueries) {
+  auto pool = std::make_shared<TaskPool>(1);
+  std::promise<void> entered, release, done;
+  std::vector<int> order;
+  auto gate = release.get_future().share();
+  TaskScheduler first(4, pool), second(1, pool);
+  EXPECT_EQ(first.concurrency(), 1);
+  first.Submit([&] {
+    entered.set_value();
+    gate.wait();
+  });
+  entered.get_future().wait();
+  for (int i = 0; i < 4; ++i) {
+    first.Submit([&] { order.push_back(1); });
+    second.Submit([&] { order.push_back(2); });
+  }
+  release.set_value();
+  // Destruction is a query-local drain; keep the pool alive for inspection.
+  second.Submit([&] { done.set_value(); });
+  done.get_future().wait();
+  // Query two was ready while query one's quota was occupied.
+  EXPECT_EQ(order, (std::vector<int>{2, 1, 2, 1, 2, 1, 2, 1}));
+}
+
+TEST(TaskSchedulerTest,
+     SharedPoolEnforcesQueryQuotaWithoutBlockingOtherQueries) {
+  auto pool = std::make_shared<TaskPool>(2);
+  std::promise<void> entered, release, other, drained;
+  auto gate = release.get_future().share();
+  std::atomic<bool> next{false};
+  TaskScheduler first(1, pool), second(1, pool);
+  first.Submit([&] {
+    entered.set_value();
+    gate.wait();
+  });
+  entered.get_future().wait();
+  first.Submit([&] { next = true; });
+  second.Submit([&] { other.set_value(); });
+  EXPECT_EQ(other.get_future().wait_for(std::chrono::seconds(5)),
+            std::future_status::ready);
+  EXPECT_FALSE(next);
+  release.set_value();
+  first.Submit([&] { drained.set_value(); });
+  drained.get_future().wait();
+  EXPECT_TRUE(next);
+}
+
+TEST(TaskSchedulerTest, SharedPoolBoundsTotalWorkersAcrossQueries) {
+  auto pool = std::make_shared<TaskPool>(2);
+  std::mutex mutex;
+  std::condition_variable ready;
+  std::set<std::thread::id> threads;
+  size_t entered = 0;
+  bool release = false;
+  {
+    TaskScheduler first(2, pool), second(2, pool);
+    auto work = [&] {
+      std::unique_lock<std::mutex> lock(mutex);
+      threads.insert(std::this_thread::get_id());
+      ++entered;
+      ready.notify_all();
+      ready.wait(lock, [&] { return release; });
+    };
+    for (int i = 0; i < 8; ++i) {
+      first.Submit(work);
+      second.Submit(work);
+    }
+    {
+      std::unique_lock<std::mutex> lock(mutex);
+      EXPECT_TRUE(ready.wait_for(lock, std::chrono::seconds(5),
+                                 [&] { return entered == 2; }));
+      EXPECT_EQ(entered, 2);
+      release = true;
+    }
+    ready.notify_all();
+  }
+  EXPECT_EQ(entered, 16);
+  EXPECT_EQ(threads.size(), 2);
+}
+
+TEST(TaskSchedulerTest, SharedPoolSurvivesQueryErrorAndEarlyReaderDestruction) {
+  auto pool = std::make_shared<TaskPool>(2);
+  std::promise<void> entered, release;
+  auto gate = release.get_future().share();
+  TaskScheduler sibling(1, pool);
+  sibling.Submit([&] {
+    entered.set_value();
+    gate.wait();
+  });
+  entered.get_future().wait();
+  PropertyGraph graph;
+  GraphView view(graph);
+  StorageReadInterface storage(view, 0);
+  auto failure =
+      PrependInput(Pipeline{}, []() -> QueryResultReader::NextResult {
+        THROW_IO_EXCEPTION("isolated failure");
+      });
+  {
+    auto reader = failure.ExecuteReader(storage, {}, {}, nullptr, 2, pool);
+    EXPECT_FALSE(reader.Next());
+  }
+  release.set_value();
+  auto success =
+      PrependInput(Pipeline{}, []() -> QueryResultReader::NextResult {
+        return std::optional<ContextChunk>(MakeChunk(42));
+      });
+  for (int i = 0; i < 3; ++i) {
+    auto reader = success.ExecuteReader(storage, {}, {}, nullptr, 1, pool);
+    auto result = reader.Next();
+    ASSERT_TRUE(result);
+    ASSERT_TRUE(*result);
+    EXPECT_EQ((**result).get(0)->get_elem(0).GetValue<int64_t>(), 42);
+  }
 }
 
 TEST(TaskSchedulerTest, ScheduledPullIsLazyOrderedAndStopsOnDestruction) {

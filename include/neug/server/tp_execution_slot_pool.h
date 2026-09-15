@@ -70,12 +70,14 @@ class TpExecutionSlotPool {
           std::shared_ptr<Allocator> alloc, IVersionManager& version_manager,
           CheckpointCoordinator& checkpoint_coordinator, int slot_id,
           ExtensionManager& extension_manager, IWalWriter& wal_writer,
-          const NeugDBConfig& config)
+          const NeugDBConfig& config,
+          std::shared_ptr<execution::TaskPool> task_pool)
         : allocator(std::move(alloc)),
           slot(snapshot_store, std::move(planner),
                std::move(global_query_cache), version_manager, *allocator,
                QueryExecutionStrategy::kTransactional, &wal_writer,
-               checkpoint_coordinator, extension_manager, config, slot_id) {}
+               checkpoint_coordinator, extension_manager, config, slot_id,
+               std::move(task_pool)) {}
 
     std::shared_ptr<Allocator> allocator;
     char _padding0[kSlotOffset - sizeof(std::shared_ptr<Allocator>)];
@@ -97,7 +99,8 @@ class TpExecutionSlotPool {
       CheckpointCoordinator& checkpoint_coordinator,
       ExtensionManager& extension_manager,
       const std::vector<std::shared_ptr<Allocator>>& allocators,
-      WalWriterSet& wal_writers, const NeugDBConfig& config)
+      WalWriterSet& wal_writers, const NeugDBConfig& config,
+      std::shared_ptr<execution::TaskPool> task_pool)
       : entries_(nullptr), slot_num_(allocators.size()) {
     available_slot_ids_.reserve(slot_num_);
     entries_ = static_cast<Entry*>(
@@ -110,11 +113,11 @@ class TpExecutionSlotPool {
     try {
       for (; constructed_entries < slot_num_; ++constructed_entries) {
         const auto slot_id = static_cast<int>(constructed_entries);
-        new (&entries_[constructed_entries])
-            Entry(snapshot_store, planner, global_query_cache,
-                  allocators.at(constructed_entries), version_manager,
-                  checkpoint_coordinator, slot_id, extension_manager,
-                  wal_writers.WriterFor(constructed_entries), config);
+        new (&entries_[constructed_entries]) Entry(
+            snapshot_store, planner, global_query_cache,
+            allocators.at(constructed_entries), version_manager,
+            checkpoint_coordinator, slot_id, extension_manager,
+            wal_writers.WriterFor(constructed_entries), config, task_pool);
       }
     } catch (...) {
       while (constructed_entries > 0) {

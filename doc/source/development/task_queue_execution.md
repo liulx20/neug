@@ -21,8 +21,8 @@ writable storage is constrained to one worker even when a higher count is
 requested, preserving transaction sequencing. This enables worker execution of
 writes without introducing concurrent mutation within one transaction. Keep the
 plan, storage and optional profiling timer alive until the reader is consumed or
-destroyed. The worker pool is joined before the completed execution returns to
-its transaction owner. Python callers can set the count without changing a
+destroyed. Submitted callbacks for that query are drained before execution
+returns to its transaction owner; database workers remain available to other queries. Python callers can set the count without changing a
 cached plan or subsequent calls:
 
 ```python
@@ -35,6 +35,47 @@ still uses one worker even for a read statement). The C++ `Connection::Query`
 accepts `num_threads` as its final argument. No SQL `SET` syntax is introduced.
 See [the latency baseline](task_queue_baseline.md) for measurements and limitations.
 
+## Shared database workers
+
+NeugDB creates one lazy TaskPool for its query runtime, sized by max_thread_num.
+Direct connections and service execution slots retain the same pool. Closing the
+database first releases connections and their queries, then releases the pool;
+reopening creates a new pool. Low-level standalone ExecuteReader callers may
+supply a shared pool as the final argument; without one they own a private pool.
+
+Each execution registers its own FIFO queue and a running-task quota capped by
+the database capacity. The shared queue contains at most one entry for each
+eligible query. A worker takes one task, then returns that query to the tail if
+it has queued work and quota available. A quota-blocked query occupies no worker.
+Fairness is at task boundaries, not preemptive CPU time slicing; long tasks can
+still delay another query. Compilation, caller threads and service bthreads are
+outside the execution-worker budget.
+
+Cancellation/error state, dependency coordination, pending chunks and completion
+events remain query-local. Destruction drains only the query's submitted work;
+it neither stops the shared pool nor discards another query's tasks. Already
+submitted callbacks finish (with cooperative cancellation where supported).
+The database still permits only one embedded read-write connection; concurrent
+embedded queries use separate connections to a read-only database.
+
+Tests check round-robin query order with a blocked first task, per-query quotas,
+a shared two-worker cap across two busy queries, an operator error while a
+sibling query is active, and early reader destruction followed by reuse of the
+same pool. Python exercises four read-only connections with one-, two- and
+four-worker requests against a two-worker database. The final build passes
+197 C++ tests and 389 selected Python tests (34 skipped, 20 deselected);
+72 reader/scheduler/morsel/Dedup/GroupBy tests pass 20 repetitions. The local
+build disables HTTP service support, so service wiring requires CI validation.
+
+The million-row benchmark is recorded in `benchmarks/shared_pool_1m.json`.
+With four shared workers, one/two/four clients achieved approximately 30/33/33
+queries per second on the grouped workload. Four-client p95 was 217 ms: task
+rotation does not guarantee bounded query latency. A single four-worker Dedup
+query measured 80.9 ms versus the previous day's 73.6 ms; GroupBy measured
+30.1 ms versus 31.9 ms. These are not interleaved comparisons and do not establish
+a general performance improvement or rule out single-query overhead.
+
+
 ## Plan, state and scheduling
 
 | Component | Responsibility |
@@ -45,7 +86,8 @@ See [the latency baseline](task_queue_baseline.md) for measurements and limitati
 | `PipelineFragment` | Output task, result columns, fork barriers and current segment |
 | `MorselPipelineTask` | Shared source allocation, local readers, transforms and bounded ordered task completion |
 | `QueueExecution` | Dependency gates, ready queue, one-slot mailboxes, completion events and failures |
-| `TaskScheduler` | Worker pool and queue of runnable tasks |
+| `TaskScheduler` | Per-query submission queue and concurrency quota |
+| `TaskPool` | Database-owned workers and round-robin admission of ready queries |
 | `QueryResultReader` | External result access and ownership of the execution |
 
 `IOperator::sub_pipelines()` declares child plans and how they consume input:

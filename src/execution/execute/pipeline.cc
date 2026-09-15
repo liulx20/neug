@@ -175,8 +175,14 @@ struct PipelineTask {
 
 class QueueExecution {
  public:
-  explicit QueueExecution(size_t workers) : scheduler_(workers) {}
-  ~QueueExecution() { Drain(); }
+  explicit QueueExecution(size_t workers, std::shared_ptr<TaskPool> pool)
+      : scheduler_(workers, std::move(pool)) {}
+  ~QueueExecution() {
+    Drain();
+    // A completion event can wake the coordinator before its callback returns.
+    // Join this query's callbacks while completion mutex/state still exist.
+    scheduler_.Drain();
+  }
   template <typename T, typename... Args>
   T* Add(Args&&... args) {
     auto node = std::make_unique<T>(std::forward<Args>(args)...);
@@ -1231,15 +1237,16 @@ result<Context> Pipeline::Execute(IStorageInterface& graph, Context&& ctx,
 QueryResultReader Pipeline::ExecuteReader(IStorageInterface& storage,
                                           Context input,
                                           const ParamsMap& params,
-                                          OprTimer* timer, size_t workers) {
+                                          OprTimer* timer, size_t workers,
+                                          std::shared_ptr<TaskPool> pool) {
   if (!workers) {
     QueryResultReader reader;
     reader.error_ = Status(StatusCode::ERR_INVALID_ARGUMENT,
                            "Execution requires at least one worker");
     return reader;
   }
-  auto execution =
-      std::make_unique<QueueExecution>(storage.writable() ? 1 : workers);
+  auto execution = std::make_unique<QueueExecution>(
+      storage.writable() ? 1 : workers, std::move(pool));
   auto columns = std::move(input.tag_ids);
   auto* source = execution->Add<InputTask>(std::move(input.chunks()));
   auto fragment = PipelineBuilder(storage, params, *execution)

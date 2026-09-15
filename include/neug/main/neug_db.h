@@ -44,6 +44,9 @@
 #define TOSTRING(x) STRINGIFY(x)
 
 namespace neug {
+namespace execution {
+class TaskPool;
+}
 class NeugDBService;
 class AppManager;
 class CheckpointCoordinator;
@@ -418,6 +421,7 @@ class NEUG_API NeugDB {
   // True only while the current Open() owns a generated temporary workspace.
   bool is_pure_memory_;
   int max_thread_num_;
+  std::shared_ptr<execution::TaskPool> task_pool_;
   NeugDBConfig config_;
   CheckpointManager checkpoint_mgr_;
   std::unique_ptr<FileLock> file_lock_;

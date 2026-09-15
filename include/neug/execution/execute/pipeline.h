@@ -26,6 +26,8 @@ class OprTimer;
 
 class PipelineBuilder;
 
+class TaskPool;
+
 class Pipeline {
  public:
   Pipeline() {}
@@ -40,8 +42,8 @@ class Pipeline {
   // preserve transaction sequencing; read-only callers may request more.
   QueryResultReader ExecuteReader(IStorageInterface& graph, Context input,
                                   const ParamsMap& params,
-                                  OprTimer* timer = nullptr,
-                                  size_t workers = 1);
+                                  OprTimer* timer = nullptr, size_t workers = 1,
+                                  std::shared_ptr<TaskPool> pool = {});
 
   neug::result<Context> Execute(IStorageInterface& graph, Context&& ctx,
                                 const ParamsMap& params, OprTimer* timer);

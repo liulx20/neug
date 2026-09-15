@@ -14,6 +14,7 @@
  */
 
 #include "neug/main/neug_db.h"
+#include "neug/execution/execute/task_scheduler.h"
 
 #include <glog/logging.h>
 #ifndef _WIN32
@@ -630,7 +631,7 @@ std::unique_ptr<ExecutionSlot> NeugDB::createExecutionSlot(size_t slot_id) {
       *snapshot_store_, planner_, global_query_cache_, *version_manager_,
       *allocators_.at(slot_id), QueryExecutionStrategy::kDirect,
       &wal_writers_->DirectWriter(), *checkpoint_coordinator_,
-      *extension_manager_, config_, static_cast<int>(slot_id)));
+      *extension_manager_, config_, static_cast<int>(slot_id), task_pool_));
 }
 
 void NeugDB::initQueryRuntime() {
@@ -639,6 +640,7 @@ void NeugDB::initQueryRuntime() {
   }
   auto global_query_cache =
       std::make_shared<execution::GlobalQueryCache>(planner_);
+  task_pool_ = std::make_shared<execution::TaskPool>(max_thread_num_);
   auto connection_manager = std::make_unique<ConnectionManager>(*this, config_);
   CHECK(!global_query_cache_);
   CHECK(!connection_manager_);
@@ -657,6 +659,7 @@ void NeugDB::clearQueryRuntime() noexcept {
     }
     connection_manager_.reset();
   }
+  task_pool_.reset();
   global_query_cache_.reset();
 }
 

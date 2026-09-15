@@ -1,0 +1,93 @@
+{
+  "workload": "1,000,000 item rows, id=0..999999, k=id%200000",
+  "single_query_method": "Same queries as partition_downstream_1m.json; one warmup then median of five execute+consume calls. Data load excluded. Historical baseline was measured on the previous day, not interleaved.",
+  "single_query": [
+    {
+      "query": "dedup_project",
+      "workers": 1,
+      "ms": 222.76583300117636,
+      "result": [
+        [
+          20000499994
+        ]
+      ]
+    },
+    {
+      "query": "dedup_project",
+      "workers": 2,
+      "ms": 132.82949999847915,
+      "result": [
+        [
+          20000499994
+        ]
+      ]
+    },
+    {
+      "query": "dedup_project",
+      "workers": 4,
+      "ms": 80.92054200096754,
+      "result": [
+        [
+          20000499994
+        ]
+      ]
+    },
+    {
+      "query": "group_project",
+      "workers": 1,
+      "ms": 96.85154099861393,
+      "result": [
+        [
+          519999400000
+        ]
+      ]
+    },
+    {
+      "query": "group_project",
+      "workers": 2,
+      "ms": 51.76454100001138,
+      "result": [
+        [
+          519999400000
+        ]
+      ]
+    },
+    {
+      "query": "group_project",
+      "workers": 4,
+      "ms": 30.05408399621956,
+      "result": [
+        [
+          519999400000
+        ]
+      ]
+    }
+  ],
+  "concurrent_method": "Read-only reopened database; GroupBy query from partition_downstream_1m.json; four database workers; each client requests four workers and runs ten queries after warmup; callers start together. Latencies include execution admission and complete result consumption. Throughput includes client launch/join.",
+  "concurrent": [
+    {
+      "clients": 1,
+      "workers_per_query": 4,
+      "total_workers": 4,
+      "queries_per_second": 30.398840446688624,
+      "median_ms": 32.36429149910691,
+      "p95_ms": 34.72291700018104
+    },
+    {
+      "clients": 2,
+      "workers_per_query": 4,
+      "total_workers": 4,
+      "queries_per_second": 33.14756427341246,
+      "median_ms": 59.86120849775034,
+      "p95_ms": 62.733374994422775
+    },
+    {
+      "clients": 4,
+      "workers_per_query": 4,
+      "total_workers": 4,
+      "queries_per_second": 32.53652291597921,
+      "median_ms": 62.78141700386186,
+      "p95_ms": 217.31949999957578
+    }
+  ]
+}

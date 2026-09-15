@@ -358,3 +358,43 @@ def test_partition_outputs_feed_downstream_aggregates(parallel_conn, workers):
         assert operator in {
             op["operator_name"] for op in result.get_profile_metrics()["operators"]
         }
+
+
+def test_shared_workers_across_connections(tmp_path):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+
+    path = tmp_path / "shared.csv"
+    path.write_text("id|grp\n" + "".join(f"{i}|{i % 31}\n" for i in range(20003)))
+    db_path = str(tmp_path / "shared_db")
+    db = Database(db_path, max_thread_num=2)
+    loader = db.connect()
+    loader.execute(
+        "CREATE NODE TABLE shared_item(id INT64, grp INT64, PRIMARY KEY(id))"
+    )
+    loader.execute(f'COPY shared_item FROM "{path}"')
+    loader.close()
+    db.close()
+    db = Database(db_path, mode="r", max_thread_num=2)
+    connections = []
+    try:
+        connections = [db.connect() for _ in range(4)]
+        query = (
+            "MATCH (n:shared_item) WITH n.grp AS grp, sum(n.id) AS total "
+            "RETURN sum(total), count(*)"
+        )
+        gate = Barrier(4)
+
+        def run(index):
+            gate.wait(timeout=10)
+            for workers in [1, 2, 4, 1]:
+                assert list(connections[index].execute(query, num_threads=workers)) == [
+                    [20003 * 20002 // 2, 31]
+                ]
+
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            list(executor.map(run, range(4)))
+    finally:
+        for connection in connections:
+            connection.close()
+        db.close()
