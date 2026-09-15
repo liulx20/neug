@@ -52,6 +52,10 @@ class UnfoldOpr : public IOperator {
 
   std::string get_operator_name() const override { return "UnfoldOpr"; }
 
+  PipelineBehavior pipeline_behavior() const override {
+    return PipelineBehavior::kChunkLocal;
+  }
+
   Kernel CreateState(IStorageInterface& graph, const ParamsMap& params,
                      neug::execution::OprTimer* timer) override {
     return make_chunk_kernel([this, &graph, params, timer](

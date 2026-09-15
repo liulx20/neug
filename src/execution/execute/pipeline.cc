@@ -1026,6 +1026,16 @@ class PipelineBuilder {
         AdvanceTimer(current_timer, i, plan.operators_.size());
         continue;
       }
+      auto children = op.sub_pipelines();
+      if (children.mode == SubPipelineMode::kStreaming) {
+        if (children.plans.size() != 1) {
+          throw std::logic_error("Streaming subpipeline requires one input");
+        }
+        // Build the input before fusing its consumer into the worker pipeline.
+        fragment = Build(*children.plans[0], std::move(fragment),
+                         ChildTimer(current_timer));
+        fragment.linear_step = nullptr;
+      }
       if (op.consumes_input() &&
           op.pipeline_behavior() == PipelineBehavior::kChunkLocal) {
         Parallelize(fragment);
@@ -1045,7 +1055,6 @@ class PipelineBuilder {
         continue;
       }
       fragment.morsel_step = nullptr;
-      auto children = op.sub_pipelines();
       PartitionPipelineTask* build_state = nullptr;
       if (children.mode == SubPipelineMode::kBuildProbe) {
         if (children.plans.size() != 2) {
@@ -1082,14 +1091,8 @@ class PipelineBuilder {
           AdvanceTimer(current_timer, i, plan.operators_.size());
           continue;
         }
-      } else if (children.mode == SubPipelineMode::kStreaming) {
-        if (children.plans.size() != 1) {
-          throw std::logic_error("Streaming subpipeline requires one input");
-        }
-        fragment = Build(*children.plans[0], std::move(fragment),
-                         ChildTimer(current_timer));
-        fragment.linear_step = nullptr;
-      } else if (!children.plans.empty()) {
+      } else if (children.mode != SubPipelineMode::kStreaming &&
+                 !children.plans.empty()) {
         auto* seed = execution_.Add<BufferTask>(fragment.output);
         std::vector<PipelineTask*> inputs, completed;
         std::vector<int> columns = fragment.columns;

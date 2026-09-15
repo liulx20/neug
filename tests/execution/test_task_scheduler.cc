@@ -23,12 +23,14 @@
 #include <thread>
 
 #include <future>
+#include "neug/common/columns/list_columns.h"
 #include "neug/common/columns/value_columns.h"
 #include "neug/execution/execute/ops/retrieve/dedup.h"
 #include "neug/execution/execute/ops/retrieve/group_by.h"
 #include "neug/execution/execute/ops/retrieve/join.h"
 #include "neug/execution/execute/ops/retrieve/limit.h"
 #include "neug/execution/execute/ops/retrieve/sink.h"
+#include "neug/execution/execute/ops/retrieve/unfold.h"
 #include "neug/execution/execute/pipeline.h"
 #include "neug/execution/execute/plan_parser.h"
 #include "neug/execution/execute/task_scheduler.h"
@@ -1000,6 +1002,156 @@ class ObservedRangeMap final : public IOperator {
   RangeObservation& observation_;
   int64_t bias_;
 };
+
+TEST(TaskSchedulerTest, UnfoldRunsInConcurrentWorkerPipelines) {
+  for (size_t workers : {2, 4}) {
+    PropertyGraph graph;
+    GraphView view(graph);
+    StorageReadInterface storage(view, 0);
+    ListColumnBuilder lists(DataType::INT64);
+    for (int64_t row = 0; row < 8192; ++row) {
+      lists.push_back_elem(
+          Value::LIST(DataType::INT64, {Value::INT64(row), Value::INT64(row)}));
+    }
+    auto chunk = RangeChunk(0, 8192);
+    auto column = lists.finish();
+    ContextMeta meta;
+    meta.set(0, DataType::INT64);
+    meta.set(1, column->elem_type());
+    chunk.set(1, column);
+    physical::PhysicalPlan plan;
+    auto* unfold = plan.add_plan()->mutable_opr()->mutable_unfold();
+    unfold->mutable_alias()->set_value(2);
+    auto* variable =
+        unfold->mutable_input_expr()->add_operators()->mutable_var();
+    variable->mutable_tag()->set_id(1);
+    variable->mutable_node_type()
+        ->mutable_data_type()
+        ->mutable_list()
+        ->mutable_component_type()
+        ->set_primitive_type(common::DT_SIGNED_INT64);
+    ops::UnfoldOprBuilder builder;
+    auto built = builder.Build(graph.schema(), meta, plan, 0);
+    ASSERT_TRUE(built);
+    ASSERT_TRUE(built->first);
+    EXPECT_EQ(built->first->pipeline_behavior(), PipelineBehavior::kChunkLocal);
+    RangeObservation observation;
+    std::vector<std::unique_ptr<IOperator>> operators;
+    operators.push_back(std::move(built->first));
+    operators.push_back(std::make_unique<ObservedRangeMap>(observation, 0));
+    Pipeline pipeline(std::move(operators));
+    ChunkBatch input;
+    input.push_back(std::move(chunk));
+    auto result = collect_chunk(pipeline.ExecuteReader(
+        storage, context_from_batches(std::move(input)), {}, nullptr, workers));
+    ASSERT_TRUE(result);
+    ASSERT_EQ(result->row_num(), 16384);
+    EXPECT_GE(observation.threads.size(), 2);
+    for (size_t row = 0; row < result->row_num(); ++row) {
+      EXPECT_EQ(result->get(0)->get_elem(row).GetValue<int64_t>(), row / 2);
+      EXPECT_EQ(result->get(2)->get_elem(row).GetValue<int64_t>(), row / 2);
+    }
+  }
+}
+
+class ObservedPrimaryKeyStorage final : public StorageReadInterface {
+ public:
+  ObservedPrimaryKeyStorage(GraphView& view, RangeObservation& observation,
+                            size_t workers)
+      : StorageReadInterface(view, 0),
+        observation_(observation),
+        workers_(workers) {}
+  bool GetVertexIndex(label_t, const Value& id, vid_t& index) const override {
+    {
+      std::unique_lock<std::mutex> lock(observation_.mutex);
+      if (observation_.threads.insert(std::this_thread::get_id()).second) {
+        observation_.ready.notify_all();
+        if (workers_ > 1) {
+          EXPECT_TRUE(observation_.ready.wait_for(
+              lock, std::chrono::seconds(5),
+              [&] { return observation_.threads.size() >= 2; }));
+        }
+      }
+      ++observation_.entered;
+    }
+    auto key = id.GetValue<int64_t>();
+    index = static_cast<vid_t>(key);
+    return key % 3 != 0;
+  }
+
+ private:
+  RangeObservation& observation_;
+  size_t workers_;
+};
+
+TEST(TaskSchedulerTest, PrimaryKeyJoinBuildsInputBeforeParallelLookup) {
+  PlanParser::get().init();
+  for (size_t workers : {1, 2, 4}) {
+    PropertyGraph graph;
+    Schema schema;
+    schema.AddVertexLabel("item", {}, {}, {{DataType::INT64, "id", 0}});
+    GraphView view(graph);
+    RangeObservation observation;
+    ObservedPrimaryKeyStorage storage(view, observation, workers);
+    physical::PhysicalPlan plan;
+    auto* join = plan.add_plan()->mutable_opr()->mutable_join();
+    join->set_join_kind(physical::Join_JoinKind_INNER);
+    auto* key = join->add_left_keys();
+    key->mutable_tag()->set_id(2);
+    key->mutable_property()->mutable_key()->set_name("id");
+    join->add_right_keys()->mutable_tag()->set_id(1);
+    auto* scan =
+        join->mutable_left_plan()->add_plan()->mutable_opr()->mutable_scan();
+    scan->mutable_alias()->set_value(2);
+    scan->mutable_params()->add_tables()->set_id(0);
+    // The lookup tag only exists after this child projection runs.
+    auto* child = join->mutable_right_plan()->add_plan();
+    auto* metadata = child->add_meta_data();
+    metadata->set_alias(1);
+    metadata->mutable_type()->mutable_data_type()->set_primitive_type(
+        common::DT_SIGNED_INT64);
+    auto* project = child->mutable_opr()->mutable_project();
+    auto* mapping = project->add_mappings();
+    mapping->mutable_alias()->set_value(1);
+    auto* variable = mapping->mutable_expr()->add_operators()->mutable_var();
+    variable->mutable_tag()->set_id(0);
+    variable->mutable_node_type()->mutable_data_type()->set_primitive_type(
+        common::DT_SIGNED_INT64);
+    ContextMeta meta;
+    meta.set(0, DataType::INT64);
+    ops::PrimaryKeyJoinOprBuilder builder;
+    auto built = builder.Build(schema, meta, plan, 0);
+    ASSERT_TRUE(built);
+    ASSERT_TRUE(built->first);
+    EXPECT_EQ(built->first->pipeline_behavior(), PipelineBehavior::kChunkLocal);
+    auto pipeline = OneOperator(std::move(built->first));
+    ChunkBatch input;
+    input.push_back(RangeChunk(0, 8192));
+    input.push_back(RangeChunk(0, 0));
+    input.push_back(RangeChunk(0, 8192));
+    auto result = collect_chunk(pipeline.ExecuteReader(
+        storage, context_from_batches(std::move(input)), {}, nullptr, workers));
+    ASSERT_TRUE(result);
+    EXPECT_EQ(observation.entered, 16384);
+    EXPECT_GE(observation.threads.size(), workers > 1 ? 2 : 1);
+    std::vector<int64_t> keys;
+    for (size_t row = 0; row < result->row_num(); ++row) {
+      keys.push_back(result->get(1)->get_elem(row).GetValue<int64_t>());
+      const auto vertex = result->get(2)->get_elem(row).GetValue<vertex_t>();
+      EXPECT_EQ(vertex.label(), 0);
+      EXPECT_EQ(vertex.vid(), keys.back());
+    }
+    std::sort(keys.begin(), keys.end());
+    std::vector<int64_t> expected;
+    for (int64_t key = 0; key < 8192; ++key) {
+      if (key % 3 != 0) {
+        expected.push_back(key);
+        expected.push_back(key);
+      }
+    }
+    EXPECT_EQ(keys, expected);
+  }
+}
 
 class GlobalRangeBarrier final : public IOperator {
  public:

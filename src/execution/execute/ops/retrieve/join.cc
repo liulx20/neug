@@ -205,6 +205,10 @@ class PrimaryKeyJoinOpr : public IOperator {
     return {SubPipelineMode::kStreaming, {&right_pipeline_}};
   }
   std::string get_operator_name() const override { return "PrimaryJoinOpr"; }
+  PipelineBehavior pipeline_behavior() const override {
+    return PipelineBehavior::kChunkLocal;
+  }
+
   Kernel CreateState(IStorageInterface& graph, const ParamsMap& params,
                      neug::execution::OprTimer* timer) override {
     return make_chunk_kernel(

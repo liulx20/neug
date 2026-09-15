@@ -417,7 +417,19 @@ If the left input ends at a global boundary or reads a shared materialized input
 the builder now starts a range step for probe and subsequent chunk-local kernels.
 Global Limit, DISTINCT, aggregation, sort/TopK and fused expansion-count operators
 are still not cloned per worker.
-Primary-key Join currently ends a morsel step.
+Primary-key Join and Unfold declare `kChunkLocal` and stay in the worker
+pipeline. The builder expands a streaming child before attaching its consumer:
+Primary-key Join first executes its right input pipeline, then each worker looks
+up the input keys in the existing vertex index. It does not construct a hash
+table or collect either side. If the child ends at a global boundary, the common
+intermediate range source distributes its output.
+
+Unfold builds expanded columns and input-row offsets independently for each
+chunk; expression binding is also local to each invocation. Both operators use
+the existing task queue, range ordering, cancellation and profiling machinery.
+Writes retain the scheduler's single-worker limit. Parallelism requires enough
+input ranges, and large per-row expansion remains a potential source of skew.
+This change does not alter compiler selection of Primary-key Join.
 
 ## Parallel consumption of intermediate results
 
@@ -726,3 +738,15 @@ adaptive modes at 1/2/4 partitions with concurrent bucket consumption. A changin
 output head and complete group membership. Native key tests distinguish NULL, zero,
 negative values and both INT32/INT64 extrema across batches. Floating comparisons use tolerance, not
 bitwise identity.
+
+
+`UnfoldRunsInConcurrentWorkerPipelines` checks the actual Unfold builder,
+concurrent downstream execution, duplicate elements and input-row alignment.
+`PrimaryKeyJoinBuildsInputBeforeParallelLookup` constructs the actual Primary-key
+Join with a right-side projection whose output supplies the lookup tag. An
+instrumented storage lookup verifies simultaneous calls from different workers,
+with duplicate input keys, missing matches and an empty chunk at 1/2/4 workers.
+This isolates executor coverage from the compiler's choice of Join implementation.
+Python queries cover list/array Unfold, NULL elements, expression input, empty
+lists and early LIMIT at 1/2/4 workers. No performance speedup is claimed by these
+correctness and concurrency tests.

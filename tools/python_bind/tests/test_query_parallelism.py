@@ -398,3 +398,42 @@ def test_shared_workers_across_connections(tmp_path):
         for connection in connections:
             connection.close()
         db.close()
+
+
+@pytest.mark.parametrize("workers", [1, 2, 4])
+@pytest.mark.parametrize("kind", ["INT64[]", "INT64[3]"])
+def test_parallel_unfold_preserves_input_rows_and_null_elements(
+    parallel_conn, workers, kind
+):
+    query = (
+        "MATCH (n:parallel_item) "
+        f"WITH n.id AS id, CAST([n.id, CAST(NULL, 'INT64'), n.id], '{kind}') AS xs "
+        "UNWIND xs AS x RETURN id, x"
+    )
+    result = parallel_conn.execute("PROFILE " + query, num_threads=workers)
+    rows = list(result)
+    names = [op["operator_name"] for op in result.get_profile_metrics()["operators"]]
+    assert "UnfoldOpr" in names
+    assert rows == [[i, x] for i in range(5003) for x in (i, None, i)]
+    # Early termination must drain the worker callbacks before the next query.
+    assert (
+        list(parallel_conn.execute(query + " LIMIT 7", num_threads=workers)) == rows[:7]
+    )
+    assert list(parallel_conn.execute("RETURN 1", num_threads=workers)) == [[1]]
+
+
+@pytest.mark.parametrize("workers", [1, 2, 4])
+def test_parallel_unfold_expression_and_empty_lists(parallel_conn, workers):
+    query = "MATCH (n:parallel_item) UNWIND [n.id, n.id + 1] AS x RETURN n.id, x"
+    assert list(parallel_conn.execute(query, num_threads=workers)) == [
+        [i, x] for i in range(5003) for x in (i, i + 1)
+    ]
+    assert (
+        list(
+            parallel_conn.execute(
+                "MATCH (n:parallel_item) UNWIND CAST([], 'INT64[]') AS x RETURN x",
+                num_threads=workers,
+            )
+        )
+        == []
+    )
